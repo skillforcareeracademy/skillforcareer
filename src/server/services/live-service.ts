@@ -1,0 +1,630 @@
+import { format } from "date-fns";
+import { prisma } from "@/lib/prisma";
+import { Prisma } from "@/generated/prisma/client";
+import { AppError } from "@/lib/api/errors";
+import { ROLES } from "@/config/roles";
+import type {
+  MeetingInput,
+  RescheduleInput,
+  OfflineClassInput,
+  MarkAttendanceInput,
+} from "@/lib/validations/live";
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function toDate(value?: string): Date | null {
+  return value ? new Date(value) : null;
+}
+
+function randomCode(): string {
+  const c = "abcdefghijkmnopqrstuvwxyz"; // omit 'l'
+  const pick = (n: number) =>
+    Array.from({ length: n }, () => c[Math.floor(Math.random() * c.length)]).join("");
+  return `${pick(3)}-${pick(4)}-${pick(3)}`;
+}
+
+async function uniqueRoomCode(): Promise<string> {
+  for (let i = 0; i < 50; i += 1) {
+    const code = randomCode();
+    const clash = await prisma.meeting.findUnique({
+      where: { roomCode: code },
+      select: { id: true },
+    });
+    if (!clash) return code;
+  }
+  return `${randomCode()}-${Math.floor(Math.random() * 1e6).toString(36)}`;
+}
+
+// ── Reads ────────────────────────────────────────────────────────────────────
+
+export interface MeetingListQuery {
+  page: number;
+  pageSize: number;
+  search?: string;
+  status?: string;
+  courseId?: string;
+  /** Scope to one host's classes (instructor workspace). */
+  hostId?: string;
+}
+
+export async function listMeetingsAdmin(q: MeetingListQuery) {
+  const and: Prisma.MeetingWhereInput[] = [{ NOT: { provider: "offline" } }];
+  if (q.search) {
+    and.push({
+      OR: [{ title: { contains: q.search } }, { roomCode: { contains: q.search } }],
+    });
+  }
+  if (q.status) and.push({ status: q.status as Prisma.MeetingWhereInput["status"] });
+  if (q.courseId) and.push({ courseId: q.courseId });
+  if (q.hostId) and.push({ hostId: q.hostId });
+  const where: Prisma.MeetingWhereInput = and.length ? { AND: and } : {};
+
+  const [total, rows] = await Promise.all([
+    prisma.meeting.count({ where }),
+    prisma.meeting.findMany({
+      where,
+      orderBy: { scheduledStart: "desc" },
+      skip: (q.page - 1) * q.pageSize,
+      take: q.pageSize,
+      include: {
+        course: { select: { title: true } },
+        batch: { select: { name: true } },
+        host: { select: { name: true, avatarUrl: true } },
+        _count: { select: { participants: true } },
+      },
+    }),
+  ]);
+
+  return {
+    total,
+    meetings: rows.map((m) => ({
+      id: m.id,
+      title: m.title,
+      status: m.status,
+      roomCode: m.roomCode,
+      provider: m.provider,
+      courseId: m.courseId,
+      courseTitle: m.course?.title ?? null,
+      batchId: m.batchId,
+      batchName: m.batch?.name ?? null,
+      hostId: m.hostId,
+      hostName: m.host.name,
+      hostAvatar: m.host.avatarUrl,
+      scheduledStart: m.scheduledStart.toISOString(),
+      scheduledEnd: m.scheduledEnd ? m.scheduledEnd.toISOString() : null,
+      maxParticipants: m.maxParticipants,
+      isRecordingEnabled: m.isRecordingEnabled,
+      participants: m._count.participants,
+    })),
+  };
+}
+
+export type MeetingPhase = "live" | "upcoming" | "past" | "cancelled";
+
+export interface StudentMeeting {
+  id: string;
+  title: string;
+  description: string | null;
+  status: string;
+  phase: MeetingPhase;
+  roomCode: string;
+  courseTitle: string | null;
+  batchName: string | null;
+  hostName: string;
+  hostAvatar: string | null;
+  scheduledStart: string;
+  scheduledEnd: string | null;
+  isRecordingEnabled: boolean;
+  recordingUrl: string | null;
+}
+
+/** Bucket a meeting into a lifecycle phase (computed server-side, off `now`). */
+function meetingPhase(
+  status: string,
+  scheduledStart: Date,
+  scheduledEnd: Date | null,
+  now: Date,
+): MeetingPhase {
+  if (status === "LIVE") return "live";
+  if (status === "CANCELLED") return "cancelled";
+  if (status === "ENDED") return "past";
+  // SCHEDULED
+  if (scheduledStart > now) return "upcoming";
+  if (scheduledEnd && scheduledEnd < now) return "past";
+  return "live"; // started, not yet ended → joinable
+}
+
+/**
+ * Live classes visible to a learner — those attached to a course or batch they
+ * are enrolled in, plus any class they personally host (instructors who learn).
+ */
+export async function listStudentMeetings(userId: string): Promise<StudentMeeting[]> {
+  const enrollments = await prisma.enrollment.findMany({
+    where: { userId, status: { in: ["ACTIVE", "COMPLETED"] } },
+    select: { courseId: true, batchId: true },
+  });
+  const courseIds = [...new Set(enrollments.map((e) => e.courseId))];
+  const batchIds = [...new Set(enrollments.map((e) => e.batchId).filter((b): b is string => !!b))];
+
+  const or: Prisma.MeetingWhereInput[] = [{ hostId: userId }];
+  if (courseIds.length) or.push({ courseId: { in: courseIds } });
+  if (batchIds.length) or.push({ batchId: { in: batchIds } });
+
+  const rows = await prisma.meeting.findMany({
+    where: { OR: or },
+    orderBy: { scheduledStart: "asc" },
+    take: 200,
+    include: {
+      course: { select: { title: true } },
+      batch: { select: { name: true } },
+      host: { select: { name: true, avatarUrl: true } },
+    },
+  });
+
+  const now = new Date();
+  return rows.map((m) => ({
+    id: m.id,
+    title: m.title,
+    description: m.description,
+    status: m.status,
+    phase: meetingPhase(m.status, m.scheduledStart, m.scheduledEnd, now),
+    roomCode: m.roomCode,
+    courseTitle: m.course?.title ?? null,
+    batchName: m.batch?.name ?? null,
+    hostName: m.host.name,
+    hostAvatar: m.host.avatarUrl,
+    scheduledStart: m.scheduledStart.toISOString(),
+    scheduledEnd: m.scheduledEnd ? m.scheduledEnd.toISOString() : null,
+    isRecordingEnabled: m.isRecordingEnabled,
+    recordingUrl: m.recordingUrl,
+  }));
+}
+
+export interface MeetingStats {
+  total: number;
+  scheduled: number;
+  live: number;
+  ended: number;
+}
+
+export async function meetingStats(hostId?: string): Promise<MeetingStats> {
+  const scope: Prisma.MeetingWhereInput = hostId ? { hostId } : {};
+  const [total, scheduled, live, ended] = await Promise.all([
+    prisma.meeting.count({ where: scope }),
+    prisma.meeting.count({ where: { ...scope, status: "SCHEDULED" } }),
+    prisma.meeting.count({ where: { ...scope, status: "LIVE" } }),
+    prisma.meeting.count({ where: { ...scope, status: "ENDED" } }),
+  ]);
+  return { total, scheduled, live, ended };
+}
+
+export async function getMeetingDetail(id: string) {
+  const m = await prisma.meeting.findUnique({
+    where: { id },
+    include: {
+      course: { select: { title: true, slug: true } },
+      batch: { select: { name: true, enrolledCount: true } },
+      host: { select: { name: true, avatarUrl: true, headline: true } },
+      participants: {
+        take: 200,
+        orderBy: { createdAt: "asc" },
+        include: { user: { select: { id: true, name: true, email: true, avatarUrl: true } } },
+      },
+    },
+  });
+  if (!m) throw AppError.notFound("Live class not found.");
+
+  return {
+    id: m.id,
+    title: m.title,
+    description: m.description,
+    status: m.status,
+    roomCode: m.roomCode,
+    provider: m.provider,
+    scheduledStart: m.scheduledStart.toISOString(),
+    scheduledEnd: m.scheduledEnd ? m.scheduledEnd.toISOString() : null,
+    maxParticipants: m.maxParticipants,
+    isRecordingEnabled: m.isRecordingEnabled,
+    recordingUrl: m.recordingUrl,
+    course: m.course,
+    batch: m.batch,
+    host: m.host,
+    participants: m.participants.map((p) => ({
+      id: p.user.id,
+      name: p.user.name,
+      email: p.user.email,
+      avatarUrl: p.user.avatarUrl,
+      role: p.role,
+    })),
+  };
+}
+
+/** Meeting looked up by its shareable room code — for the live room page. */
+export async function getMeetingByRoomCode(code: string) {
+  const m = await prisma.meeting.findUnique({
+    where: { roomCode: code },
+    include: {
+      host: { select: { id: true, name: true, avatarUrl: true } },
+      course: { select: { title: true, slug: true } },
+      batch: { select: { name: true } },
+    },
+  });
+  if (!m) return null;
+  return {
+    id: m.id,
+    title: m.title,
+    description: m.description,
+    status: m.status,
+    roomCode: m.roomCode,
+    provider: m.provider,
+    scheduledStart: m.scheduledStart.toISOString(),
+    scheduledEnd: m.scheduledEnd ? m.scheduledEnd.toISOString() : null,
+    isRecordingEnabled: m.isRecordingEnabled,
+    host: m.host,
+    courseId: m.courseId,
+    courseTitle: m.course?.title ?? null,
+    courseSlug: m.course?.slug ?? null,
+    batchId: m.batchId,
+    batchName: m.batch?.name ?? null,
+  };
+}
+
+/**
+ * Who may enter a live room: the host, any staff (instructor/admin), or a learner
+ * enrolled in the meeting's course or batch. A meeting with no course/batch is
+ * treated as staff-only (an open/internal call).
+ */
+export async function checkRoomAccess(
+  userId: string,
+  role: string,
+  meeting: { host: { id: string }; courseId: string | null; batchId: string | null },
+): Promise<boolean> {
+  if (meeting.host.id === userId) return true;
+  if (
+    role === ROLES.SUPER_ADMIN ||
+    role === ROLES.ADMIN ||
+    role === ROLES.INSTRUCTOR
+  ) {
+    return true;
+  }
+
+  const or: Prisma.EnrollmentWhereInput[] = [];
+  if (meeting.courseId) or.push({ courseId: meeting.courseId });
+  if (meeting.batchId) or.push({ batchId: meeting.batchId });
+  if (or.length === 0) return false;
+
+  const enrollment = await prisma.enrollment.findFirst({
+    where: { userId, status: { in: ["ACTIVE", "COMPLETED"] }, OR: or },
+    select: { id: true },
+  });
+  return Boolean(enrollment);
+}
+
+/** Hosts (staff/instructors) who can lead a live class. */
+export async function listHosts() {
+  return prisma.user.findMany({
+    where: { role: { slug: { in: [ROLES.INSTRUCTOR, ROLES.ADMIN, ROLES.SUPER_ADMIN] } } },
+    select: { id: true, name: true },
+    orderBy: { name: "asc" },
+  });
+}
+
+export async function listCoursesForSelect(instructorId?: string) {
+  return prisma.course.findMany({
+    where: instructorId ? { instructorId } : {},
+    select: { id: true, title: true },
+    orderBy: { title: "asc" },
+  });
+}
+
+export async function listBatchesForSelect(instructorId?: string) {
+  return prisma.batch.findMany({
+    where: instructorId ? { instructorId } : {},
+    select: { id: true, name: true },
+    orderBy: { startDate: "desc" },
+    take: 200,
+  });
+}
+
+// ── Writes ───────────────────────────────────────────────────────────────────
+
+export async function createMeeting(input: MeetingInput, fallbackHostId: string): Promise<string> {
+  const roomCode = await uniqueRoomCode();
+  const meeting = await prisma.meeting.create({
+    data: {
+      title: input.title,
+      description: input.description || null,
+      hostId: input.hostId || fallbackHostId,
+      courseId: input.courseId || null,
+      batchId: input.batchId || null,
+      status: input.status,
+      roomCode,
+      scheduledStart: new Date(input.scheduledStart),
+      scheduledEnd: toDate(input.scheduledEnd),
+      maxParticipants: input.maxParticipants ?? null,
+      isRecordingEnabled: input.isRecordingEnabled,
+    },
+    select: { id: true },
+  });
+  return meeting.id;
+}
+
+export async function updateMeeting(id: string, input: MeetingInput): Promise<void> {
+  const existing = await prisma.meeting.findUnique({ where: { id }, select: { id: true } });
+  if (!existing) throw AppError.notFound("Live class not found.");
+
+  await prisma.meeting.update({
+    where: { id },
+    data: {
+      title: input.title,
+      description: input.description || null,
+      hostId: input.hostId,
+      courseId: input.courseId || null,
+      batchId: input.batchId || null,
+      status: input.status,
+      scheduledStart: new Date(input.scheduledStart),
+      scheduledEnd: toDate(input.scheduledEnd),
+      maxParticipants: input.maxParticipants ?? null,
+      isRecordingEnabled: input.isRecordingEnabled,
+    },
+  });
+}
+
+export async function deleteMeeting(id: string): Promise<void> {
+  const existing = await prisma.meeting.findUnique({ where: { id }, select: { id: true } });
+  if (!existing) throw AppError.notFound("Live class not found.");
+  await prisma.meeting.delete({ where: { id } });
+}
+
+type MeetingStatusValue = "SCHEDULED" | "LIVE" | "ENDED" | "CANCELLED";
+
+/** Transition a class (Start → LIVE, End → ENDED, …); notifies learners on go-live. */
+export async function setMeetingStatus(
+  id: string,
+  status: MeetingStatusValue,
+): Promise<{ notified: number }> {
+  const m = await prisma.meeting.findUnique({ where: { id }, select: { id: true } });
+  if (!m) throw AppError.notFound("Live class not found.");
+
+  const data: Prisma.MeetingUpdateInput = { status };
+  if (status === "LIVE") data.actualStart = new Date();
+  if (status === "ENDED") data.actualEnd = new Date();
+  await prisma.meeting.update({ where: { id }, data });
+
+  const notified = status === "LIVE" ? await notifyLiveClass(id) : 0;
+  return { notified };
+}
+
+export async function setRecordingUrl(id: string, url: string): Promise<void> {
+  await prisma.meeting.update({ where: { id }, data: { recordingUrl: url } });
+}
+
+/** In-app notification to enrolled learners that a class went live. Returns count. */
+/** Move a class to a new time (status→SCHEDULED) and notify enrolled learners. */
+export async function rescheduleMeeting(id: string, input: RescheduleInput): Promise<number> {
+  const m = await prisma.meeting.findUnique({
+    where: { id },
+    select: { id: true, title: true, courseId: true, batchId: true, hostId: true },
+  });
+  if (!m) throw AppError.notFound("Live class not found.");
+
+  await prisma.meeting.update({
+    where: { id },
+    data: {
+      scheduledStart: new Date(input.scheduledStart),
+      scheduledEnd: toDate(input.scheduledEnd),
+      status: "SCHEDULED",
+    },
+  });
+
+  const enrollWhere: Prisma.EnrollmentWhereInput | null = m.batchId
+    ? { batchId: m.batchId }
+    : m.courseId
+      ? { courseId: m.courseId }
+      : null;
+  if (!enrollWhere) return 0;
+
+  const enrollments = await prisma.enrollment.findMany({
+    where: { ...enrollWhere, status: "ACTIVE" },
+    select: { userId: true },
+  });
+  const userIds = [...new Set(enrollments.map((e) => e.userId))].filter((uid) => uid !== m.hostId);
+  if (userIds.length === 0) return 0;
+
+  const when = format(new Date(input.scheduledStart), "EEE, d MMM · h:mm a");
+  const reason = input.reason ? ` Reason: ${input.reason}` : "";
+  await prisma.notification.createMany({
+    data: userIds.map((userId) => ({
+      userId,
+      type: "LIVE_CLASS" as const,
+      channel: "IN_APP" as const,
+      title: "Live class rescheduled",
+      message: `“${m.title}” has been moved to ${when}.${reason}`,
+      actionUrl: `/student/live`,
+    })),
+  });
+  return userIds.length;
+}
+
+export async function notifyLiveClass(meetingId: string): Promise<number> {
+  const m = await prisma.meeting.findUnique({
+    where: { id: meetingId },
+    select: { id: true, title: true, roomCode: true, courseId: true, batchId: true, hostId: true },
+  });
+  if (!m) return 0;
+
+  const enrollWhere: Prisma.EnrollmentWhereInput | null = m.batchId
+    ? { batchId: m.batchId }
+    : m.courseId
+      ? { courseId: m.courseId }
+      : null;
+  if (!enrollWhere) return 0;
+
+  const enrollments = await prisma.enrollment.findMany({
+    where: { ...enrollWhere, status: "ACTIVE" },
+    select: { userId: true },
+  });
+  const userIds = [...new Set(enrollments.map((e) => e.userId))].filter((uid) => uid !== m.hostId);
+  if (userIds.length === 0) return 0;
+
+  await prisma.notification.createMany({
+    data: userIds.map((userId) => ({
+      userId,
+      type: "LIVE_CLASS" as const,
+      channel: "IN_APP" as const,
+      title: "Live class is starting",
+      message: `“${m.title}” is now live. Join from your dashboard.`,
+      actionUrl: `/live/room/${m.roomCode}`,
+    })),
+  });
+  return userIds.length;
+}
+
+// ── Offline classes + manual attendance ──────────────────────────────────────
+
+export interface OfflineClassRow {
+  id: string;
+  title: string;
+  location: string | null;
+  courseTitle: string | null;
+  batchName: string | null;
+  hostName: string;
+  scheduledStart: string;
+  attendanceMarked: number;
+}
+
+export async function listOfflineClasses(q: {
+  page: number;
+  pageSize: number;
+  search?: string;
+  hostId?: string;
+}) {
+  const and: Prisma.MeetingWhereInput[] = [{ provider: "offline" }];
+  if (q.search) and.push({ title: { contains: q.search } });
+  if (q.hostId) and.push({ hostId: q.hostId });
+  const where: Prisma.MeetingWhereInput = { AND: and };
+
+  const [total, rows] = await Promise.all([
+    prisma.meeting.count({ where }),
+    prisma.meeting.findMany({
+      where,
+      orderBy: { scheduledStart: "desc" },
+      skip: (q.page - 1) * q.pageSize,
+      take: q.pageSize,
+      include: {
+        course: { select: { title: true } },
+        batch: { select: { name: true } },
+        host: { select: { name: true } },
+        _count: { select: { attendance: true } },
+      },
+    }),
+  ]);
+  return {
+    total,
+    classes: rows.map((m) => ({
+      id: m.id,
+      title: m.title,
+      location: m.location,
+      courseTitle: m.course?.title ?? null,
+      batchName: m.batch?.name ?? null,
+      hostName: m.host.name,
+      scheduledStart: m.scheduledStart.toISOString(),
+      attendanceMarked: m._count.attendance,
+    })),
+  };
+}
+
+export async function createOfflineClass(input: OfflineClassInput, hostId: string): Promise<string> {
+  const roomCode = await uniqueRoomCode();
+  const m = await prisma.meeting.create({
+    data: {
+      title: input.title,
+      description: input.description || null,
+      location: input.location,
+      provider: "offline",
+      hostId,
+      courseId: input.courseId || null,
+      batchId: input.batchId || null,
+      status: "SCHEDULED",
+      roomCode,
+      scheduledStart: new Date(input.scheduledStart),
+      scheduledEnd: toDate(input.scheduledEnd),
+    },
+    select: { id: true },
+  });
+  return m.id;
+}
+
+export interface AttendanceRoster {
+  id: string;
+  title: string;
+  location: string | null;
+  scheduledStart: string;
+  learners: { userId: string; name: string; avatar: string | null; status: string }[];
+}
+
+/** The enrolled learners for an (offline) class + their current attendance status. */
+export async function getAttendanceRoster(meetingId: string): Promise<AttendanceRoster> {
+  const m = await prisma.meeting.findUnique({
+    where: { id: meetingId },
+    select: { id: true, title: true, location: true, scheduledStart: true, courseId: true, batchId: true },
+  });
+  if (!m) throw AppError.notFound("Class not found.");
+
+  const enrollWhere: Prisma.EnrollmentWhereInput | null = m.batchId
+    ? { batchId: m.batchId }
+    : m.courseId
+      ? { courseId: m.courseId }
+      : null;
+  const enrollments = enrollWhere
+    ? await prisma.enrollment.findMany({
+        where: { ...enrollWhere, status: { in: ["ACTIVE", "COMPLETED"] } },
+        select: { user: { select: { id: true, name: true, avatarUrl: true } } },
+        orderBy: { user: { name: "asc" } },
+      })
+    : [];
+  const attendance = await prisma.attendance.findMany({
+    where: { meetingId },
+    select: { userId: true, status: true },
+  });
+  const statusMap = new Map(attendance.map((a) => [a.userId, a.status]));
+
+  const seen = new Set<string>();
+  const learners: AttendanceRoster["learners"] = [];
+  for (const e of enrollments) {
+    if (seen.has(e.user.id)) continue;
+    seen.add(e.user.id);
+    learners.push({
+      userId: e.user.id,
+      name: e.user.name,
+      avatar: e.user.avatarUrl,
+      status: statusMap.get(e.user.id) ?? "ABSENT",
+    });
+  }
+  return {
+    id: m.id,
+    title: m.title,
+    location: m.location,
+    scheduledStart: m.scheduledStart.toISOString(),
+    learners,
+  };
+}
+
+export async function markAttendance(meetingId: string, input: MarkAttendanceInput): Promise<number> {
+  const m = await prisma.meeting.findUnique({
+    where: { id: meetingId },
+    select: { id: true, batchId: true },
+  });
+  if (!m) throw AppError.notFound("Class not found.");
+
+  await prisma.$transaction(
+    input.records.map((r) =>
+      prisma.attendance.upsert({
+        where: { meetingId_userId: { meetingId, userId: r.userId } },
+        create: { meetingId, userId: r.userId, batchId: m.batchId, status: r.status },
+        update: { status: r.status },
+      }),
+    ),
+  );
+  return input.records.length;
+}

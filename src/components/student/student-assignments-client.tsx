@@ -1,0 +1,277 @@
+"use client";
+
+import { useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
+import { format } from "date-fns";
+import {
+  ClipboardList,
+  CheckCircle2,
+  Hourglass,
+  Award,
+  Loader2,
+  CalendarClock,
+  FileText,
+  ExternalLink,
+} from "lucide-react";
+import { toast } from "sonner";
+import { api, ApiError } from "@/lib/api-client";
+import type { StudentAssignment } from "@/server/services/student-assignment-service";
+import { PageHeader } from "@/components/shared/page-header";
+import { EmptyState } from "@/components/shared/empty-state";
+import { ButtonLink } from "@/components/shared/button-link";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
+
+type A = StudentAssignment;
+
+function statusOf(a: A): { label: string; cls: string } {
+  const s = a.submission;
+  if (s?.status === "GRADED") return { label: "Graded", cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300" };
+  if (s?.status === "RESUBMIT_REQUESTED") return { label: "Resubmit", cls: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300" };
+  if (s?.status === "LATE") return { label: "Submitted late", cls: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300" };
+  if (s?.status === "SUBMITTED") return { label: "Submitted", cls: "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300" };
+  if (a.isOverdue && !a.allowLate) return { label: "Missed", cls: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300" };
+  return { label: "Not submitted", cls: "bg-muted text-muted-foreground" };
+}
+
+export function StudentAssignmentsClient({ assignments }: { assignments: A[] }) {
+  const [active, setActive] = useState<A | null>(null);
+
+  const stats = {
+    total: assignments.length,
+    submitted: assignments.filter((a) => a.submission && a.submission.status !== "GRADED").length,
+    graded: assignments.filter((a) => a.submission?.status === "GRADED").length,
+    todo: assignments.filter((a) => !a.submission && !(a.isOverdue && !a.allowLate)).length,
+  };
+  const statCards = [
+    { label: "Assignments", value: stats.total, icon: ClipboardList, tone: "text-rose-500" },
+    { label: "To do", value: stats.todo, icon: Hourglass, tone: "text-amber-500" },
+    { label: "Submitted", value: stats.submitted, icon: CheckCircle2, tone: "text-sky-500" },
+    { label: "Graded", value: stats.graded, icon: Award, tone: "text-emerald-500" },
+  ];
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="Assignments"
+        description="Submit your work and see your grades and feedback."
+      />
+
+      {assignments.length === 0 ? (
+        <EmptyState
+          icon={ClipboardList}
+          title="No assignments yet"
+          description="Assignments from your enrolled courses will appear here."
+          action={<ButtonLink href="/courses">Browse courses</ButtonLink>}
+        />
+      ) : (
+        <>
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+            {statCards.map((s) => (
+              <Card key={s.label}>
+                <CardContent className="flex items-center gap-3 py-4">
+                  <div className="bg-muted grid size-10 shrink-0 place-items-center rounded-lg">
+                    <s.icon className={`size-5 ${s.tone}`} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-2xl font-semibold leading-none tabular-nums">{s.value}</p>
+                    <p className="text-muted-foreground mt-1 truncate text-xs">{s.label}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            {assignments.map((a) => {
+              const st = statusOf(a);
+              const graded = a.submission?.status === "GRADED";
+              return (
+                <Card key={a.id} className="p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h3 className="font-semibold">{a.title}</h3>
+                      <p className="text-muted-foreground truncate text-xs">{a.courseTitle}</p>
+                    </div>
+                    <Badge variant="secondary" className={cn("shrink-0", st.cls)}>
+                      {st.label}
+                    </Badge>
+                  </div>
+
+                  <div className="text-muted-foreground mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                    <span className={cn("flex items-center gap-1", a.isOverdue && !a.submission && "text-rose-600")}>
+                      <CalendarClock className="size-3.5" />
+                      {a.dueDate ? `Due ${format(new Date(a.dueDate), "d MMM yyyy")}` : "No due date"}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Award className="size-3.5" /> {a.maxScore} pts
+                    </span>
+                  </div>
+
+                  {graded && (
+                    <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50/50 p-3 dark:border-emerald-900/40 dark:bg-emerald-950/20">
+                      <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">
+                        Score: {a.submission!.score}/{a.maxScore}
+                      </p>
+                      {a.submission!.feedback && (
+                        <p className="text-muted-foreground mt-1 text-xs">{a.submission!.feedback}</p>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="mt-4">
+                    <Button
+                      variant={a.submission ? "outline" : "default"}
+                      size="sm"
+                      onClick={() => setActive(a)}
+                    >
+                      {graded ? "View" : a.submission ? "View / resubmit" : "Submit"}
+                    </Button>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      <SubmitDialog assignment={active} onOpenChange={(o) => !o && setActive(null)} />
+    </div>
+  );
+}
+
+function SubmitDialog({
+  assignment,
+  onOpenChange,
+}: {
+  assignment: A | null;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const router = useRouter();
+  const [content, setContent] = useState("");
+  const [fileUrl, setFileUrl] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [key, setKey] = useState<string | null>(null);
+
+  // Reset the form when a new assignment opens (without a synchronous effect).
+  if (assignment && key !== assignment.id) {
+    setKey(assignment.id);
+    setContent(assignment.submission?.content ?? "");
+    setFileUrl(assignment.submission?.fileUrl ?? "");
+  }
+
+  if (!assignment) return <Dialog open={false} onOpenChange={onOpenChange} />;
+
+  const graded = assignment.submission?.status === "GRADED";
+  const locked = graded;
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    if (!assignment) return;
+    setSaving(true);
+    try {
+      await api.post(`/api/assignments/${assignment.id}/submit`, {
+        content,
+        fileUrl: fileUrl || undefined,
+      });
+      toast.success("Assignment submitted.");
+      onOpenChange(false);
+      router.refresh();
+    } catch (err) {
+      if (err instanceof ApiError) {
+        const d = err.details as { issues?: { message: string }[] } | undefined;
+        toast.error(d?.issues?.[0]?.message ?? err.message);
+      } else toast.error("Submission failed.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{assignment.title}</DialogTitle>
+          <DialogDescription>
+            {assignment.courseTitle} · {assignment.maxScore} points
+          </DialogDescription>
+        </DialogHeader>
+
+        {assignment.instructions && (
+          <div className="rounded-xl border p-3">
+            <p className="mb-1 flex items-center gap-1.5 text-sm font-medium">
+              <FileText className="size-4 text-muted-foreground" /> Instructions
+            </p>
+            <p className="text-muted-foreground text-sm whitespace-pre-wrap">{assignment.instructions}</p>
+          </div>
+        )}
+
+        {graded && (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-3 dark:border-emerald-900/40 dark:bg-emerald-950/20">
+            <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">
+              Graded: {assignment.submission!.score}/{assignment.maxScore}
+            </p>
+            {assignment.submission!.feedback && (
+              <p className="text-muted-foreground mt-1 text-sm">{assignment.submission!.feedback}</p>
+            )}
+          </div>
+        )}
+
+        <form onSubmit={submit} className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="sub-content">Your submission</Label>
+            <Textarea
+              id="sub-content"
+              rows={5}
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              placeholder="Write your answer, or paste your notes / repo link here…"
+              disabled={locked}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="sub-file">Link (optional)</Label>
+            <Input
+              id="sub-file"
+              type="url"
+              value={fileUrl}
+              onChange={(e) => setFileUrl(e.target.value)}
+              placeholder="https://github.com/… or a file link"
+              disabled={locked}
+            />
+            {fileUrl && locked && (
+              <a href={fileUrl} target="_blank" rel="noopener" className="text-primary inline-flex items-center gap-1 text-xs hover:underline">
+                <ExternalLink className="size-3.5" /> Open submitted link
+              </a>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              Close
+            </Button>
+            {!locked && (
+              <Button type="submit" disabled={saving || content.trim().length === 0}>
+                {saving && <Loader2 className="size-4 animate-spin" />}
+                {assignment.submission ? "Resubmit" : "Submit"}
+              </Button>
+            )}
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}

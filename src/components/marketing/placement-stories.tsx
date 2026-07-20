@@ -1,0 +1,194 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  BadgeCheck,
+  Building2,
+  ChevronLeft,
+  ChevronRight,
+  Quote,
+  Star,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+
+interface PlacementStory {
+  name: string;
+  company: string;
+  quote: string;
+  photo: string;
+}
+
+/**
+ * Real placement stories sourced from the client's existing site
+ * (skillforcareer.in). Photos are the learners' own headshots hosted there —
+ * no stock imagery, no video placeholders.
+ */
+const STORIES: PlacementStory[] = [
+  {
+    name: "Ashish Kumar Shrivastava",
+    company: "Omega Healthcare",
+    quote:
+      "The recruitment process was smooth, and the interview panel was supportive throughout.",
+    photo: "https://skillforcareer.in/wp-content/uploads/2026/07/nt1.png",
+  },
+  {
+    name: "Mayank Sharma",
+    company: "Optum",
+    quote:
+      "The interview process was well organized, and I'm grateful for this opportunity.",
+    photo: "https://skillforcareer.in/wp-content/uploads/2026/07/nt3.png",
+  },
+  {
+    name: "Vishal Kaushik",
+    company: "CorroHealth",
+    quote:
+      "I'm grateful for this opportunity — thank you Skill for Career for the guidance.",
+    photo: "https://skillforcareer.in/wp-content/uploads/2026/07/nt4.png",
+  },
+  {
+    name: "Harsh Sharma",
+    company: "Pacific",
+    quote: "Thank you Skill For Career for this opportunity and constant support.",
+    photo: "https://skillforcareer.in/wp-content/uploads/2026/07/nt5.png",
+  },
+  {
+    name: "Isha",
+    company: "R1 RCM",
+    quote:
+      "I got placed at R1 RCM. Truly thankful to the Skill for Career Academy team.",
+    photo: "https://skillforcareer.in/wp-content/uploads/2026/07/nt2.png",
+  },
+  {
+    name: "Tushar",
+    company: "Omega Healthcare",
+    quote:
+      "Happy to receive an offer from Omega Healthcare — a great opportunity to build my skills.",
+    photo: "https://skillforcareer.in/wp-content/uploads/2026/07/nt6.png",
+  },
+];
+
+/** Must match the `gap-6` on the scroll track (1.5rem). */
+const CARD_GAP_PX = 24;
+
+export function PlacementStories() {
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const [atStart, setAtStart] = useState(true);
+  const [atEnd, setAtEnd] = useState(false);
+
+  const updateArrows = useCallback(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    setAtStart(el.scrollLeft <= 4);
+    setAtEnd(el.scrollLeft + el.clientWidth >= el.scrollWidth - 4);
+  }, []);
+
+  // A mount-only measurement runs before the stylesheet has applied, when the
+  // track doesn't overflow yet — that latches "at end" and kills the next
+  // arrow. Observing the track re-measures once the real layout lands.
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    updateArrows();
+    const observer = new ResizeObserver(updateArrows);
+    observer.observe(el);
+    for (const child of el.children) observer.observe(child);
+    return () => observer.disconnect();
+  }, [updateArrows]);
+
+  // Cards tile the track exactly, so a full page is the visible width plus one
+  // gap — that lands the next set flush on a card edge instead of mid-card.
+  function scrollByPage(dir: number) {
+    const el = scrollerRef.current;
+    if (!el) return;
+    el.scrollBy({ left: dir * (el.clientWidth + CARD_GAP_PX), behavior: "smooth" });
+  }
+
+  return (
+    <section className="container-page py-16 sm:py-24">
+      <div className="mb-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="max-w-2xl">
+          <span className="text-primary inline-flex items-center gap-1.5 rounded-full bg-rose-500/10 px-3 py-1 text-sm font-medium">
+            <BadgeCheck className="size-4" /> Placement stories
+          </span>
+          <h2 className="mt-4 text-3xl sm:text-4xl">Our learners, now placed</h2>
+          <p className="text-muted-foreground mt-3">
+            Real students, real offers — swipe through to see what changed after
+            training at SkillForCareer.
+          </p>
+        </div>
+        {/* Shown on mobile too: touch swipe works, but the arrows make it
+            discoverable that there is more than one card. */}
+        <div className="flex shrink-0 gap-2">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => scrollByPage(-1)}
+            disabled={atStart}
+            aria-label="Previous placement stories"
+          >
+            <ChevronLeft className="size-5" />
+          </Button>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => scrollByPage(1)}
+            disabled={atEnd}
+            aria-label="More placement stories"
+          >
+            <ChevronRight className="size-5" />
+          </Button>
+        </div>
+      </div>
+
+      <div
+        ref={scrollerRef}
+        onScroll={updateArrows}
+        className="flex snap-x snap-mandatory gap-6 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
+        {STORIES.map((s) => (
+          <Card
+            key={s.name}
+            // Width is derived from the track so a whole number of cards fits
+            // exactly — a fixed px width leaves a sliced card at the right edge.
+            // For n across with a 1.5rem gap: (100% - (n-1)*1.5rem) / n.
+            className="shrink-0 basis-full snap-start gap-0 overflow-hidden p-0 sm:basis-[calc((100%_-_1.5rem)_/_2)] lg:basis-[calc((100%_-_3rem)_/_3)] xl:basis-[calc((100%_-_4.5rem)_/_4)]"
+          >
+            <div className="bg-muted relative aspect-[4/5] overflow-hidden">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={s.photo}
+                alt={s.name}
+                loading="lazy"
+                className="size-full object-cover object-top"
+              />
+              <span className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/60 to-transparent" />
+              <span className="absolute bottom-3 left-3 inline-flex items-center gap-1 rounded-full bg-emerald-500 px-2.5 py-1 text-xs font-semibold text-white shadow-sm">
+                <BadgeCheck className="size-3.5" /> Placed
+              </span>
+            </div>
+            <div className="flex flex-1 flex-col p-5">
+              <div className="flex gap-0.5">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <Star key={i} className="size-4 fill-amber-400 text-amber-400" />
+                ))}
+              </div>
+              <Quote className="text-primary/30 mt-3 size-6" aria-hidden />
+              <p className="text-foreground/90 mt-1 text-sm leading-relaxed">
+                &ldquo;{s.quote}&rdquo;
+              </p>
+              <div className="mt-4 flex items-center gap-3 border-t pt-4">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold">{s.name}</p>
+                  <p className="text-muted-foreground flex items-center gap-1 truncate text-xs">
+                    <Building2 className="size-3 shrink-0" /> Placed at {s.company}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </Card>
+        ))}
+      </div>
+    </section>
+  );
+}

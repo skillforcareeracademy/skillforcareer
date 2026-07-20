@@ -1,36 +1,58 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# SkillForCareer LMS
 
-## Getting Started
+Enterprise Learning Management System with integrated video conferencing —
+pre-recorded, live, offline and hybrid courses, assessments, certificates,
+payments and analytics.
 
-First, run the development server:
+Built on **Next.js 16 · React 19 · TypeScript · Tailwind v4 · shadcn/ui ·
+Prisma 7 · TiDB Cloud**. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for
+the full design.
+
+## Getting started
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# 1. Install dependencies (also generates the Prisma client)
+npm install
+
+# 2. Configure environment
+cp .env.example .env      # then fill in DATABASE_URL, SMTP, JWT secrets
+
+# 3. Create the application database on TiDB (uses BOOTSTRAP_DATABASE_URL)
+npm run db:create
+
+# 4. Sync the schema (full model lands in Step 2)
+npm run db:push
+
+# 5. Run the dev server
+npm run dev               # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+> **Note:** the client's TiDB URL points at the `sys` schema, which Prisma
+> cannot use. `DATABASE_URL` must target the `lms` database — `db:create` sets
+> it up. Details in `docs/ARCHITECTURE.md`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Scripts
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Command             | Purpose                          |
+| ------------------- | -------------------------------- |
+| `npm run dev`       | Start the dev server (Turbopack) |
+| `npm run build`     | Production build                 |
+| `npm run start`     | Serve the production build       |
+| `npm run lint`      | ESLint                           |
+| `npm run typecheck` | TypeScript check                 |
+| `npm run db:create` | Create the `lms` database        |
+| `npm run db:push`   | Push schema to the database      |
+| `npm run db:studio` | Open Prisma Studio               |
 
-## Learn More
+## Build plan progress
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- [x] **Step 1 — Project architecture** _(this step)_
+- [ ] Step 2 — Prisma schema
+- [ ] Step 3 — Authentication
+- [ ] Step 4 — Dashboard layout
+- [ ] Step 5 — Admin panel
+- [ ] Step 6 — Course module
+- [ ] Step 7 — Student module
+- [ ] Step 8 — Instructor module
+- [ ] Step 9 — Video conferencing
+- [ ] Step 10 — Testing & optimization
