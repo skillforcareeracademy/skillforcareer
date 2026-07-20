@@ -41,6 +41,22 @@ export function PhoneInput({
   const [national, setNational] = useState(initial.national);
   const [open, setOpen] = useState(false);
 
+  /**
+   * cmdk scrolls its selected item into view the moment the list mounts, but
+   * Base UI only moves the popup under the trigger a frame *after* it opens.
+   * Run in that order and the scroll targets the popup while it still sits at
+   * the document origin, dragging the reader to the top of the page — which on
+   * the marketing page (`scroll-behavior: smooth`) animates, so it reads as the
+   * page navigating away. Mounting the list a frame later lets positioning win.
+   */
+  const [listMounted, setListMounted] = useState(false);
+
+  function handleOpenChange(next: boolean) {
+    setOpen(next);
+    if (next) requestAnimationFrame(() => setListMounted(true));
+    else setListMounted(false);
+  }
+
   function emit(nextCountry: Country, nextNational: string) {
     const digits = nextNational.replace(/[^\d\s-]/g, "").trim();
     onChange(digits ? `${nextCountry.dial} ${digits}` : "");
@@ -48,7 +64,7 @@ export function PhoneInput({
 
   function pickCountry(c: Country) {
     setCountry(c);
-    setOpen(false);
+    handleOpenChange(false);
     emit(c, national);
   }
 
@@ -59,7 +75,7 @@ export function PhoneInput({
 
   return (
     <div className="flex">
-      <Popover open={open} onOpenChange={setOpen}>
+      <Popover open={open} onOpenChange={handleOpenChange}>
         <PopoverTrigger
           render={
             <button
@@ -82,23 +98,28 @@ export function PhoneInput({
             }
           >
             <CommandInput placeholder="Search country or code…" />
-            <CommandList>
-              <CommandEmpty>No country found.</CommandEmpty>
-              <CommandGroup>
-                {COUNTRIES.map((c) => (
-                  <CommandItem
-                    key={c.iso2}
-                    value={`${c.name} ${c.dial}`}
-                    onSelect={() => pickCountry(c)}
-                  >
-                    <span className="text-base leading-none">{c.flag}</span>
-                    <span className="flex-1 truncate">{c.name}</span>
-                    <span className="text-muted-foreground tabular-nums">
-                      {c.dial}
-                    </span>
-                  </CommandItem>
-                ))}
-              </CommandGroup>
+            {/* Reserve the height so the popup doesn't resize as the list lands. */}
+            <CommandList className="h-64">
+              {listMounted && (
+                <>
+                  <CommandEmpty>No country found.</CommandEmpty>
+                  <CommandGroup>
+                    {COUNTRIES.map((c) => (
+                      <CommandItem
+                        key={c.iso2}
+                        value={`${c.name} ${c.dial}`}
+                        onSelect={() => pickCountry(c)}
+                      >
+                        <span className="text-base leading-none">{c.flag}</span>
+                        <span className="flex-1 truncate">{c.name}</span>
+                        <span className="text-muted-foreground tabular-nums">
+                          {c.dial}
+                        </span>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </>
+              )}
             </CommandList>
           </Command>
         </PopoverContent>
