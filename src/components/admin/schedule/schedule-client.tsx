@@ -10,6 +10,7 @@ import {
   Layers,
   CalendarClock,
   Radio,
+  School,
   ChevronRight,
 } from "lucide-react";
 import type { ScheduleEvent, ScheduleEventType, ScheduleStats } from "@/server/services/schedule-service";
@@ -30,6 +31,12 @@ const TYPE_META: Record<
     tile: "bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300",
     dot: "bg-emerald-500",
   },
+  OFFLINE: {
+    label: "Offline class",
+    Icon: School,
+    tile: "bg-sky-100 text-sky-600 dark:bg-sky-500/15 dark:text-sky-300",
+    dot: "bg-sky-500",
+  },
   ASSIGNMENT: {
     label: "Assignment",
     Icon: ClipboardList,
@@ -47,6 +54,7 @@ const TYPE_META: Record<
 const FILTERS: { value: "all" | ScheduleEventType; label: string }[] = [
   { value: "all", label: "All" },
   { value: "LIVE", label: "Live classes" },
+  { value: "OFFLINE", label: "Offline classes" },
   { value: "ASSIGNMENT", label: "Assignments" },
   { value: "BATCH", label: "Batches" },
 ];
@@ -112,6 +120,7 @@ export function ScheduleClient({
   const statCards = [
     { label: "This week", value: stats.thisWeek, icon: CalendarClock, tone: "text-rose-500" },
     { label: "Live classes", value: stats.liveClasses, icon: Radio, tone: "text-emerald-500" },
+    { label: "Offline classes", value: stats.offlineClasses, icon: School, tone: "text-sky-500" },
     { label: "Assignments due", value: stats.assignmentsDue, icon: ClipboardList, tone: "text-amber-500" },
     { label: "Batches running", value: stats.batchesOngoing, icon: Layers, tone: "text-violet-500" },
   ];
@@ -123,11 +132,11 @@ export function ScheduleClient({
     <div className="space-y-6">
       <PageHeader
         title="Schedule"
-        description="All your live classes, assignment deadlines and batch milestones in one place."
+        description="All your live and offline classes, assignment deadlines and batch milestones in one place."
       />
 
       {/* Summary */}
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
         {statCards.map((s) => (
           <Card key={s.label}>
             <CardContent className="flex items-center gap-3 py-4">
@@ -198,7 +207,7 @@ export function ScheduleClient({
                 <p className="text-muted-foreground mt-1 text-xs">
                   {selected
                     ? "Pick another day or show upcoming events."
-                    : "Live classes, due dates and batch milestones will appear here."}
+                    : "Classes, due dates and batch milestones will appear here."}
                 </p>
               </CardContent>
             </Card>
@@ -212,12 +221,10 @@ export function ScheduleClient({
                   <div className="space-y-2">
                     {group.items.map((e) => {
                       const meta = TYPE_META[e.type];
-                      return (
-                        <Link
-                          key={e.id}
-                          href={e.url}
-                          className="hover:bg-accent group flex items-center gap-3 rounded-xl border p-3 transition-colors"
-                        >
+                      const rowClass =
+                        "group flex items-center gap-3 rounded-xl border p-3 transition-colors";
+                      const body = (
+                        <>
                           <span className={cn("grid size-9 shrink-0 place-items-center rounded-lg", meta.tile)}>
                             <meta.Icon className="size-4" />
                           </span>
@@ -233,8 +240,21 @@ export function ScheduleClient({
                               {e.status.charAt(0) + e.status.slice(1).toLowerCase()}
                             </Badge>
                           )}
+                        </>
+                      );
+
+                      // Some events have no page this viewer can open (offline
+                      // classes are staff-managed) — those render as a plain row
+                      // rather than a link that goes nowhere.
+                      return e.url ? (
+                        <Link key={e.id} href={e.url} className={cn(rowClass, "hover:bg-accent")}>
+                          {body}
                           <ChevronRight className="text-muted-foreground size-4 shrink-0 opacity-0 transition-opacity group-hover:opacity-100" />
                         </Link>
+                      ) : (
+                        <div key={e.id} className={rowClass}>
+                          {body}
+                        </div>
                       );
                     })}
                   </div>

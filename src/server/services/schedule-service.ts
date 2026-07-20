@@ -1,7 +1,7 @@
 import { addDays } from "date-fns";
 import { prisma } from "@/lib/prisma";
 
-export type ScheduleEventType = "LIVE" | "ASSIGNMENT" | "BATCH";
+export type ScheduleEventType = "LIVE" | "OFFLINE" | "ASSIGNMENT" | "BATCH";
 
 export interface ScheduleEvent {
   id: string;
@@ -11,7 +11,8 @@ export interface ScheduleEvent {
   end: string | null;
   context: string | null;
   status: string | null;
-  url: string;
+  /** null when the viewer has nowhere to go — the event still shows, unlinked. */
+  url: string | null;
 }
 
 /** Aggregate time-based events across the platform for the given window. */
@@ -36,6 +37,8 @@ export async function getScheduleEvents(
         id: true,
         title: true,
         roomCode: true,
+        provider: true,
+        location: true,
         status: true,
         scheduledStart: true,
         scheduledEnd: true,
@@ -77,15 +80,27 @@ export async function getScheduleEvents(
   const events: ScheduleEvent[] = [];
 
   for (const m of meetings) {
+    // Offline classes are Meetings too (provider "offline"); without this they
+    // were counted and coloured as live classes, and clicking one opened a
+    // video room instead of the class.
+    const isOffline = m.provider === "offline";
     events.push({
       id: `m-${m.id}`,
-      type: "LIVE",
+      type: isOffline ? "OFFLINE" : "LIVE",
       title: m.title,
       at: m.scheduledStart.toISOString(),
       end: m.scheduledEnd ? m.scheduledEnd.toISOString() : null,
-      context: m.batch?.name ?? m.course?.title ?? null,
+      context: isOffline
+        ? (m.location ?? m.batch?.name ?? m.course?.title ?? null)
+        : (m.batch?.name ?? m.course?.title ?? null),
       status: m.status,
-      url: `/live/room/${m.roomCode}`,
+      // Offline classes are managed under /admin only (nav scopes them to
+      // staff), so an instructor sees the event but gets no dead link.
+      url: isOffline
+        ? base === "/admin"
+          ? `${base}/offline`
+          : null
+        : `/live/room/${m.roomCode}`,
     });
   }
   for (const a of assignments) {
@@ -141,9 +156,13 @@ export async function getScheduleWindow(scope: ScheduleScope = {}): Promise<Sche
 export interface ScheduleStats {
   thisWeek: number;
   liveClasses: number;
+  offlineClasses: number;
   assignmentsDue: number;
   batchesOngoing: number;
 }
+
+const OFFLINE = { provider: "offline" };
+const ONLINE = { provider: { not: "offline" } };
 
 export async function scheduleStats(instructorId?: string): Promise<ScheduleStats> {
   const now = new Date();
@@ -151,18 +170,28 @@ export async function scheduleStats(instructorId?: string): Promise<ScheduleStat
   const mScope = instructorId ? { hostId: instructorId } : {};
   const aScope = instructorId ? { course: { instructorId } } : {};
   const bScope = instructorId ? { instructorId } : {};
-  const [liveWk, dueWk, startWk, endWk, liveUpcoming, dueUpcoming, ongoing] = await Promise.all([
-    prisma.meeting.count({ where: { scheduledStart: { gte: now, lte: wk }, ...mScope } }),
-    prisma.assignment.count({ where: { dueDate: { gte: now, lte: wk }, ...aScope } }),
-    prisma.batch.count({ where: { startDate: { gte: now, lte: wk }, ...bScope } }),
-    prisma.batch.count({ where: { endDate: { gte: now, lte: wk }, ...bScope } }),
-    prisma.meeting.count({ where: { scheduledStart: { gte: now }, status: "SCHEDULED", ...mScope } }),
-    prisma.assignment.count({ where: { dueDate: { gte: now }, ...aScope } }),
-    prisma.batch.count({ where: { status: "ONGOING", ...bScope } }),
-  ]);
+  const [liveWk, dueWk, startWk, endWk, liveUpcoming, offlineUpcoming, dueUpcoming, ongoing] =
+    await Promise.all([
+      prisma.meeting.count({ where: { scheduledStart: { gte: now, lte: wk }, ...mScope } }),
+      prisma.assignment.count({ where: { dueDate: { gte: now, lte: wk }, ...aScope } }),
+      prisma.batch.count({ where: { startDate: { gte: now, lte: wk }, ...bScope } }),
+      prisma.batch.count({ where: { endDate: { gte: now, lte: wk }, ...bScope } }),
+      // Split by provider — an in-person class is not a live class, and lumping
+      // them together made the "Live classes" tile overcount.
+      prisma.meeting.count({
+        where: { scheduledStart: { gte: now }, status: "SCHEDULED", ...ONLINE, ...mScope },
+      }),
+      prisma.meeting.count({
+        where: { scheduledStart: { gte: now }, status: "SCHEDULED", ...OFFLINE, ...mScope },
+      }),
+      prisma.assignment.count({ where: { dueDate: { gte: now }, ...aScope } }),
+      prisma.batch.count({ where: { status: "ONGOING", ...bScope } }),
+    ]);
   return {
+    // `liveWk` already spans both kinds of class, so "This week" stays complete.
     thisWeek: liveWk + dueWk + startWk + endWk,
     liveClasses: liveUpcoming,
+    offlineClasses: offlineUpcoming,
     assignmentsDue: dueUpcoming,
     batchesOngoing: ongoing,
   };
