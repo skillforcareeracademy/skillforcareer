@@ -156,7 +156,8 @@ function Body({ meetingId, onClosed }: { meetingId: string; onClosed: () => void
       <div className="divide-y p-6 pt-2">
         {data.learners.length === 0 ? (
           <p className="text-muted-foreground py-6 text-center text-sm">
-            No enrolled learners for this class&apos;s course/batch.
+            Nobody on this class yet — add students to it, or link it to a course
+            or batch to pull in the learners enrolled there.
           </p>
         ) : (
           data.learners.map((l) => (

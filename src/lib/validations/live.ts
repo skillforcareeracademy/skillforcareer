@@ -65,6 +65,10 @@ export const offlineClassSchema = z.object({
   location: z.string().trim().min(2, "Enter a venue").max(200),
 });
 
+export const meetingStudentsSchema = z.object({
+  userIds: z.array(z.string().min(1)).min(1, "Pick at least one student").max(500),
+});
+
 export const markAttendanceSchema = z.object({
   records: z
     .array(z.object({ userId: z.string().min(1), status: z.enum(ATTENDANCE_STATUSES) }))
@@ -73,3 +77,4 @@ export const markAttendanceSchema = z.object({
 
 export type OfflineClassInput = z.infer<typeof offlineClassSchema>;
 export type MarkAttendanceInput = z.infer<typeof markAttendanceSchema>;
+export type MeetingStudentsInput = z.infer<typeof meetingStudentsSchema>;

@@ -270,14 +270,20 @@ export async function getMeetingByRoomCode(code: string) {
 }
 
 /**
- * Who may enter a live room: the host, any staff (instructor/admin), or a learner
- * enrolled in the meeting's course or batch. A meeting with no course/batch is
- * treated as staff-only (an open/internal call).
+ * Who may enter a live room: the host, any staff (instructor/admin), a learner
+ * enrolled in the meeting's course or batch, or a learner individually added to
+ * the class. That last case is what lets a hand-picked session — an offline
+ * workshop with no course behind it — still hand out a working video link.
  */
 export async function checkRoomAccess(
   userId: string,
   role: string,
-  meeting: { host: { id: string }; courseId: string | null; batchId: string | null },
+  meeting: {
+    id: string;
+    host: { id: string };
+    courseId: string | null;
+    batchId: string | null;
+  },
 ): Promise<boolean> {
   if (meeting.host.id === userId) return true;
   if (
@@ -287,6 +293,12 @@ export async function checkRoomAccess(
   ) {
     return true;
   }
+
+  const invited = await prisma.meetingParticipant.findFirst({
+    where: { meetingId: meeting.id, userId },
+    select: { id: true },
+  });
+  if (invited) return true;
 
   const or: Prisma.EnrollmentWhereInput[] = [];
   if (meeting.courseId) or.push({ courseId: meeting.courseId });
@@ -515,7 +527,7 @@ export async function listOfflineClasses(q: {
         course: { select: { title: true } },
         batch: { select: { name: true } },
         host: { select: { name: true } },
-        _count: { select: { attendance: true } },
+        _count: { select: { attendance: true, participants: true } },
       },
     }),
   ]);
@@ -530,8 +542,54 @@ export async function listOfflineClasses(q: {
       hostName: m.host.name,
       scheduledStart: m.scheduledStart.toISOString(),
       attendanceMarked: m._count.attendance,
+      studentCount: m._count.participants,
+      // Every meeting carries a room code, so an in-person class can also hand
+      // out a video link for anyone attending remotely.
+      roomCode: m.roomCode,
+      // Raw editable fields, so the edit dialog prefills without a round-trip.
+      description: m.description,
+      courseId: m.courseId,
+      batchId: m.batchId,
+      scheduledEnd: m.scheduledEnd?.toISOString() ?? null,
     })),
   };
+}
+
+/** An offline class is a Meeting with `provider: "offline"` — refuse to let the
+ *  offline endpoints act on a live class (and vice-versa). */
+async function requireOfflineMeeting(id: string): Promise<void> {
+  const existing = await prisma.meeting.findUnique({
+    where: { id },
+    select: { provider: true },
+  });
+  if (!existing || existing.provider !== "offline") {
+    throw AppError.notFound("Offline class not found.");
+  }
+}
+
+export async function updateOfflineClass(
+  id: string,
+  input: OfflineClassInput,
+): Promise<void> {
+  await requireOfflineMeeting(id);
+  await prisma.meeting.update({
+    where: { id },
+    data: {
+      title: input.title,
+      description: input.description || null,
+      location: input.location,
+      courseId: input.courseId || null,
+      batchId: input.batchId || null,
+      scheduledStart: new Date(input.scheduledStart),
+      scheduledEnd: toDate(input.scheduledEnd),
+    },
+  });
+}
+
+/** Removes the class; its attendance rows cascade with it. */
+export async function deleteOfflineClass(id: string): Promise<void> {
+  await requireOfflineMeeting(id);
+  await prisma.meeting.delete({ where: { id } });
 }
 
 export async function createOfflineClass(input: OfflineClassInput, hostId: string): Promise<string> {
@@ -589,16 +647,26 @@ export async function getAttendanceRoster(meetingId: string): Promise<Attendance
   });
   const statusMap = new Map(attendance.map((a) => [a.userId, a.status]));
 
+  // Learners individually added to this class, on top of whoever the course or
+  // batch enrolment implies. An offline class often has no course at all — it's
+  // a workshop someone hand-picks attendees for — so this is the only roster it
+  // gets.
+  const invited = await prisma.meetingParticipant.findMany({
+    where: { meetingId },
+    select: { user: { select: { id: true, name: true, avatarUrl: true } } },
+    orderBy: { user: { name: "asc" } },
+  });
+
   const seen = new Set<string>();
   const learners: AttendanceRoster["learners"] = [];
-  for (const e of enrollments) {
-    if (seen.has(e.user.id)) continue;
-    seen.add(e.user.id);
+  for (const u of [...invited.map((p) => p.user), ...enrollments.map((e) => e.user)]) {
+    if (seen.has(u.id)) continue;
+    seen.add(u.id);
     learners.push({
-      userId: e.user.id,
-      name: e.user.name,
-      avatar: e.user.avatarUrl,
-      status: statusMap.get(e.user.id) ?? "ABSENT",
+      userId: u.id,
+      name: u.name,
+      avatar: u.avatarUrl,
+      status: statusMap.get(u.id) ?? "ABSENT",
     });
   }
   return {
@@ -608,6 +676,91 @@ export async function getAttendanceRoster(meetingId: string): Promise<Attendance
     scheduledStart: m.scheduledStart.toISOString(),
     learners,
   };
+}
+
+// ── Individually-added students ──────────────────────────────────────────────
+
+export interface MeetingStudent {
+  userId: string;
+  name: string;
+  email: string;
+  avatar: string | null;
+}
+
+/** Learners explicitly added to a class (not derived from enrolment). */
+export async function listMeetingStudents(
+  meetingId: string,
+): Promise<MeetingStudent[]> {
+  const rows = await prisma.meetingParticipant.findMany({
+    where: { meetingId },
+    select: {
+      user: { select: { id: true, name: true, email: true, avatarUrl: true } },
+    },
+    orderBy: { user: { name: "asc" } },
+  });
+  return rows.map((r) => ({
+    userId: r.user.id,
+    name: r.user.name,
+    email: r.user.email,
+    avatar: r.user.avatarUrl,
+  }));
+}
+
+/** Add learners to a class. Re-adding someone already on it is a no-op. */
+export async function addMeetingStudents(
+  meetingId: string,
+  userIds: string[],
+): Promise<number> {
+  const m = await prisma.meeting.findUnique({
+    where: { id: meetingId },
+    select: { id: true },
+  });
+  if (!m) throw AppError.notFound("Class not found.");
+  if (userIds.length === 0) return 0;
+
+  const result = await prisma.meetingParticipant.createMany({
+    data: userIds.map((userId) => ({ meetingId, userId, role: "ATTENDEE" as const })),
+    skipDuplicates: true,
+  });
+  return result.count;
+}
+
+/**
+ * Take a learner off a class. Their attendance mark for it goes too — they were
+ * never part of the session, so leaving a PRESENT row behind would skew the
+ * class's attendance count.
+ */
+export async function removeMeetingStudent(
+  meetingId: string,
+  userId: string,
+): Promise<void> {
+  await prisma.$transaction([
+    prisma.meetingParticipant.deleteMany({ where: { meetingId, userId } }),
+    prisma.attendance.deleteMany({ where: { meetingId, userId } }),
+  ]);
+}
+
+/** Learners available to add to a class, for the picker. */
+export async function listStudentsForSelect(
+  search?: string,
+): Promise<MeetingStudent[]> {
+  const rows = await prisma.user.findMany({
+    where: {
+      role: { slug: ROLES.STUDENT },
+      ...(search
+        ? { OR: [{ name: { contains: search } }, { email: { contains: search } }] }
+        : {}),
+    },
+    select: { id: true, name: true, email: true, avatarUrl: true },
+    orderBy: { name: "asc" },
+    take: 50,
+  });
+  return rows.map((u) => ({
+    userId: u.id,
+    name: u.name,
+    email: u.email,
+    avatar: u.avatarUrl,
+  }));
 }
 
 export async function markAttendance(meetingId: string, input: MarkAttendanceInput): Promise<number> {
