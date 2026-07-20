@@ -18,13 +18,23 @@ function createPrismaClient() {
   const adapter = new PrismaMariaDb(
     getMariaDbConfig() as ConstructorParameters<typeof PrismaMariaDb>[0],
   );
-  return new PrismaClient({
+  const client = new PrismaClient({
     adapter,
     log:
-      process.env.NODE_ENV === "development"
-        ? ["error", "warn"]
-        : ["error"],
+      process.env.DEBUG_SQL === "1"
+        ? [{ emit: "event", level: "query" }, "error", "warn"]
+        : process.env.NODE_ENV === "development"
+          ? ["error", "warn"]
+          : ["error"],
   });
+  if (process.env.DEBUG_SQL === "1") {
+    // Round-trip counter for perf work: `DEBUG_SQL=1 npm start` prints one line
+    // per query, so a page's true round-trip count is greppable from the log.
+    client.$on("query", (e: { query: string; duration: number }) => {
+      console.log(`[sql ${e.duration}ms] ${e.query.slice(0, 120)}`);
+    });
+  }
+  return client;
 }
 
 type PrismaClientSingleton = ReturnType<typeof createPrismaClient>;

@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { hashPassword, verifyPassword } from "@/lib/auth/password";
+import { hashPassword, verifyPassword, needsRehash } from "@/lib/auth/password";
 import { signAuthTokens, verifyToken } from "@/lib/auth/jwt";
 import { hashRefreshToken } from "@/lib/auth/renew";
 import { refreshTtlSeconds } from "@/lib/auth/duration";
@@ -40,40 +40,109 @@ const PURPOSE_DB = {
   login: "LOGIN",
 } as const;
 
-const userInclude = {
-  role: { include: { permissions: { include: { permission: true } } } },
-} as const;
-
-type UserWithRole = NonNullable<
-  Awaited<ReturnType<typeof findUserByEmail>>
->;
-
-function findUserByEmail(email: string) {
-  return prisma.user.findUnique({ where: { email }, include: userInclude });
+/**
+ * The signed-in user plus their effective permissions.
+ *
+ * This is the single hottest read in the app — every guarded page and API route
+ * resolves it. `relationMode = "prisma"` means a nested `include` is *not* a
+ * join: Prisma issues one query per relation level, so the obvious
+ * `user → role → permissions → permission` include costs four sequential
+ * round-trips (~800ms against TiDB in ap-southeast-1). The hand-written join
+ * below does it in one (~180ms), which is why this path doesn't use `include`.
+ */
+interface AuthUser {
+  id: string;
+  name: string;
+  email: string;
+  emailVerified: Date | string | null;
+  passwordHash: string | null;
+  avatarUrl: string | null;
+  status: string;
+  role: Role;
+  permissions: string[];
 }
 
-function findUserById(id: string) {
-  return prisma.user.findUnique({ where: { id }, include: userInclude });
+interface AuthUserRow {
+  id: string;
+  name: string;
+  email: string;
+  emailVerified: Date | string | null;
+  passwordHash: string | null;
+  avatarUrl: string | null;
+  status: string;
+  roleSlug: string;
+  permissionKey: string | null;
 }
 
-function toPublicUser(user: UserWithRole): PublicUser {
+/** Fold the join's one-row-per-permission result into a single user. */
+function foldAuthUser(rows: AuthUserRow[]): AuthUser | null {
+  const first = rows[0];
+  if (!first) return null;
+  return {
+    id: first.id,
+    name: first.name,
+    email: first.email,
+    emailVerified: first.emailVerified,
+    passwordHash: first.passwordHash,
+    avatarUrl: first.avatarUrl,
+    status: first.status,
+    role: first.roleSlug as Role,
+    permissions: rows
+      .map((r) => r.permissionKey)
+      .filter((k): k is string => k !== null),
+  };
+}
+
+async function loadAuthUserById(id: string): Promise<AuthUser | null> {
+  return foldAuthUser(
+    await prisma.$queryRaw<AuthUserRow[]>`
+      SELECT u.id, u.name, u.email, u.emailVerified, u.passwordHash,
+             u.avatarUrl, u.status, r.slug AS roleSlug, p.\`key\` AS permissionKey
+      FROM \`User\` u
+      JOIN \`Role\` r ON r.id = u.roleId
+      LEFT JOIN \`RolePermission\` rp ON rp.roleId = r.id
+      LEFT JOIN \`Permission\` p ON p.id = rp.permissionId
+      WHERE u.id = ${id}
+    `,
+  );
+}
+
+async function loadAuthUserByEmail(email: string): Promise<AuthUser | null> {
+  return foldAuthUser(
+    await prisma.$queryRaw<AuthUserRow[]>`
+      SELECT u.id, u.name, u.email, u.emailVerified, u.passwordHash,
+             u.avatarUrl, u.status, r.slug AS roleSlug, p.\`key\` AS permissionKey
+      FROM \`User\` u
+      JOIN \`Role\` r ON r.id = u.roleId
+      LEFT JOIN \`RolePermission\` rp ON rp.roleId = r.id
+      LEFT JOIN \`Permission\` p ON p.id = rp.permissionId
+      WHERE u.email = ${email}
+    `,
+  );
+}
+
+function toPublicUser(user: AuthUser): PublicUser {
   return {
     id: user.id,
     name: user.name,
     email: user.email,
-    role: user.role.slug as Role,
+    role: user.role,
     avatarUrl: user.avatarUrl,
     status: user.status,
-    permissions: user.role.permissions.map((rp) => rp.permission.key),
+    permissions: user.permissions,
   };
 }
 
 /** Sign an access+refresh pair and persist the (hashed) refresh token. */
-async function issueTokens(user: UserWithRole): Promise<AuthTokens> {
+async function issueTokens(user: {
+  id: string;
+  email: string;
+  role: Role;
+}): Promise<AuthTokens> {
   const tokens = await signAuthTokens({
     sub: user.id,
     email: user.email,
-    role: user.role.slug as Role,
+    role: user.role,
   });
   await prisma.refreshToken.create({
     data: {
@@ -156,24 +225,29 @@ export async function register(input: {
   email: string;
   password: string;
 }): Promise<{ email: string; code: string }> {
-  const existing = await findUserByEmail(input.email);
+  // Registration never needs the caller's permissions — a plain lookup is enough.
+  const existing = await prisma.user.findUnique({
+    where: { email: input.email },
+    select: { id: true, emailVerified: true },
+  });
   if (existing?.emailVerified) {
     throw AppError.conflict("An account with this email already exists.");
   }
 
   const passwordHash = await hashPassword(input.password);
-  let user: UserWithRole;
+  let user: { id: string; email: string; name: string };
 
   if (existing) {
     // Re-registration of an unverified account: refresh details.
     user = await prisma.user.update({
       where: { id: existing.id },
       data: { name: input.name, passwordHash },
-      include: userInclude,
+      select: { id: true, email: true, name: true },
     });
   } else {
     const studentRole = await prisma.role.findUnique({
       where: { slug: ROLES.STUDENT },
+      select: { id: true },
     });
     if (!studentRole) {
       throw AppError.internal("Default role missing. Run `npm run db:seed`.");
@@ -186,7 +260,7 @@ export async function register(input: {
         roleId: studentRole.id,
         status: "PENDING",
       },
-      include: userInclude,
+      select: { id: true, email: true, name: true },
     });
   }
 
@@ -201,11 +275,13 @@ export async function verifyEmailOtp(input: {
 }): Promise<{ user: PublicUser; tokens: AuthTokens }> {
   await consumeOtp(input.email, input.code, "verify-email");
 
-  const updated = await prisma.user.update({
+  await prisma.user.update({
     where: { email: input.email },
     data: { emailVerified: new Date(), status: "ACTIVE" },
-    include: userInclude,
+    select: { id: true },
   });
+  const updated = await loadAuthUserByEmail(input.email);
+  if (!updated) throw AppError.notFound("User not found.");
 
   await emitEvent("user.verified", { userId: updated.id, email: updated.email });
   const tokens = await issueTokens(updated);
@@ -216,7 +292,7 @@ export async function login(input: {
   email: string;
   password: string;
 }): Promise<{ user: PublicUser; tokens: AuthTokens }> {
-  const user = await findUserByEmail(input.email);
+  const user = await loadAuthUserByEmail(input.email);
   if (!user || !user.passwordHash) {
     throw AppError.unauthorized("Invalid email or password.");
   }
@@ -236,20 +312,52 @@ export async function login(input: {
     throw AppError.forbidden("Your account has been suspended.");
   }
 
-  await prisma.user.update({
-    where: { id: user.id },
-    data: { lastLoginAt: new Date() },
-  });
+  // Accounts hashed at an older cost factor are upgraded on the way through —
+  // folded into the lastLoginAt write, so it costs no extra round-trip.
+  const upgradedHash = needsRehash(user.passwordHash)
+    ? await hashPassword(input.password)
+    : undefined;
 
-  const tokens = await issueTokens(user);
+  // Independent writes — the stamp doesn't gate the tokens.
+  const [, tokens] = await Promise.all([
+    touchLogin(user.id, upgradedHash),
+    issueTokens(user),
+  ]);
   return { user: toPublicUser(user), tokens };
+}
+
+/**
+ * Stamp `lastLoginAt` (and optionally rotate the password hash) in one statement.
+ *
+ * Deliberately raw. Under `relationMode = "prisma"` there are no real foreign
+ * keys, so Prisma emulates referential integrity itself: a `user.update()` first
+ * SELECTs from every one of the ~30 tables that reference `User` — even when the
+ * update cannot possibly affect them, as here. Against a database a region away
+ * that turned a single write into ~6s and made signing in feel broken.
+ * Measured: 6088ms/33 queries via `update()` vs 276ms/1 query this way.
+ */
+async function touchLogin(userId: string, passwordHash?: string): Promise<void> {
+  const now = new Date();
+  if (passwordHash) {
+    await prisma.$executeRaw`
+      UPDATE \`User\` SET lastLoginAt = ${now}, passwordHash = ${passwordHash}, updatedAt = ${now}
+      WHERE id = ${userId}
+    `;
+    return;
+  }
+  await prisma.$executeRaw`
+    UPDATE \`User\` SET lastLoginAt = ${now}, updatedAt = ${now} WHERE id = ${userId}
+  `;
 }
 
 export async function resendOtp(input: {
   email: string;
   purpose: OtpPurpose;
 }): Promise<{ email: string; code: string | null }> {
-  const user = await findUserByEmail(input.email);
+  const user = await prisma.user.findUnique({
+    where: { email: input.email },
+    select: { id: true, email: true, name: true },
+  });
   if (!user) return { email: input.email, code: null }; // avoid enumeration
   const code = await createAndSendOtp(user.id, user.email, input.purpose, user.name);
   return { email: user.email, code };
@@ -258,7 +366,10 @@ export async function resendOtp(input: {
 export async function forgotPassword(input: {
   email: string;
 }): Promise<{ email: string; code: string | null }> {
-  const user = await findUserByEmail(input.email);
+  const user = await prisma.user.findUnique({
+    where: { email: input.email },
+    select: { id: true, email: true, name: true },
+  });
   if (!user) return { email: input.email, code: null }; // avoid enumeration
   const code = await createAndSendOtp(user.id, user.email, "reset-password", user.name);
   return { email: user.email, code };
@@ -280,6 +391,7 @@ export async function resetPassword(input: {
       emailVerified: new Date(),
       status: "ACTIVE",
     },
+    select: { id: true, email: true },
   });
 
   // Invalidate every existing session — force re-login with the new password.
@@ -308,18 +420,17 @@ export async function refresh(
     throw AppError.unauthorized("Session expired. Please sign in again.");
   }
 
-  const user = await prisma.user.findUnique({
-    where: { id: payload.sub },
-    include: userInclude,
-  });
+  const user = await loadAuthUserById(payload.sub);
   if (!user) throw AppError.unauthorized("Session expired. Please sign in again.");
 
   // Rotate: revoke the used refresh token, issue a fresh pair.
-  await prisma.refreshToken.update({
-    where: { id: stored.id },
-    data: { revokedAt: new Date() },
-  });
-  const tokens = await issueTokens(user);
+  const [, tokens] = await Promise.all([
+    prisma.refreshToken.update({
+      where: { id: stored.id },
+      data: { revokedAt: new Date() },
+    }),
+    issueTokens(user),
+  ]);
   return { user: toPublicUser(user), tokens };
 }
 
@@ -339,16 +450,13 @@ export async function logout(refreshToken?: string): Promise<void> {
 export async function issueSessionFor(
   userId: string,
 ): Promise<{ user: PublicUser; tokens: AuthTokens }> {
-  const user = await findUserById(userId);
+  const user = await loadAuthUserById(userId);
   if (!user) throw AppError.notFound("User not found.");
   const tokens = await issueTokens(user);
   return { user: toPublicUser(user), tokens };
 }
 
 export async function getMe(userId: string): Promise<PublicUser | null> {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    include: userInclude,
-  });
+  const user = await loadAuthUserById(userId);
   return user ? toPublicUser(user) : null;
 }

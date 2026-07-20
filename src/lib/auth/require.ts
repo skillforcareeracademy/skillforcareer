@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { redirect } from "next/navigation";
 import { getCurrentSession } from "./session";
 import { getMe, type PublicUser } from "@/server/services/auth-service";
@@ -5,16 +6,23 @@ import { ROLE_HOME, type Permission, type Role } from "@/config/roles";
 
 /**
  * Server-only guards for authenticated pages/layouts.
- * The Edge proxy (src/proxy.ts) is the first line of defence; these give a
+ * The proxy (src/proxy.ts) is the first line of defence; these give a
  * second, data-backed check and hand the caller the current user.
+ *
+ * Every guarded page resolves the user at least twice — once in the dashboard
+ * layout and again in the page's own guard. The `cache()` wrapper collapses
+ * those into a single lookup per request; without it each one is its own
+ * round-trip to a database that is not in the same region as the app.
  */
-export async function requireUser(): Promise<PublicUser> {
+export const getCurrentUser = cache(async (): Promise<PublicUser | null> => {
   const session = await getCurrentSession();
-  if (!session) redirect("/login");
+  if (!session) return null;
+  return getMe(session.sub);
+});
 
-  const user = await getMe(session.sub);
+export async function requireUser(): Promise<PublicUser> {
+  const user = await getCurrentUser();
   if (!user) redirect("/login");
-
   return user;
 }
 

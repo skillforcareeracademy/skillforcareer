@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { invalidateBranding } from "./branding-service";
 import {
   DEFAULT_SETTINGS,
   settingsSchema,
@@ -42,6 +43,10 @@ export async function updateSettings(
     create: { id: GLOBAL_ID, data: merged, updatedById },
     update: { data: merged, updatedById },
   });
+
+  // Branding lives in this same row and is memoised for reads — drop it so a
+  // logo or site-name change is visible on the very next request.
+  invalidateBranding();
 
   return { settings: merged, updatedAt: row.updatedAt.toISOString() };
 }

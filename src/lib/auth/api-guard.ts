@@ -1,5 +1,5 @@
-import { getCurrentSession } from "./session";
-import { getMe, type PublicUser } from "@/server/services/auth-service";
+import { getCurrentUser } from "./require";
+import { type PublicUser } from "@/server/services/auth-service";
 import { AppError } from "@/lib/api/errors";
 import { prisma } from "@/lib/prisma";
 import { ROLES, PERMISSIONS, type Permission } from "@/config/roles";
@@ -9,9 +9,7 @@ import { ROLES, PERMISSIONS, type Permission } from "@/config/roles";
  * Throw typed AppErrors that `withRoute` maps to 401/403 responses.
  */
 export async function getSessionUser(): Promise<PublicUser | null> {
-  const session = await getCurrentSession();
-  if (!session) return null;
-  return getMe(session.sub);
+  return getCurrentUser();
 }
 
 export async function requireApiUser(): Promise<PublicUser> {
