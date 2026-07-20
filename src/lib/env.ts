@@ -43,7 +43,11 @@ const serverSchema = z.object({
   STORAGE_DRIVER: z.enum(["local", "s3"]).default("local"),
   STORAGE_LOCAL_DIR: z.string().default("./storage/uploads"),
 
-  SOCKET_PORT: z.coerce.number().int().positive().default(3001),
+  // Live signaling runs as its own process — SIGNAL_URL is where the browser
+  // connects, SIGNAL_PORT/ALLOWED_ORIGINS configure that process itself.
+  SIGNAL_URL: z.string().url().default("http://localhost:4001"),
+  SIGNAL_PORT: z.coerce.number().int().positive().default(4001),
+  ALLOWED_ORIGINS: z.string().default(""),
 
   RAZORPAY_KEY_ID: z.string().optional(),
   RAZORPAY_KEY_SECRET: z.string().optional(),
@@ -54,7 +58,6 @@ const serverSchema = z.object({
 const clientSchema = z.object({
   NEXT_PUBLIC_APP_NAME: z.string().default("SkillForCareer"),
   NEXT_PUBLIC_APP_URL: z.string().url().default("http://localhost:3000"),
-  NEXT_PUBLIC_SOCKET_URL: z.string().url().default("http://localhost:3001"),
 });
 
 function formatIssues(issues: z.ZodIssue[]): string {
@@ -78,7 +81,6 @@ function parseClientEnv() {
   const parsed = clientSchema.safeParse({
     NEXT_PUBLIC_APP_NAME: process.env.NEXT_PUBLIC_APP_NAME,
     NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
-    NEXT_PUBLIC_SOCKET_URL: process.env.NEXT_PUBLIC_SOCKET_URL,
   });
   if (!parsed.success) {
     throw new Error(

@@ -22,10 +22,27 @@ const prisma = new PrismaClient({
   ),
 });
 
-const PORT = Number(process.env.SIGNAL_PORT) || 4001;
+// Hosts (Render, Koyeb, Fly…) inject the port to bind as `PORT`; SIGNAL_PORT is
+// the local override.
+const PORT = Number(process.env.PORT || process.env.SIGNAL_PORT) || 4001;
+
+// Browsers send an Origin header on the socket handshake, so every domain the
+// app is served from must be listed. ALLOWED_ORIGINS takes a comma-separated
+// list (production domain + any preview domains); localhost is always allowed.
 const ALLOWED = [
-  process.env.APP_URL || "http://localhost:3000",
-  "http://localhost:3000",
+  ...new Set(
+    [
+      ...(process.env.ALLOWED_ORIGINS ?? "").split(","),
+      process.env.APP_URL,
+      process.env.NEXT_PUBLIC_APP_URL,
+      "http://localhost:3000",
+    ]
+      // Browsers send Origin with no trailing slash ("https://x.app"), so strip
+      // one if it's configured as a URL ("https://x.app/") — otherwise the
+      // string comparison fails and every handshake is rejected.
+      .map((o) => o?.trim().replace(/\/+$/, ""))
+      .filter((o): o is string => Boolean(o)),
+  ),
 ];
 
 interface RoomUser {

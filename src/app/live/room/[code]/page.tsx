@@ -49,6 +49,8 @@ export default async function LiveRoomPage({
     roomCode: meeting.roomCode,
     isHost,
   });
+  // Read at request time (deliberately not NEXT_PUBLIC_*, which would be inlined
+  // at build time and need a rebuild to repoint at a different signaling host).
   const signalUrl = process.env.SIGNAL_URL || "http://localhost:4001";
 
   return (

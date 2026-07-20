@@ -16,6 +16,7 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx --env-file=.env prisma/seed.ts",
     "signal": "tsx --env-file=.env scripts/signaling-server.ts",
+    "signal:start": "tsx scripts/signaling-server.ts",
     "db:studio": "prisma studio",
     "postinstall": "prisma generate"
   },

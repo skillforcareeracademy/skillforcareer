@@ -1,0 +1,29 @@
+# Render blueprint for the live-class signaling server.
+#
+# The Next.js app runs on Vercel, but the WebRTC signaling + room-chat server
+# (scripts/signaling-server.ts) needs a long-lived WebSocket connection, which
+# serverless functions cannot hold open. It runs here as its own always-on
+# process. Media itself is peer-to-peer — only SDP/ICE and chat pass through.
+#
+# `--include=dev` is required: tsx (the runtime) and prisma (postinstall
+# `prisma generate`) both live in devDependencies. Do not set NODE_ENV=production
+# here, or npm will skip them.
+services:
+  - type: web
+    name: skillforcareer-signal
+    runtime: node
+    plan: free
+    # Same region as the TiDB Cloud cluster (ap-southeast-1) — attendance writes
+    # on join/leave go straight to the database.
+    region: singapore
+    buildCommand: npm install --include=dev
+    startCommand: npm run signal:start
+    healthCheckPath: /health
+    envVars:
+      # Set these in the Render dashboard; never commit the values.
+      - key: DATABASE_URL # TiDB — must point at the `lms` database, not `sys`
+        sync: false
+      - key: JWT_ACCESS_SECRET # must match Vercel exactly, or room tokens fail
+        sync: false
+      - key: ALLOWED_ORIGINS # comma-separated, e.g. https://skillforcareer.vercel.app
+        sync: false
