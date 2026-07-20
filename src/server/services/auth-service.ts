@@ -1,7 +1,8 @@
-import { createHash } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { signAuthTokens, verifyToken } from "@/lib/auth/jwt";
+import { hashRefreshToken } from "@/lib/auth/renew";
+import { refreshTtlSeconds } from "@/lib/auth/duration";
 import {
   generateOtp,
   hashOtp,
@@ -67,18 +68,6 @@ function toPublicUser(user: UserWithRole): PublicUser {
   };
 }
 
-function sha256(value: string): string {
-  return createHash("sha256").update(value).digest("hex");
-}
-
-function parseDurationMs(value: string): number {
-  const m = /^(\d+)([smhd])$/.exec(value.trim());
-  if (!m) return 7 * 24 * 3600 * 1000;
-  const n = Number(m[1]);
-  const unit = { s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 }[m[2]]!;
-  return n * unit;
-}
-
 /** Sign an access+refresh pair and persist the (hashed) refresh token. */
 async function issueTokens(user: UserWithRole): Promise<AuthTokens> {
   const tokens = await signAuthTokens({
@@ -89,11 +78,8 @@ async function issueTokens(user: UserWithRole): Promise<AuthTokens> {
   await prisma.refreshToken.create({
     data: {
       userId: user.id,
-      tokenHash: sha256(tokens.refreshToken),
-      expiresAt: new Date(
-        Date.now() +
-          parseDurationMs(process.env.JWT_REFRESH_EXPIRES_IN ?? "7d"),
-      ),
+      tokenHash: hashRefreshToken(tokens.refreshToken),
+      expiresAt: new Date(Date.now() + refreshTtlSeconds() * 1000),
     },
   });
   return tokens;
@@ -316,7 +302,7 @@ export async function refresh(
   }
 
   const stored = await prisma.refreshToken.findUnique({
-    where: { tokenHash: sha256(refreshToken) },
+    where: { tokenHash: hashRefreshToken(refreshToken) },
   });
   if (!stored || stored.revokedAt || stored.expiresAt < new Date()) {
     throw AppError.unauthorized("Session expired. Please sign in again.");
@@ -340,7 +326,7 @@ export async function refresh(
 export async function logout(refreshToken?: string): Promise<void> {
   if (!refreshToken) return;
   await prisma.refreshToken.updateMany({
-    where: { tokenHash: sha256(refreshToken), revokedAt: null },
+    where: { tokenHash: hashRefreshToken(refreshToken), revokedAt: null },
     data: { revokedAt: new Date() },
   });
 }

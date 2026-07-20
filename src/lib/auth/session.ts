@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { verifyToken, type AuthTokenPayload } from "./jwt";
 import { ACCESS_TOKEN_COOKIE, REFRESH_TOKEN_COOKIE } from "./cookies";
+import { accessTtlSeconds, refreshTtlSeconds } from "./duration";
 
 /**
  * Cookie-backed session for Server Components and Route Handlers.
@@ -12,11 +13,10 @@ import { ACCESS_TOKEN_COOKIE, REFRESH_TOKEN_COOKIE } from "./cookies";
  */
 export { ACCESS_TOKEN_COOKIE, REFRESH_TOKEN_COOKIE };
 
-const ACCESS_MAX_AGE = 60 * 15; // 15 minutes
-const REFRESH_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
 const isProd = process.env.NODE_ENV === "production";
 
-function cookieOptions(maxAge: number) {
+/** Shared with the proxy's silent renewal so both write identical cookies. */
+export function authCookieOptions(maxAge: number) {
   return {
     httpOnly: true,
     secure: isProd,
@@ -26,17 +26,16 @@ function cookieOptions(maxAge: number) {
   };
 }
 
+export const accessCookieOptions = () => authCookieOptions(accessTtlSeconds());
+export const refreshCookieOptions = () => authCookieOptions(refreshTtlSeconds());
+
 export async function setAuthCookies(tokens: {
   accessToken: string;
   refreshToken: string;
 }): Promise<void> {
   const store = await cookies();
-  store.set(ACCESS_TOKEN_COOKIE, tokens.accessToken, cookieOptions(ACCESS_MAX_AGE));
-  store.set(
-    REFRESH_TOKEN_COOKIE,
-    tokens.refreshToken,
-    cookieOptions(REFRESH_MAX_AGE),
-  );
+  store.set(ACCESS_TOKEN_COOKIE, tokens.accessToken, accessCookieOptions());
+  store.set(REFRESH_TOKEN_COOKIE, tokens.refreshToken, refreshCookieOptions());
 }
 
 export async function clearAuthCookies(): Promise<void> {

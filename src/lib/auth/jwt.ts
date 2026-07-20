@@ -1,5 +1,6 @@
 import { SignJWT, jwtVerify, type JWTPayload } from "jose";
 import type { Role } from "@/config/roles";
+import { accessTtlSeconds, refreshTtlSeconds } from "./duration";
 
 /**
  * JWT signing/verification via `jose` — works in both the Node.js and Edge
@@ -39,10 +40,11 @@ function secretFor(type: TokenType): Uint8Array {
   return encoder.encode(secret);
 }
 
+/** Relative lifetime for `setExpirationTime` — jose reads `"900s"` as "900
+ *  seconds from now", so seconds keep this identical to the cookie's Max-Age. */
 function expiryFor(type: TokenType): string {
-  return type === "access"
-    ? (process.env.JWT_ACCESS_EXPIRES_IN ?? "15m")
-    : (process.env.JWT_REFRESH_EXPIRES_IN ?? "7d");
+  const seconds = type === "access" ? accessTtlSeconds() : refreshTtlSeconds();
+  return `${seconds}s`;
 }
 
 export async function signToken(
