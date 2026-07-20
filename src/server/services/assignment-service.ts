@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { notify } from "./notification-service";
 import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
 import type { AssignmentInput, GradeSubmissionInput } from "@/lib/validations/assignment";
@@ -182,7 +183,11 @@ export async function gradeSubmission(
 ): Promise<void> {
   const sub = await prisma.assignmentSubmission.findUnique({
     where: { id: submissionId },
-    select: { id: true, assignment: { select: { maxScore: true } } },
+    select: {
+      id: true,
+      studentId: true,
+      assignment: { select: { maxScore: true, title: true } },
+    },
   });
   if (!sub) throw AppError.notFound("Submission not found.");
   if (input.score > sub.assignment.maxScore) {
@@ -197,5 +202,13 @@ export async function gradeSubmission(
       gradedById: graderId,
       gradedAt: new Date(),
     },
+  });
+
+  await notify({
+    userIds: [sub.studentId],
+    type: "ASSIGNMENT",
+    title: "Assignment graded",
+    message: `“${sub.assignment.title}” — you scored ${input.score}/${sub.assignment.maxScore}.`,
+    actionUrl: "/student/assignments",
   });
 }

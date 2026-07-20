@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { notify } from "./notification-service";
 import { AppError } from "@/lib/api/errors";
 import type { SubmitAssignmentInput } from "@/lib/validations/submission";
 
@@ -75,7 +76,14 @@ export async function submitAssignment(
 ): Promise<void> {
   const assignment = await prisma.assignment.findUnique({
     where: { id: assignmentId },
-    select: { id: true, courseId: true, dueDate: true, allowLate: true },
+    select: {
+      id: true,
+      courseId: true,
+      dueDate: true,
+      allowLate: true,
+      title: true,
+      course: { select: { instructorId: true } },
+    },
   });
   if (!assignment) throw AppError.notFound("Assignment not found.");
   if (!assignment.courseId) throw AppError.badRequest("This assignment isn't open for submissions.");
@@ -124,4 +132,21 @@ export async function submitAssignment(
       gradedAt: null,
     },
   });
+
+  // Tell whoever has to grade it. Staff see it on the assignments page anyway;
+  // the instructor is the one who'd otherwise never know it landed.
+  const instructorId = assignment.course?.instructorId;
+  if (instructorId) {
+    const student = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { name: true },
+    });
+    await notify({
+      userIds: [instructorId],
+      type: "ASSIGNMENT",
+      title: status === "LATE" ? "Late submission" : "New submission",
+      message: `${student?.name ?? "A learner"} submitted “${assignment.title}”.`,
+      actionUrl: "/instructor/assignments",
+    });
+  }
 }

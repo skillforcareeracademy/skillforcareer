@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { prisma } from "@/lib/prisma";
+import { notify, notifyStaff } from "./notification-service";
 import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
 import { validateCoupon } from "@/server/services/coupon-service";
@@ -159,7 +160,10 @@ export async function listCoursesForSelect() {
 // ── Writes ───────────────────────────────────────────────────────────────────
 
 export async function recordPayment(input: RecordPaymentInput): Promise<string> {
-  const user = await prisma.user.findUnique({ where: { id: input.userId }, select: { id: true } });
+  const user = await prisma.user.findUnique({
+    where: { id: input.userId },
+    select: { id: true, name: true },
+  });
   if (!user) throw AppError.badRequest("Learner not found.");
 
   // Optional coupon → discount.
@@ -195,6 +199,25 @@ export async function recordPayment(input: RecordPaymentInput): Promise<string> 
 
   if (couponId) {
     await prisma.coupon.update({ where: { id: couponId }, data: { usedCount: { increment: 1 } } });
+  }
+
+  if (input.status === "PAID") {
+    const amount = `₹${net.toLocaleString("en-IN")}`;
+    await Promise.all([
+      notify({
+        userIds: [input.userId],
+        type: "PAYMENT",
+        title: "Payment received",
+        message: `We've recorded your payment of ${amount}. Invoice ${invoiceNumber}.`,
+        actionUrl: "/student/profile",
+      }),
+      notifyStaff({
+        type: "PAYMENT",
+        title: "Payment recorded",
+        message: `${amount} from ${user.name}. Invoice ${invoiceNumber}.`,
+        actionUrl: "/admin/payments",
+      }),
+    ]);
   }
 
   // EMI → generate a monthly installment schedule over the net amount.

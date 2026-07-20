@@ -1,6 +1,6 @@
 "use client";
 
-import { Search, Bell } from "lucide-react";
+import { Search } from "lucide-react";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import { ThemeToggle } from "@/components/shared/theme-toggle";
 import { useUIStore } from "@/stores/ui-store";
 import { DashboardBreadcrumbs } from "./dashboard-breadcrumbs";
 import { UserMenu } from "./user-menu";
+import { NotificationBell } from "./notification-bell";
 import type { SessionUser } from "@/stores/auth-store";
 
 export function DashboardHeader({ user }: { user: SessionUser }) {
@@ -41,10 +42,7 @@ export function DashboardHeader({ user }: { user: SessionUser }) {
         >
           <Search className="size-5" />
         </Button>
-        <Button variant="ghost" size="icon" aria-label="Notifications" className="relative">
-          <Bell className="size-5" />
-          <span className="bg-primary absolute top-2 right-2 size-2 rounded-full ring-2 ring-background" />
-        </Button>
+        <NotificationBell />
         <ThemeToggle />
         <UserMenu user={user} />
       </div>

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { notifyStaff } from "./notification-service";
 import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
 import { ROLES } from "@/config/roles";
@@ -27,6 +28,14 @@ export async function createLead(input: CreateLeadInput | EnquiryInput, source: 
     },
     select: { id: true },
   });
+
+  await notifyStaff({
+    type: "SYSTEM",
+    title: "New enquiry",
+    message: `${input.name}${input.courseInterest ? ` — interested in ${input.courseInterest}` : ""} (${input.phone})`,
+    actionUrl: "/admin/leads",
+  });
+
   return lead.id;
 }
 

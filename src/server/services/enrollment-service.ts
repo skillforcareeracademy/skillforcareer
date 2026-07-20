@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { notify } from "./notification-service";
 import { AppError } from "@/lib/api/errors";
 
 export async function isEnrolled(userId: string, courseId: string): Promise<boolean> {
@@ -13,7 +14,7 @@ export async function isEnrolled(userId: string, courseId: string): Promise<bool
 export async function enrollInCourse(userId: string, courseId: string): Promise<{ slug: string }> {
   const course = await prisma.course.findUnique({
     where: { id: courseId },
-    select: { id: true, slug: true, status: true },
+    select: { id: true, slug: true, status: true, title: true },
   });
   if (!course) throw AppError.notFound("Course not found.");
   if (course.status !== "PUBLISHED") throw AppError.badRequest("This course isn't available yet.");
@@ -28,6 +29,15 @@ export async function enrollInCourse(userId: string, courseId: string): Promise<
     prisma.enrollment.create({ data: { userId, courseId, status: "ACTIVE" } }),
     prisma.course.update({ where: { id: courseId }, data: { enrollmentCount: { increment: 1 } } }),
   ]);
+
+  await notify({
+    userIds: [userId],
+    type: "COURSE",
+    title: "You're enrolled",
+    message: `You now have access to “${course.title}”. Start learning any time.`,
+    actionUrl: `/student/learn/${course.slug}`,
+  });
+
   return { slug: course.slug };
 }
 

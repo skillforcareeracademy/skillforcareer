@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { prisma } from "@/lib/prisma";
+import { notify } from "./notification-service";
 import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
 
@@ -217,8 +218,17 @@ export async function issueCertificate(userId: string, courseId: string): Promis
       status: "ISSUED",
       metadata: { studentName: user.name, courseTitle: course.title },
     },
-    select: { id: true },
+    select: { id: true, verificationCode: true },
   });
+
+  await notify({
+    userIds: [userId],
+    type: "CERTIFICATE",
+    title: "Certificate issued",
+    message: `Your certificate for “${course.title}” is ready to download.`,
+    actionUrl: "/student/certificates",
+  });
+
   return cert.id;
 }
 
