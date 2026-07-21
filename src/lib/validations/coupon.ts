@@ -28,6 +28,8 @@ export const couponSchema = z
     isActive: z.boolean().default(true),
     startsAt: optionalDate,
     expiresAt: optionalDate,
+    showInBanner: z.boolean().default(false),
+    bannerText: z.string().trim().max(120).optional().or(z.literal("")),
   })
   .superRefine((c, ctx) => {
     if (c.type === "PERCENTAGE" && c.value > 100) {

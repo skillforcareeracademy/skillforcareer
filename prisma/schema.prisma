@@ -914,6 +914,13 @@ model Coupon {
   startsAt    DateTime?
   expiresAt   DateTime?
 
+  /// Advertise this offer in the site-wide announcement bar. Off by default so
+  /// one-off codes negotiated with a single learner never reach the homepage.
+  showInBanner Boolean @default(false)
+  /// Campaign line for that bar, e.g. "New year, new skills". Falls back to a
+  /// sentence built from the discount when empty.
+  bannerText   String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

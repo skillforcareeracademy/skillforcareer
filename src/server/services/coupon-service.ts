@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
@@ -101,9 +102,74 @@ export async function listCouponsAdmin(q: CouponListQuery) {
       isExpired: Boolean(c.expiresAt && c.expiresAt < now),
       startsAt: c.startsAt ? c.startsAt.toISOString() : null,
       expiresAt: c.expiresAt ? c.expiresAt.toISOString() : null,
+      showInBanner: c.showInBanner,
+      bannerText: c.bannerText,
     })),
   };
 }
+
+// ── Public: the offer advertised in the announcement bar ─────────────────────
+
+export interface BannerPromo {
+  code: string;
+  /** Campaign line the admin typed, or one built from the discount. */
+  headline: string;
+  /** "40% off" / "₹2,000 off" — used for the emphasised part of the line. */
+  discountLabel: string;
+  /** Where the bar points: the course it applies to, or the catalogue. */
+  href: string;
+  expiresAt: string | null;
+}
+
+/**
+ * The coupon the site-wide banner should advertise: flagged for the banner,
+ * active, inside its date window and not used up. Newest wins, so launching a
+ * fresh campaign replaces the previous one without touching any code.
+ *
+ * `cache()` keeps it to one query per request — the bar renders in the layout,
+ * which every marketing page shares.
+ */
+export const getBannerPromo = cache(async (): Promise<BannerPromo | null> => {
+  const now = new Date();
+  const coupon = await prisma.coupon.findFirst({
+    where: {
+      showInBanner: true,
+      isActive: true,
+      OR: [{ startsAt: null }, { startsAt: { lte: now } }],
+      AND: [{ OR: [{ expiresAt: null }, { expiresAt: { gte: now } }] }],
+    },
+    orderBy: { createdAt: "desc" },
+    select: {
+      code: true,
+      type: true,
+      value: true,
+      maxUses: true,
+      usedCount: true,
+      bannerText: true,
+      expiresAt: true,
+      course: { select: { slug: true, title: true } },
+    },
+  });
+
+  if (!coupon) return null;
+  if (coupon.maxUses != null && coupon.usedCount >= coupon.maxUses) return null;
+
+  const value = coupon.value.toNumber();
+  const discountLabel =
+    coupon.type === "PERCENTAGE"
+      ? `${value % 1 === 0 ? value : value.toFixed(2)}% off`
+      : `₹${value.toLocaleString("en-IN")} off`;
+
+  const scope = coupon.course ? coupon.course.title : "all courses";
+
+  return {
+    code: coupon.code,
+    headline: coupon.bannerText?.trim() || `Limited-time offer on ${scope}`,
+    discountLabel,
+    href: coupon.course ? `/courses/${coupon.course.slug}` : "/courses",
+    expiresAt: coupon.expiresAt ? coupon.expiresAt.toISOString() : null,
+  };
+});
 
 export interface CouponStats {
   total: number;
@@ -131,6 +197,8 @@ function dataFrom(input: CouponInput) {
     isActive: input.isActive,
     startsAt: toDate(input.startsAt),
     expiresAt: toDate(input.expiresAt),
+    showInBanner: input.showInBanner,
+    bannerText: input.bannerText?.trim() || null,
   };
 }
 
@@ -181,5 +249,7 @@ export async function getCouponForEdit(id: string) {
     isActive: c.isActive,
     startsAt: c.startsAt ? c.startsAt.toISOString().slice(0, 10) : "",
     expiresAt: c.expiresAt ? c.expiresAt.toISOString().slice(0, 10) : "",
+    showInBanner: c.showInBanner,
+    bannerText: c.bannerText ?? "",
   };
 }

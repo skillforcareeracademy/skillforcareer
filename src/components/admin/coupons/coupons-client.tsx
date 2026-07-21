@@ -14,6 +14,7 @@ import {
   Power,
   PowerOff,
   BadgePercent,
+  Megaphone,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
@@ -73,6 +74,8 @@ interface CouponRow {
   isExpired: boolean;
   startsAt: string | null;
   expiresAt: string | null;
+  showInBanner: boolean;
+  bannerText: string | null;
 }
 interface Stats {
   total: number;
@@ -103,6 +106,8 @@ const blankForm = {
   isActive: true,
   startsAt: "",
   expiresAt: "",
+  showInBanner: false,
+  bannerText: "",
 };
 type FormState = typeof blankForm;
 
@@ -166,6 +171,8 @@ export function CouponsClient({
       isActive: c.isActive,
       startsAt: c.startsAt ? c.startsAt.slice(0, 10) : "",
       expiresAt: c.expiresAt ? c.expiresAt.slice(0, 10) : "",
+      showInBanner: c.showInBanner,
+      bannerText: c.bannerText ?? "",
     });
     setDialogOpen(true);
   }
@@ -184,6 +191,8 @@ export function CouponsClient({
       isActive: form.isActive,
       startsAt: form.startsAt || undefined,
       expiresAt: form.expiresAt || undefined,
+      showInBanner: form.showInBanner,
+      bannerText: form.bannerText || undefined,
     };
     try {
       if (editing) await api.patch(`/api/coupons/${editing.id}`, payload);
@@ -266,9 +275,19 @@ export function CouponsClient({
       header: "Code",
       cell: (c) => (
         <div className="min-w-0">
-          <button type="button" onClick={() => openEdit(c)} className="hover:text-primary font-mono font-semibold">
-            {c.code}
-          </button>
+          <span className="flex items-center gap-1.5">
+            <button type="button" onClick={() => openEdit(c)} className="hover:text-primary font-mono font-semibold">
+              {c.code}
+            </button>
+            {c.showInBanner && (
+              <Badge
+                variant="secondary"
+                className="bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300"
+              >
+                <Megaphone className="size-3" /> Banner
+              </Badge>
+            )}
+          </span>
           <p className="text-muted-foreground truncate text-xs">
             {c.courseTitle ? c.courseTitle : "All courses"}
           </p>
@@ -467,6 +486,43 @@ export function CouponsClient({
                 <p className="text-muted-foreground text-xs">Inactive coupons can&apos;t be redeemed.</p>
               </div>
               <Switch checked={form.isActive} onCheckedChange={(v) => setForm((f) => ({ ...f, isActive: v }))} />
+            </div>
+
+            {/* Promotion — what the public announcement bar shows. */}
+            <div className="space-y-3 rounded-lg border p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium">Show in site banner</p>
+                  <p className="text-muted-foreground text-xs">
+                    Advertises this code in the strip at the top of the public site, until it
+                    expires or is used up.
+                  </p>
+                </div>
+                <Switch
+                  checked={form.showInBanner}
+                  onCheckedChange={(v) => setForm((f) => ({ ...f, showInBanner: v }))}
+                />
+              </div>
+
+              {form.showInBanner && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="c-banner">Banner headline (optional)</Label>
+                  <Input
+                    id="c-banner"
+                    value={form.bannerText}
+                    onChange={(e) => setForm((f) => ({ ...f, bannerText: e.target.value }))}
+                    placeholder="New year, new skills"
+                    maxLength={120}
+                  />
+                  <p className="text-muted-foreground text-xs">
+                    Shown before the discount, e.g. &ldquo;New year, new skills —{" "}
+                    {form.type === "PERCENTAGE"
+                      ? `${form.value || "40"}% off`
+                      : `₹${form.value || "500"} off`}
+                    &rdquo;. Leave empty for a default line.
+                  </p>
+                </div>
+              )}
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
