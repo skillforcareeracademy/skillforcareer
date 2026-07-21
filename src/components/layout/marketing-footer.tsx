@@ -160,13 +160,13 @@ export function MarketingFooter() {
             © {new Date().getFullYear()} {siteConfig.name}. All rights reserved.
           </p>
           <div className="text-muted-foreground flex items-center gap-5 text-sm">
-            <Link href="/#" className="hover:text-foreground transition-colors">
+            <Link href="/privacy" className="hover:text-foreground transition-colors">
               Privacy
             </Link>
-            <Link href="/#" className="hover:text-foreground transition-colors">
+            <Link href="/terms" className="hover:text-foreground transition-colors">
               Terms
             </Link>
-            <Link href="/#" className="hover:text-foreground transition-colors">
+            <Link href="/cookies" className="hover:text-foreground transition-colors">
               Cookies
             </Link>
           </div>
