@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { BookOpen } from "lucide-react";
 import { listPublicCourses } from "@/server/services/course-service";
-import { listCategories } from "@/server/services/category-service";
+import { listPublicCategories } from "@/server/services/category-service";
 import {
   PublicCourseCard,
   type CatalogCourse,
@@ -35,11 +35,12 @@ export default async function CoursesCatalogPage({
   const category = typeof sp.category === "string" ? sp.category : undefined;
   const search = typeof sp.search === "string" ? sp.search : undefined;
 
-  const [courses, categories] = await Promise.all([
+  // Only categories that actually hold a published course — a pill that lands
+  // on an empty page is worse than no pill.
+  const [courses, activeCategories] = await Promise.all([
     listPublicCourses({ categorySlug: category, search, take: 48 }),
-    listCategories(),
+    listPublicCategories(),
   ]);
-  const activeCategories = categories.filter((c) => c.isActive);
 
   return (
     <div className="container-page py-12 sm:py-16">

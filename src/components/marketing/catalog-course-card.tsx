@@ -1,7 +1,9 @@
 import Link from "next/link";
-import { Star, Layers, BookOpen, Users } from "lucide-react";
+import { ArrowRight, Star, Layers, BookOpen, Users } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { ButtonLink } from "@/components/shared/button-link";
+import { ProgramEnquiryDialog } from "./program-enquiry-dialog";
 
 export interface CatalogCourse {
   id: string;
@@ -29,13 +31,16 @@ const LEVEL_LABEL: Record<string, string> = {
 };
 
 export function PublicCourseCard({ course }: { course: CatalogCourse }) {
+  const href = `/courses/${course.slug}`;
   const effective = course.discountPrice ?? course.price;
-  const priceLabel =
-    course.pricingType === "FREE" ? "Free" : `₹${effective.toLocaleString("en-IN")}`;
+  const isFree = course.pricingType === "FREE" || effective <= 0;
+  const priceLabel = isFree ? "Free" : `₹${effective.toLocaleString("en-IN")}`;
+  const hasDiscount =
+    !isFree && course.discountPrice != null && course.discountPrice < course.price;
 
   return (
-    <Link href={`/courses/${course.slug}`} className="group block h-full">
-      <Card className="h-full gap-0 overflow-hidden p-0 transition-all duration-300 group-hover:-translate-y-1 group-hover:shadow-xl">
+    <Card className="group flex h-full flex-col gap-0 overflow-hidden p-0 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
+      <Link href={href} className="block">
         <div className="relative aspect-video overflow-hidden bg-gradient-to-br from-rose-500 to-pink-600">
           {course.thumbnailUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -53,43 +58,68 @@ export function PublicCourseCard({ course }: { course: CatalogCourse }) {
             {course.categoryName}
           </Badge>
         </div>
+      </Link>
 
-        <div className="flex flex-1 flex-col p-5">
-          <h3 className="line-clamp-2 leading-snug font-semibold">{course.title}</h3>
-          {course.subtitle && (
-            <p className="text-muted-foreground mt-1 line-clamp-2 text-sm">
-              {course.subtitle}
-            </p>
-          )}
-          <p className="text-muted-foreground mt-2 text-xs">{course.instructorName}</p>
+      {/* Each block below is a fixed height, so the rating rows and footers line
+          up across a row of cards however long a title or subtitle happens to be. */}
+      <div className="flex flex-1 flex-col p-5">
+        <Link href={href} className="hover:text-primary transition-colors">
+          <h3 className="line-clamp-2 min-h-[2.75rem] leading-snug font-semibold">
+            {course.title}
+          </h3>
+        </Link>
+        <p className="text-muted-foreground mt-1 line-clamp-2 min-h-[2.5rem] text-sm">
+          {course.subtitle}
+        </p>
+        <p className="text-muted-foreground mt-2 line-clamp-1 text-xs">
+          {course.instructorName}
+        </p>
 
-          <div className="text-muted-foreground mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-            {course.ratingCount > 0 && (
-              <span className="flex items-center gap-1">
-                <Star className="size-3.5 fill-amber-400 text-amber-400" />
-                <span className="text-foreground font-semibold">
-                  {course.ratingAvg.toFixed(1)}
-                </span>
-              </span>
-            )}
+        <div className="text-muted-foreground mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+          {course.ratingCount > 0 && (
             <span className="flex items-center gap-1">
-              <Layers className="size-3.5" /> {course.chapters} chapters
-            </span>
-            {course.enrollments > 0 && (
-              <span className="flex items-center gap-1">
-                <Users className="size-3.5" /> {course.enrollments}
+              <Star className="size-3.5 fill-amber-400 text-amber-400" />
+              <span className="text-foreground font-semibold">
+                {course.ratingAvg.toFixed(1)}
               </span>
-            )}
-          </div>
+            </span>
+          )}
+          <span className="flex items-center gap-1">
+            <Layers className="size-3.5" /> {course.chapters} chapters
+          </span>
+          {course.enrollments > 0 && (
+            <span className="flex items-center gap-1">
+              <Users className="size-3.5" /> {course.enrollments}
+            </span>
+          )}
+        </div>
 
-          <div className="mt-4 flex items-center justify-between border-t pt-4">
+        <div className="mt-auto border-t pt-4">
+          <div className="flex items-baseline justify-between gap-2">
             <span className="text-muted-foreground text-xs">
               {LEVEL_LABEL[course.level] ?? course.level}
             </span>
-            <span className="text-base font-bold">{priceLabel}</span>
+            <span className="flex items-baseline gap-1.5">
+              {hasDiscount && (
+                <span className="text-muted-foreground text-xs line-through">
+                  ₹{course.price.toLocaleString("en-IN")}
+                </span>
+              )}
+              <span className="text-base font-bold">{priceLabel}</span>
+            </span>
+          </div>
+
+          {/* Enquire without signing up, or open the course — the same pair the
+              homepage programme cards offer. */}
+          <div className="mt-3 flex items-center gap-2">
+            <ProgramEnquiryDialog courseTitle={course.title} />
+            <ButtonLink href={href} size="sm" className="flex-1">
+              View program
+              <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
+            </ButtonLink>
           </div>
         </div>
-      </Card>
-    </Link>
+      </div>
+    </Card>
   );
 }
