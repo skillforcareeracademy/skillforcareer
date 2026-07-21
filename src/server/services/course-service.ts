@@ -385,6 +385,8 @@ export type TrendingProgram = {
   isFeatured: boolean;
   /** First three learning objectives — the card's bullet list. */
   highlights: string[];
+  /** Shown when a course has no objectives yet, so the card isn't half empty. */
+  subtitle: string | null;
 };
 
 export async function listTrendingPrograms(take = 6): Promise<TrendingProgram[]> {
@@ -396,6 +398,7 @@ export async function listTrendingPrograms(take = 6): Promise<TrendingProgram[]>
       id: true,
       title: true,
       slug: true,
+      subtitle: true,
       thumbnailUrl: true,
       level: true,
       price: true,
@@ -430,6 +433,7 @@ export async function listTrendingPrograms(take = 6): Promise<TrendingProgram[]>
     durationMinutes: c.durationMinutes,
     isFeatured: c.isFeatured,
     highlights: toStringArray(c.objectives).slice(0, 3),
+    subtitle: c.subtitle,
   }));
 }
 

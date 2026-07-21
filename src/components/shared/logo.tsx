@@ -35,7 +35,7 @@ export function Logo({ href = "/", showText = false, className }: LogoProps) {
       alt={siteName}
       // cn() merges through tailwind-merge, so a caller passing `h-14` wins.
       className={cn(
-        "h-11 w-auto max-w-[220px] object-contain dark:rounded-md dark:bg-white dark:p-1",
+        "h-[42px] w-auto max-w-[220px] object-contain dark:rounded-md dark:bg-white dark:p-1",
         className,
       )}
     />

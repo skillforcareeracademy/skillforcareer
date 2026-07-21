@@ -1,6 +1,7 @@
 import Image from "next/image";
 import {
   ArrowRight,
+  Award,
   BookOpen,
   BrainCircuit,
   Briefcase,
@@ -55,8 +56,12 @@ function learnersLabel(count: number): string {
 export function CourseCard({ program }: { program: TrendingProgram }) {
   const { icon: Icon, gradient } = CATEGORY_STYLE[program.categorySlug] ?? DEFAULT_STYLE;
   const effective = program.discountPrice ?? program.price;
-  const priceLabel =
-    program.pricingType === "FREE" ? "Free" : `₹${effective.toLocaleString("en-IN")}`;
+  const isFree = program.pricingType === "FREE" || effective <= 0;
+  const priceLabel = isFree ? "Free" : `₹${effective.toLocaleString("en-IN")}`;
+  const savings =
+    !isFree && program.discountPrice && program.discountPrice < program.price
+      ? Math.round(((program.price - program.discountPrice) / program.price) * 100)
+      : null;
   const duration = durationLabel(program.durationMinutes);
   const href = `/courses/${program.slug}`;
 
@@ -128,7 +133,9 @@ export function CourseCard({ program }: { program: TrendingProgram }) {
           )}
         </div>
 
-        {program.highlights.length > 0 && (
+        {/* Objectives make the best bullets; a course without them falls back to
+            its subtitle so the card doesn't carry a hole where they'd be. */}
+        {program.highlights.length > 0 ? (
           <ul className="mt-4 space-y-1.5">
             {program.highlights.map((h) => (
               <li
@@ -140,13 +147,36 @@ export function CourseCard({ program }: { program: TrendingProgram }) {
               </li>
             ))}
           </ul>
+        ) : (
+          program.subtitle && (
+            <p className="text-muted-foreground mt-4 line-clamp-3 text-sm">
+              {program.subtitle}
+            </p>
+          )
         )}
 
         {/* mt-auto: a course with no objectives has a shorter body, and without
             this its price and buttons float mid-card next to its neighbours. */}
         <div className="mt-auto border-t pt-4">
-          <p className="text-muted-foreground text-[11px]">Starting at</p>
-          <p className="text-base font-bold">{priceLabel}</p>
+          {/* One line, filled end to end: what you pay, what it lists at, and
+              what you save — rather than a lone price with dead space beside it. */}
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+            <span className="text-lg font-bold">{priceLabel}</span>
+            {savings && (
+              <span className="text-muted-foreground text-sm line-through">
+                ₹{program.price.toLocaleString("en-IN")}
+              </span>
+            )}
+            {savings ? (
+              <span className="ml-auto rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
+                {savings}% off
+              </span>
+            ) : (
+              <span className="text-muted-foreground ml-auto inline-flex items-center gap-1 text-xs">
+                <Award className="size-3.5" aria-hidden /> Certificate
+              </span>
+            )}
+          </div>
 
           {/* Enquiry sits beside the primary action: the client asked that a
               visitor be able to reach us — or open the programme — without
