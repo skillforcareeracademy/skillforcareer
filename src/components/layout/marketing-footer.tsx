@@ -1,11 +1,15 @@
 import Link from "next/link";
 import { Phone, Mail, MapPin, Clock } from "lucide-react";
 import { Logo } from "@/components/shared/logo";
+import {
+  FooterLinkColumns,
+  type FooterColumn,
+} from "./footer-link-columns";
 import { siteConfig } from "@/config/site";
 
 const { contact } = siteConfig;
 
-const COLUMNS: { title: string; links: { label: string; href: string }[] }[] = [
+const COLUMNS: FooterColumn[] = [
   {
     title: "Categories",
     links: [
@@ -90,26 +94,7 @@ export function MarketingFooter() {
             </div>
           </div>
 
-          {COLUMNS.map((col, idx) => (
-            <div
-              key={col.title}
-              className={idx === COLUMNS.length - 1 ? "col-span-2 lg:col-span-1" : undefined}
-            >
-              <h3 className="text-sm font-semibold">{col.title}</h3>
-              <ul className="mt-4 space-y-2.5">
-                {col.links.map((link) => (
-                  <li key={link.label}>
-                    <Link
-                      href={link.href}
-                      className="text-muted-foreground hover:text-foreground text-sm transition-colors"
-                    >
-                      {link.label}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
+          <FooterLinkColumns columns={COLUMNS} />
 
           {/* Get in touch */}
           <div className="col-span-2">

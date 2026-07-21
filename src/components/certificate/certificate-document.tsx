@@ -1,6 +1,6 @@
 import { format } from "date-fns";
-import { GraduationCap, BadgeCheck, ShieldX } from "lucide-react";
-import { siteConfig } from "@/config/site";
+import { BadgeCheck, ShieldX } from "lucide-react";
+import { getBranding } from "@/server/services/branding-service";
 
 export interface CertificateData {
   studentName: string;
@@ -12,8 +12,11 @@ export interface CertificateData {
 }
 
 /** A print-ready certificate. Rendered on /certificate/[code] and printed to PDF. */
-export function CertificateDocument({ cert }: { cert: CertificateData }) {
+export async function CertificateDocument({ cert }: { cert: CertificateData }) {
   const revoked = cert.status === "REVOKED";
+  // The real brand lockup from Admin → Settings → Branding, not a stand-in mark:
+  // this document is what a learner sends an employer.
+  const { logoUrl, siteName } = await getBranding();
   return (
     <div
       id="certificate"
@@ -25,11 +28,13 @@ export function CertificateDocument({ cert }: { cert: CertificateData }) {
       <div className="pointer-events-none absolute -bottom-16 -left-16 size-40 rounded-full bg-rose-500/10" />
 
       <div className="relative">
-        <div className="flex items-center justify-center gap-2.5">
-          <span className="flex size-11 items-center justify-center rounded-xl bg-gradient-to-br from-rose-500 to-pink-600 text-white">
-            <GraduationCap className="size-6" />
-          </span>
-          <span className="text-xl font-bold tracking-tight">{siteConfig.name}</span>
+        <div className="flex items-center justify-center">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={logoUrl}
+            alt={siteName}
+            className="h-14 w-auto max-w-[15rem] object-contain sm:h-16"
+          />
         </div>
 
         <p className="mt-8 text-xs font-semibold tracking-[0.3em] text-rose-500 uppercase">
