@@ -1,9 +1,12 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { CourseCard } from "./course-card";
-import { PROGRAMS } from "@/config/marketing";
+import { listTrendingPrograms } from "@/server/services/course-service";
 
-export function ProgramsSection() {
+export async function ProgramsSection() {
+  const programs = await listTrendingPrograms(6);
+  if (programs.length === 0) return null;
+
   return (
     <section id="programs" className="bg-muted/30 border-y">
       <div className="container-page py-16 sm:py-20">
@@ -23,8 +26,8 @@ export function ProgramsSection() {
         </div>
 
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {PROGRAMS.map((program) => (
-            <CourseCard key={program.title} program={program} />
+          {programs.map((program) => (
+            <CourseCard key={program.id} program={program} />
           ))}
         </div>
       </div>

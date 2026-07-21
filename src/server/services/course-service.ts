@@ -365,6 +365,74 @@ export async function searchPublicCourses(
   return rows.map(toSuggestion);
 }
 
+/** A homepage "Trending programs" card, straight from the catalogue. */
+export type TrendingProgram = {
+  id: string;
+  title: string;
+  slug: string;
+  thumbnailUrl: string | null;
+  level: string;
+  categoryName: string;
+  categorySlug: string;
+  instructorName: string;
+  price: number;
+  discountPrice: number | null;
+  pricingType: string;
+  ratingAvg: number;
+  ratingCount: number;
+  enrollments: number;
+  durationMinutes: number;
+  isFeatured: boolean;
+  /** First three learning objectives — the card's bullet list. */
+  highlights: string[];
+};
+
+export async function listTrendingPrograms(take = 6): Promise<TrendingProgram[]> {
+  const rows = await prisma.course.findMany({
+    where: { status: "PUBLISHED" },
+    orderBy: [{ isFeatured: "desc" }, { enrollmentCount: "desc" }, { publishedAt: "desc" }],
+    take,
+    select: {
+      id: true,
+      title: true,
+      slug: true,
+      thumbnailUrl: true,
+      level: true,
+      price: true,
+      discountPrice: true,
+      pricingType: true,
+      ratingAvg: true,
+      ratingCount: true,
+      enrollmentCount: true,
+      durationMinutes: true,
+      isFeatured: true,
+      objectives: true,
+      category: { select: { name: true, slug: true } },
+      instructor: { select: { name: true } },
+    },
+  });
+
+  return rows.map((c) => ({
+    id: c.id,
+    title: c.title,
+    slug: c.slug,
+    thumbnailUrl: c.thumbnailUrl,
+    level: c.level,
+    categoryName: c.category.name,
+    categorySlug: c.category.slug,
+    instructorName: c.instructor.name,
+    price: c.price.toNumber(),
+    discountPrice: c.discountPrice ? c.discountPrice.toNumber() : null,
+    pricingType: c.pricingType,
+    ratingAvg: c.ratingAvg,
+    ratingCount: c.ratingCount,
+    enrollments: c.enrollmentCount,
+    durationMinutes: c.durationMinutes,
+    isFeatured: c.isFeatured,
+    highlights: toStringArray(c.objectives).slice(0, 3),
+  }));
+}
+
 /** The courses behind the "Popular:" chips under the hero search box. */
 export async function listPopularCourses(take = 6): Promise<CourseSuggestion[]> {
   const rows = await prisma.course.findMany({
