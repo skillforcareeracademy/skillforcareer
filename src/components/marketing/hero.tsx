@@ -1,11 +1,18 @@
 import Link from "next/link";
 import Image from "next/image";
-import { Search, Star, ShieldCheck, Trophy } from "lucide-react";
-import { ButtonLink } from "@/components/shared/button-link";
-import { GOALS, HERO_AVATARS } from "@/config/marketing";
-import { ROUTES } from "@/lib/constants";
+import { Star, ShieldCheck, Trophy } from "lucide-react";
+import { CourseSearch } from "@/components/shared/course-search";
+import { HERO_AVATARS } from "@/config/marketing";
+import { listPopularCourses } from "@/server/services/course-service";
 
-export function Hero() {
+/** "Complete Data Science Bootcamp: Python" → "Complete Data Science Bootcamp" */
+function chipLabel(title: string): string {
+  return title.split(/\s*[:—–|(]\s*/)[0].trim();
+}
+
+export async function Hero() {
+  const popular = await listPopularCourses(6);
+
   return (
     <section className="relative overflow-hidden">
       {/* Ambient brand glow */}
@@ -46,37 +53,28 @@ export function Hero() {
           </p>
 
           {/* Search */}
-          <form
-            action={ROUTES.register}
-            className="mx-auto mt-8 flex max-w-xl items-center gap-2 rounded-full border bg-card p-1.5 shadow-lg shadow-black/5"
-          >
-            <div className="flex flex-1 items-center gap-2 pl-3">
-              <Search className="text-muted-foreground size-5 shrink-0" />
-              <input
-                type="search"
-                placeholder="What do you want to learn?"
-                aria-label="Search programs"
-                className="placeholder:text-muted-foreground w-full bg-transparent py-2 text-sm outline-none sm:text-base"
-              />
-            </div>
-            <ButtonLink href={ROUTES.register} size="lg" className="rounded-full">
-              Search
-            </ButtonLink>
-          </form>
+          <CourseSearch
+            variant="hero"
+            placeholder="What do you want to learn?"
+            className="mx-auto mt-8 max-w-xl text-left"
+          />
 
-          {/* Goal chips */}
-          <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
-            <span className="text-muted-foreground text-sm">Popular:</span>
-            {GOALS.map((goal) => (
-              <Link
-                key={goal}
-                href={ROUTES.register}
-                className="border-border hover:border-primary/50 hover:text-primary rounded-full border bg-card px-3 py-1 text-sm font-medium transition-colors"
-              >
-                {goal}
-              </Link>
-            ))}
-          </div>
+          {/* Most-enrolled courses, straight from the catalog */}
+          {popular.length > 0 && (
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+              <span className="text-muted-foreground text-sm">Popular:</span>
+              {popular.map((course) => (
+                <Link
+                  key={course.id}
+                  href={`/courses/${course.slug}`}
+                  title={course.title}
+                  className="border-border hover:border-primary/50 hover:text-primary bg-card max-w-[15rem] truncate rounded-full border px-3 py-1 text-sm font-medium transition-colors"
+                >
+                  {chipLabel(course.title)}
+                </Link>
+              ))}
+            </div>
+          )}
 
           {/* Trust line */}
           <div className="text-muted-foreground mt-10 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm">

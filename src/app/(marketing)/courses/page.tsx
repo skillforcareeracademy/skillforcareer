@@ -44,9 +44,13 @@ export default async function CoursesCatalogPage({
   return (
     <div className="container-page py-12 sm:py-16">
       <div className="mb-8 max-w-2xl">
-        <h1 className="text-3xl sm:text-4xl">Explore courses</h1>
+        <h1 className="text-3xl sm:text-4xl">
+          {search ? `Results for “${search}”` : "Explore courses"}
+        </h1>
         <p className="text-muted-foreground mt-2">
-          Learn job-ready skills from industry experts — live, on-demand and hybrid.
+          {search
+            ? `${courses.length} course${courses.length === 1 ? "" : "s"} found.`
+            : "Learn job-ready skills from industry experts — live, on-demand and hybrid."}
         </p>
       </div>
 
@@ -64,8 +68,12 @@ export default async function CoursesCatalogPage({
       {courses.length === 0 ? (
         <EmptyState
           icon={BookOpen}
-          title="No courses here yet"
-          description="Published courses will appear here. Check back soon."
+          title={search ? `No courses match “${search}”` : "No courses here yet"}
+          description={
+            search
+              ? "Try a different keyword, or browse the full catalog."
+              : "Published courses will appear here. Check back soon."
+          }
         />
       ) : (
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">

@@ -301,6 +301,81 @@ export async function listPublicCourses(opts: {
   }));
 }
 
+/**
+ * Type-ahead suggestions for the site search boxes. Deliberately narrow: only
+ * the fields a dropdown row draws, so the query stays a single indexed scan
+ * plus one batched category lookup — this runs on every keystroke (debounced).
+ */
+export type CourseSuggestion = {
+  id: string;
+  title: string;
+  slug: string;
+  thumbnailUrl: string | null;
+  categoryName: string;
+  level: string;
+  price: number;
+  discountPrice: number | null;
+  pricingType: string;
+};
+
+const SUGGESTION_SELECT = {
+  id: true,
+  title: true,
+  slug: true,
+  thumbnailUrl: true,
+  level: true,
+  price: true,
+  discountPrice: true,
+  pricingType: true,
+  category: { select: { name: true } },
+} satisfies Prisma.CourseSelect;
+
+type SuggestionRow = Prisma.CourseGetPayload<{ select: typeof SUGGESTION_SELECT }>;
+
+function toSuggestion(c: SuggestionRow): CourseSuggestion {
+  return {
+    id: c.id,
+    title: c.title,
+    slug: c.slug,
+    thumbnailUrl: c.thumbnailUrl,
+    categoryName: c.category.name,
+    level: c.level,
+    price: c.price.toNumber(),
+    discountPrice: c.discountPrice ? c.discountPrice.toNumber() : null,
+    pricingType: c.pricingType,
+  };
+}
+
+export async function searchPublicCourses(
+  query: string,
+  take = 6,
+): Promise<CourseSuggestion[]> {
+  const q = query.trim();
+  if (!q) return [];
+
+  const rows = await prisma.course.findMany({
+    where: {
+      status: "PUBLISHED",
+      OR: [{ title: { contains: q } }, { subtitle: { contains: q } }],
+    },
+    orderBy: [{ isFeatured: "desc" }, { enrollmentCount: "desc" }],
+    take,
+    select: SUGGESTION_SELECT,
+  });
+  return rows.map(toSuggestion);
+}
+
+/** The courses behind the "Popular:" chips under the hero search box. */
+export async function listPopularCourses(take = 6): Promise<CourseSuggestion[]> {
+  const rows = await prisma.course.findMany({
+    where: { status: "PUBLISHED" },
+    orderBy: [{ enrollmentCount: "desc" }, { ratingAvg: "desc" }],
+    take,
+    select: SUGGESTION_SELECT,
+  });
+  return rows.map(toSuggestion);
+}
+
 export async function getPublicCourseBySlug(slug: string) {
   const c = await prisma.course.findFirst({
     where: { slug, status: "PUBLISHED" },

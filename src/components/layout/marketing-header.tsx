@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { Search } from "lucide-react";
 import { ButtonLink } from "@/components/shared/button-link";
+import { CourseSearch } from "@/components/shared/course-search";
 import { Logo } from "@/components/shared/logo";
 import { ThemeToggle } from "@/components/shared/theme-toggle";
 import { UserMenu } from "@/components/dashboard/user-menu";
@@ -36,17 +36,7 @@ export async function MarketingHeader() {
         </nav>
 
         {/* Search */}
-        <div className="ml-auto hidden max-w-xs flex-1 md:block">
-          <div className="border-input bg-muted/50 focus-within:border-primary/50 focus-within:ring-primary/20 flex items-center gap-2 rounded-full border px-3.5 py-2 transition focus-within:ring-2">
-            <Search className="text-muted-foreground size-4 shrink-0" />
-            <input
-              type="search"
-              placeholder="Search courses, skills…"
-              aria-label="Search courses"
-              className="placeholder:text-muted-foreground w-full bg-transparent text-sm outline-none"
-            />
-          </div>
-        </div>
+        <CourseSearch className="ml-auto hidden max-w-xs flex-1 md:block" />
 
         <div className="ml-auto flex items-center gap-1.5 md:ml-0">
           <ThemeToggle />

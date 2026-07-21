@@ -219,12 +219,3 @@ export const STATS: Stat[] = [
   { value: "1,000+", label: "Courses & programs" },
   { value: "92%", label: "Completion rate" },
 ];
-
-export const GOALS: string[] = [
-  "Data Science",
-  "Generative AI",
-  "MBA",
-  "Software Development",
-  "Digital Marketing",
-  "Product Management",
-];
