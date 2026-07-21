@@ -19,7 +19,16 @@ import type { PoolConfig } from "mariadb";
  * that Prisma refuses (P3004), so DATABASE_URL must never point at it.
  */
 
-const CONNECT_TIMEOUT_MS = 30_000;
+/**
+ * One handshake attempt. Deliberately *shorter* than the acquire budget below:
+ * a serverless cluster that is resuming refuses or hangs the first connection,
+ * and when both timeouts were 30s that single attempt consumed the whole budget
+ * and the page died with "failed to retrieve a connection from pool
+ * (active=0 idle=0)". At 10s the pool gets several attempts per request, which
+ * is enough to ride out a resume — a warm handshake measures ~2s.
+ */
+const CONNECT_TIMEOUT_MS = 10_000;
+/** How long a request waits for a connection, across retries. */
 const ACQUIRE_TIMEOUT_MS = 30_000;
 const POOL_CONNECTION_LIMIT = 10;
 
@@ -82,9 +91,13 @@ export function getMariaDbConfig(connectionUrl?: string): PoolConfig {
       minVersion: "TLSv1.2",
       rejectUnauthorized: true,
     },
-    // (2) generous timeouts for the cross-region TLS handshake.
+    // (2) generous timeouts for the cross-region TLS handshake, with room to
+    //     retry inside a single request (see the constants above).
     connectTimeout: CONNECT_TIMEOUT_MS,
     acquireTimeout: ACQUIRE_TIMEOUT_MS,
+    // Keep the pool trying to open a connection for the whole acquire window
+    // instead of giving up on the first failure while a caller is still waiting.
+    initializationTimeout: ACQUIRE_TIMEOUT_MS,
     connectionLimit: POOL_CONNECTION_LIMIT,
     // TiDB is MySQL-compatible; keep BigInt/decimal as strings to avoid
     // precision loss, and normalise timezone handling.
