@@ -53,7 +53,7 @@ const BENEFITS: Benefit[] = [
     icon: Briefcase,
     title: "Career support",
     description:
-      "Placement assistance, mock interviews and 500+ hiring partners to help you land the role.",
+      "Placement assistance, mock interviews and 100+ hiring partners to help you land the role.",
     tint: "from-sky-500 to-blue-600",
   },
   {

@@ -1,4 +1,5 @@
 import {
+  BookOpen,
   Database,
   BrainCircuit,
   Briefcase,
@@ -16,24 +17,31 @@ import {
  * are fictional to avoid using real trademarks.
  */
 
-export interface Category {
-  name: string;
-  slug: string;
+/**
+ * Per-category glyph and tint, keyed by the category slug in the database.
+ * Only presentation lives here — names and course counts come from the catalogue,
+ * so a category the admin renames or empties can't leave a stale number behind.
+ */
+export interface CategoryStyle {
   icon: LucideIcon;
-  courses: number;
-  gradient: string; // tailwind from/to classes for the tile
+  gradient: string;
 }
 
-export const CATEGORIES: Category[] = [
-  { name: "Data Science", slug: "data-science", icon: Database, courses: 128, gradient: "from-rose-500 to-pink-600" },
-  { name: "AI & Machine Learning", slug: "ai-ml", icon: BrainCircuit, courses: 96, gradient: "from-violet-500 to-purple-600" },
-  { name: "Management & MBA", slug: "management", icon: Briefcase, courses: 74, gradient: "from-amber-500 to-orange-600" },
-  { name: "Software Development", slug: "software-development", icon: Code2, courses: 152, gradient: "from-sky-500 to-blue-600" },
-  { name: "Digital Marketing", slug: "digital-marketing", icon: Megaphone, courses: 63, gradient: "from-emerald-500 to-teal-600" },
-  { name: "Product Management", slug: "product-management", icon: Boxes, courses: 41, gradient: "from-fuchsia-500 to-pink-600" },
-  { name: "Cloud & DevOps", slug: "cloud-devops", icon: Cloud, courses: 58, gradient: "from-cyan-500 to-blue-600" },
-  { name: "Design & UX", slug: "design", icon: Palette, courses: 47, gradient: "from-indigo-500 to-violet-600" },
-];
+export const CATEGORY_STYLES: Record<string, CategoryStyle> = {
+  "data-science": { icon: Database, gradient: "from-rose-500 to-pink-600" },
+  "ai-ml": { icon: BrainCircuit, gradient: "from-violet-500 to-purple-600" },
+  management: { icon: Briefcase, gradient: "from-amber-500 to-orange-600" },
+  "software-development": { icon: Code2, gradient: "from-sky-500 to-blue-600" },
+  "digital-marketing": { icon: Megaphone, gradient: "from-emerald-500 to-teal-600" },
+  "product-management": { icon: Boxes, gradient: "from-fuchsia-500 to-pink-600" },
+  "cloud-devops": { icon: Cloud, gradient: "from-cyan-500 to-blue-600" },
+  design: { icon: Palette, gradient: "from-indigo-500 to-violet-600" },
+};
+
+export const DEFAULT_CATEGORY_STYLE: CategoryStyle = {
+  icon: BookOpen,
+  gradient: "from-rose-500 to-pink-600",
+};
 
 /**
  * 16:9 Pexels thumbnail, face-aware cropped so people's heads stay in frame
@@ -102,9 +110,10 @@ export interface Stat {
   label: string;
 }
 
+/** The academy's own figures — supplied by the client, not placeholders. */
 export const STATS: Stat[] = [
-  { value: "10M+", label: "Learners upskilled" },
-  { value: "500+", label: "Hiring partners" },
-  { value: "1,000+", label: "Courses & programs" },
-  { value: "92%", label: "Completion rate" },
+  { value: "1,000+", label: "Learners upskilled" },
+  { value: "100+", label: "Hiring partners" },
+  { value: "50+", label: "Courses & programs" },
+  { value: "98%", label: "Completion rate" },
 ];

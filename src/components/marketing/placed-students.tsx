@@ -7,7 +7,7 @@ interface PlacedStudent {
 }
 
 /**
- * Learners shown in the "1000+ Students Got Placed" marquee, mirroring the
+ * Learners shown in the "900+ Students Got Placed" marquee, mirroring the
  * client's existing site (skillforcareer.in). Photos are the learners' own —
  * pulled from the live site and served locally from /public/images/students.
  */
@@ -92,7 +92,7 @@ export function PlacedStudents() {
       <div className="container-page mb-10 text-center sm:mb-12">
         <p className="text-foreground text-lg sm:text-xl">Skill For Career</p>
         <h2 className="mt-4 text-3xl font-bold sm:text-5xl">
-          1000+{" "}
+          900+{" "}
           <span className="relative inline-block">
             <span className="relative z-10">Students</span>
             <span

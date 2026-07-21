@@ -1,21 +1,6 @@
-import {
-  ArrowRight,
-  Award,
-  BookOpen,
-  BrainCircuit,
-  Briefcase,
-  Boxes,
-  Clock,
-  Cloud,
-  Code2,
-  Database,
-  Megaphone,
-  Palette,
-  Star,
-  Users,
-  type LucideIcon,
-} from "lucide-react";
+import { ArrowRight, Award, BookOpen, Clock, Star, Users } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import { CATEGORY_STYLES, DEFAULT_CATEGORY_STYLE } from "@/config/marketing";
 import { ButtonLink } from "@/components/shared/button-link";
 import { ProgramEnquiryDialog } from "./program-enquiry-dialog";
 import type { TrendingProgram } from "@/server/services/course-service";
@@ -27,19 +12,6 @@ const LEVEL_LABEL: Record<string, string> = {
   ADVANCED: "Advanced",
   ALL_LEVELS: "All levels",
 };
-
-/** Per-category glyph + tint, so a card is recognisable before you read it. */
-const CATEGORY_STYLE: Record<string, { icon: LucideIcon; gradient: string }> = {
-  "data-science": { icon: Database, gradient: "from-rose-500 to-pink-600" },
-  "ai-ml": { icon: BrainCircuit, gradient: "from-violet-500 to-purple-600" },
-  management: { icon: Briefcase, gradient: "from-amber-500 to-orange-600" },
-  "software-development": { icon: Code2, gradient: "from-sky-500 to-blue-600" },
-  "cloud-devops": { icon: Cloud, gradient: "from-cyan-500 to-blue-600" },
-  "product-management": { icon: Boxes, gradient: "from-fuchsia-500 to-pink-600" },
-  "digital-marketing": { icon: Megaphone, gradient: "from-emerald-500 to-teal-600" },
-  design: { icon: Palette, gradient: "from-indigo-500 to-violet-600" },
-};
-const DEFAULT_STYLE = { icon: BookOpen, gradient: "from-rose-500 to-pink-600" };
 
 function durationLabel(minutes: number): string | null {
   if (!minutes) return null;
@@ -53,7 +25,8 @@ function learnersLabel(count: number): string {
 
 /** Program / course card — mirrors the upGrad card pattern. */
 export function CourseCard({ program }: { program: TrendingProgram }) {
-  const { icon: Icon, gradient } = CATEGORY_STYLE[program.categorySlug] ?? DEFAULT_STYLE;
+  const { icon: Icon, gradient } =
+    CATEGORY_STYLES[program.categorySlug] ?? DEFAULT_CATEGORY_STYLE;
   const effective = program.discountPrice ?? program.price;
   const isFree = program.pricingType === "FREE" || effective <= 0;
   const priceLabel = isFree ? "Free" : `₹${effective.toLocaleString("en-IN")}`;

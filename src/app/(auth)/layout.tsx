@@ -17,8 +17,8 @@ import { pexelsAvatar } from "@/config/marketing";
 
 const FEATURES = [
   { icon: Radio, label: "Live interactive classes with expert mentors" },
-  { icon: Award, label: "Verifiable certificates on completion" },
-  { icon: Briefcase, label: "Placement support · 500+ hiring partners" },
+  { icon: Award, label: "Verified certificates on completion" },
+  { icon: Briefcase, label: "Placement support · 100+ hiring partners" },
 ];
 
 /** Split-screen shell for all authentication screens. */
@@ -58,8 +58,8 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
               Learn the skills. Build the career.
             </h2>
             <p className="text-lg text-white/85">
-              Join 10M+ learners upskilling with live classes, real-world
-              projects and verifiable certificates.
+              Join 1,000+ learners upskilling with live classes, real-world
+              projects and verified certificates.
             </p>
           </div>
 

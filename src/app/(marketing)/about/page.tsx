@@ -157,7 +157,7 @@ export default function AboutPage() {
             {/* Small floating proof card — deliberately offset so the photo
                 doesn't read as a stock banner. */}
             <Card className="bg-card absolute -bottom-6 left-6 max-w-[15rem] gap-0 p-4 shadow-xl sm:left-10">
-              <p className="text-2xl font-bold">1,000+</p>
+              <p className="text-2xl font-bold">900+</p>
               <p className="text-muted-foreground text-xs">
                 learners placed after training with us
               </p>

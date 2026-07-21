@@ -146,7 +146,7 @@ export default async function ForBusinessPage() {
               <p className="text-muted-foreground mt-5 text-lg text-pretty">
                 Role-based learning paths, live cohorts taught by working practitioners,
                 and a dashboard that tells you who actually finished — built on the same
-                platform 10M+ learners already use.
+                platform 1,000+ learners already use.
               </p>
 
               <ul className="mt-7 space-y-2.5">

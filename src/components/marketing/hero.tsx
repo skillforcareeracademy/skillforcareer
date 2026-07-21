@@ -36,7 +36,7 @@ export async function Hero() {
                 />
               ))}
             </span>
-            Trusted by 10M+ learners worldwide
+            Trusted by 1,000+ learners
           </span>
 
           <h1 className="text-4xl leading-[1.05] font-bold sm:text-6xl">
@@ -49,7 +49,7 @@ export async function Hero() {
 
           <p className="text-muted-foreground mx-auto mt-6 max-w-2xl text-lg text-pretty">
             Learn from industry experts with live classes, hands-on projects and
-            verifiable certificates — and get the career support to land the job.
+            verified certificates — and get the career support to land the job.
           </p>
 
           {/* Search */}
@@ -80,15 +80,15 @@ export async function Hero() {
           <div className="text-muted-foreground mt-10 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm">
             <span className="flex items-center gap-1.5">
               <Star className="size-4 fill-amber-400 text-amber-400" />
-              4.8/5 average rating
+              4.9/5 average rating
             </span>
             <span className="flex items-center gap-1.5">
               <ShieldCheck className="text-emerald-500 size-4" />
-              Verifiable certificates
+              Verified certificates
             </span>
             <span className="flex items-center gap-1.5">
               <Trophy className="text-rose-500 size-4" />
-              500+ hiring partners
+              900+ placements done
             </span>
           </div>
         </div>

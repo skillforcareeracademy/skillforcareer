@@ -20,7 +20,7 @@ export function CtaBand() {
             Ready to build the career you want?
           </h2>
           <p className="mt-4 text-lg text-white/90">
-            Join millions of learners. Start free — upgrade when you&apos;re ready.
+            Join 1,000+ learners. Start free — upgrade when you&apos;re ready.
           </p>
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <ButtonLink
