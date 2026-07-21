@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { RichTextEditor } from "@/components/shared/rich-text-editor";
+import { ImageUpload } from "@/components/shared/image-upload";
 import {
   COURSE_LEVELS,
   DELIVERY_MODES,
@@ -58,11 +59,20 @@ interface FormValues {
   promoVideoUrl: string;
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+function Field({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: ReactNode;
+}) {
   return (
     <div className="space-y-1.5">
       <Label>{label}</Label>
       {children}
+      {hint && <p className="text-muted-foreground text-xs">{hint}</p>}
     </div>
   );
 }
@@ -192,7 +202,10 @@ export function CourseDetailsForm({
             <CardTitle>What students will learn</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Field label="Learning objectives (one per line)">
+            <Field
+              label="Learning objectives (one per line)"
+              hint="The first three appear as the bullet points on the course card."
+            >
               <Textarea rows={4} value={objectives} onChange={(e) => setObjectives(e.target.value)} />
             </Field>
             <Field label="Requirements (one per line)">
@@ -247,8 +260,24 @@ export function CourseDetailsForm({
             <CardTitle>Media</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Field label="Thumbnail URL">
-              <Input {...register("thumbnailUrl")} placeholder="https://…" />
+            {/* Two ways in: upload a file, or paste a link from a stock site
+                (Freepik, Pexels, Unsplash…). Both write the same field, and the
+                preview shows exactly what the course card will render. */}
+            <Field label="Thumbnail">
+              <ImageUpload
+                value={watch("thumbnailUrl") ?? ""}
+                onChange={(url) =>
+                  setValue("thumbnailUrl", url, { shouldDirty: true })
+                }
+                label="thumbnail"
+                previewClassName="h-16 w-28"
+              />
+            </Field>
+            <Field label="…or paste an image URL">
+              <Input
+                {...register("thumbnailUrl")}
+                placeholder="https://img.freepik.com/… · https://images.pexels.com/…"
+              />
             </Field>
             <Field label="Promo video URL">
               <Input {...register("promoVideoUrl")} placeholder="https://…" />

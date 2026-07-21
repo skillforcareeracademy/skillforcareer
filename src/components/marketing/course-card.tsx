@@ -1,4 +1,3 @@
-import Image from "next/image";
 import {
   ArrowRight,
   Award,
@@ -70,12 +69,14 @@ export function CourseCard({ program }: { program: TrendingProgram }) {
       {/* Thumbnail — 16:9 to match the face-cropped source (no head clipping) */}
       <div className="relative aspect-video overflow-hidden bg-gradient-to-br from-rose-500 to-pink-600">
         {program.thumbnailUrl ? (
-          <Image
+          /* Plain <img>, like the catalogue card: the admin can paste a
+             thumbnail from any host (Freepik, Pexels, their own upload), and
+             next/image would reject every domain not listed in next.config. */
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
             src={program.thumbnailUrl}
             alt={program.title}
-            fill
-            sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
-            className="object-cover object-top transition-transform duration-500 group-hover:scale-105"
+            className="size-full object-cover object-top transition-transform duration-500 group-hover:scale-105"
           />
         ) : (
           <div className="flex size-full items-center justify-center text-white/90">
