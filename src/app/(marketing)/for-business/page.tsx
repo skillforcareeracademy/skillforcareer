@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/accordion";
 import { ButtonLink } from "@/components/shared/button-link";
 import { BusinessEnquiryForm } from "@/components/marketing/business-enquiry-form";
+import { StepList, type Step } from "@/components/marketing/step-list";
 import { siteConfig } from "@/config/site";
 
 export const metadata: Metadata = {
@@ -76,11 +77,27 @@ const OFFERINGS = [
   },
 ];
 
-const STEPS = [
-  { title: "Tell us the gap", body: "A 30-minute call to understand roles, skill gaps and timelines." },
-  { title: "Get a costed plan", body: "We come back with a curriculum, schedule and per-seat pricing." },
-  { title: "Onboard the team", body: "Accounts, batches and learning paths are set up for you." },
-  { title: "Track the outcome", body: "Monthly reporting on attendance, scores and completion." },
+const STEPS: Step[] = [
+  {
+    icon: PhoneCall,
+    title: "Tell us the gap",
+    body: "A 30-minute call to understand roles, skill gaps and timelines.",
+  },
+  {
+    icon: FileText,
+    title: "Get a costed plan",
+    body: "We come back with a curriculum, schedule and per-seat pricing.",
+  },
+  {
+    icon: Users,
+    title: "Onboard the team",
+    body: "Accounts, batches and learning paths are set up for you.",
+  },
+  {
+    icon: BarChart3,
+    title: "Track the outcome",
+    body: "Monthly reporting on attendance, scores and completion.",
+  },
 ];
 
 const FAQS = [
@@ -230,17 +247,7 @@ export default async function ForBusinessPage() {
             From first call to first cohort, usually inside two weeks.
           </p>
         </div>
-        <ol className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          {STEPS.map((step, i) => (
-            <li key={step.title}>
-              <span className="from-primary grid size-10 place-items-center rounded-full bg-gradient-to-br to-pink-600 text-sm font-bold text-white">
-                {i + 1}
-              </span>
-              <h3 className="mt-4 font-semibold">{step.title}</h3>
-              <p className="text-muted-foreground mt-1.5 text-sm">{step.body}</p>
-            </li>
-          ))}
-        </ol>
+        <StepList steps={STEPS} />
       </section>
 
       {/* ── FAQ ──────────────────────────────────────────────────────────── */}

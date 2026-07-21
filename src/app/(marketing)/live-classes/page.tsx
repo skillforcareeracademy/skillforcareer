@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import {
   ArrowRight,
+  Award,
+  CalendarCheck,
   CalendarClock,
   ClipboardCheck,
   Clock,
@@ -11,6 +13,7 @@ import {
   Presentation,
   Radio,
   ScreenShare,
+  Ticket,
   Users,
   Video,
 } from "lucide-react";
@@ -28,6 +31,7 @@ import {
 import { ButtonLink } from "@/components/shared/button-link";
 import { EmptyState } from "@/components/shared/empty-state";
 import { CtaBand } from "@/components/marketing/cta-band";
+import { StepList, type Step } from "@/components/marketing/step-list";
 import { siteConfig } from "@/config/site";
 import { cn } from "@/lib/utils";
 
@@ -74,11 +78,27 @@ const FEATURES = [
   },
 ];
 
-const STEPS = [
-  { title: "Pick a batch", body: "Choose a cohort whose timing fits your week — weekday or weekend." },
-  { title: "Enrol & get the link", body: "Your seat, schedule and joining link appear in your dashboard." },
-  { title: "Attend live", body: "Join from any browser. Attendance is marked automatically." },
-  { title: "Finish & get certified", body: "Clear the assessments and download a verifiable certificate." },
+const STEPS: Step[] = [
+  {
+    icon: CalendarCheck,
+    title: "Pick a batch",
+    body: "Choose a cohort whose timing fits your week — weekday or weekend.",
+  },
+  {
+    icon: Ticket,
+    title: "Enrol & get the link",
+    body: "Your seat, schedule and joining link appear in your dashboard.",
+  },
+  {
+    icon: Video,
+    title: "Attend live",
+    body: "Join from any browser. Attendance is marked automatically.",
+  },
+  {
+    icon: Award,
+    title: "Finish & get certified",
+    body: "Clear the assessments and download a verifiable certificate.",
+  },
 ];
 
 const FAQS = [
@@ -203,17 +223,7 @@ export default async function LiveClassesPage() {
               From picking a cohort to holding the certificate.
             </p>
           </div>
-          <ol className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-            {STEPS.map((step, i) => (
-              <li key={step.title} className="relative">
-                <span className="from-primary grid size-10 place-items-center rounded-full bg-gradient-to-br to-pink-600 text-sm font-bold text-white">
-                  {i + 1}
-                </span>
-                <h3 className="mt-4 font-semibold">{step.title}</h3>
-                <p className="text-muted-foreground mt-1.5 text-sm">{step.body}</p>
-              </li>
-            ))}
-          </ol>
+          <StepList steps={STEPS} />
         </div>
       </section>
 
