@@ -18,10 +18,10 @@ const COLUMNS: { title: string; links: { label: string; href: string }[] }[] = [
   {
     title: "Company",
     links: [
-      { label: "About us", href: "/#" },
-      { label: "Careers", href: "/#" },
+      { label: "About us", href: "/about" },
+      { label: "Careers", href: "/careers" },
       { label: "For Business", href: "/for-business" },
-      { label: "Contact", href: `mailto:${contact.email}` },
+      { label: "Contact", href: "/contact" },
     ],
   },
   {
