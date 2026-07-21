@@ -10,8 +10,8 @@ import { ROUTES } from "@/lib/constants";
 const NAV = [
   { label: "Courses", href: "/courses" },
   { label: "Categories", href: "/#categories" },
-  { label: "Live Classes", href: ROUTES.login },
-  { label: "For Business", href: ROUTES.register },
+  { label: "Live Classes", href: "/live-classes" },
+  { label: "For Business", href: "/for-business" },
 ];
 
 /** Public site header — auth-aware: shows the profile menu when signed in. */

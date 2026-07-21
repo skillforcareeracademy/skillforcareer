@@ -2,7 +2,6 @@ import Link from "next/link";
 import { Phone, Mail, MapPin, Clock } from "lucide-react";
 import { Logo } from "@/components/shared/logo";
 import { siteConfig } from "@/config/site";
-import { ROUTES } from "@/lib/constants";
 
 const { contact } = siteConfig;
 
@@ -10,10 +9,10 @@ const COLUMNS: { title: string; links: { label: string; href: string }[] }[] = [
   {
     title: "Categories",
     links: [
-      { label: "Data Science", href: ROUTES.register },
-      { label: "AI & Machine Learning", href: ROUTES.register },
-      { label: "Management & MBA", href: ROUTES.register },
-      { label: "Software Development", href: ROUTES.register },
+      { label: "Data Science", href: "/courses?category=data-science" },
+      { label: "AI & Machine Learning", href: "/courses?category=ai-ml" },
+      { label: "Management & MBA", href: "/courses?category=management" },
+      { label: "Software Development", href: "/courses?category=software-development" },
     ],
   },
   {
@@ -21,16 +20,16 @@ const COLUMNS: { title: string; links: { label: string; href: string }[] }[] = [
     links: [
       { label: "About us", href: "/#" },
       { label: "Careers", href: "/#" },
-      { label: "For Business", href: ROUTES.register },
+      { label: "For Business", href: "/for-business" },
       { label: "Contact", href: `mailto:${contact.email}` },
     ],
   },
   {
     title: "Resources",
     links: [
-      { label: "Blog", href: "/#" },
-      { label: "Free courses", href: ROUTES.register },
-      { label: "Help center", href: "/#" },
+      { label: "Live classes", href: "/live-classes" },
+      { label: "Webinars", href: "/webinars" },
+      { label: "Browse courses", href: "/courses" },
       { label: "Verify certificate", href: "/verify" },
     ],
   },

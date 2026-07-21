@@ -102,6 +102,48 @@ export async function listBatchesAdmin(q: BatchListQuery) {
   };
 }
 
+/**
+ * Cohorts the public "Live classes" page advertises: running or about to start,
+ * on a course that is actually published. Sorted by the soonest start.
+ */
+export async function listUpcomingLiveBatches(take = 9) {
+  const rows = await prisma.batch.findMany({
+    where: {
+      status: { in: ["UPCOMING", "ONGOING"] },
+      course: { status: "PUBLISHED" },
+    },
+    orderBy: [{ startDate: "asc" }, { createdAt: "asc" }],
+    take,
+    select: {
+      id: true,
+      name: true,
+      status: true,
+      capacity: true,
+      enrolledCount: true,
+      startDate: true,
+      schedule: true,
+      course: { select: { title: true, slug: true, thumbnailUrl: true, level: true } },
+      instructor: { select: { name: true } },
+    },
+  });
+
+  return rows.map((b) => ({
+    id: b.id,
+    name: b.name,
+    status: b.status,
+    capacity: b.capacity,
+    enrolledCount: b.enrolledCount,
+    seatsLeft: b.capacity ? Math.max(0, b.capacity - b.enrolledCount) : null,
+    startDate: b.startDate ? b.startDate.toISOString() : null,
+    schedule: parseSchedule(b.schedule),
+    courseTitle: b.course.title,
+    courseSlug: b.course.slug,
+    courseThumbnailUrl: b.course.thumbnailUrl,
+    courseLevel: b.course.level,
+    instructorName: b.instructor?.name ?? null,
+  }));
+}
+
 /** Full batch detail incl. the enrolled-learner roster. */
 export async function getBatchDetail(id: string) {
   const b = await prisma.batch.findUnique({

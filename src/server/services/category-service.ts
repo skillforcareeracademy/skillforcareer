@@ -55,6 +55,31 @@ export async function listCategories(): Promise<CategoryRow[]> {
   }));
 }
 
+/**
+ * Active categories that actually have something published behind them, with a
+ * count the public can trust — `listCategories` counts drafts too, which would
+ * advertise tracks a visitor cannot open.
+ */
+export async function listPublicCategories() {
+  const [cats, counts] = await Promise.all([
+    prisma.category.findMany({
+      where: { isActive: true },
+      orderBy: [{ order: "asc" }, { name: "asc" }],
+      select: { id: true, name: true, slug: true, description: true },
+    }),
+    prisma.course.groupBy({
+      by: ["categoryId"],
+      where: { status: "PUBLISHED" },
+      _count: { _all: true },
+    }),
+  ]);
+
+  const published = new Map(counts.map((c) => [c.categoryId, c._count._all]));
+  return cats
+    .map((c) => ({ ...c, courseCount: published.get(c.id) ?? 0 }))
+    .filter((c) => c.courseCount > 0);
+}
+
 export async function createCategory(input: CategoryInput): Promise<void> {
   const slug = input.slug && input.slug.length ? input.slug : slugify(input.name);
   const data: Prisma.CategoryUncheckedCreateInput = {
