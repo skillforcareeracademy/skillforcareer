@@ -13,6 +13,7 @@ import {
   CalendarClock,
   Radio,
   Users,
+  UserPlus,
   X,
   CalendarDays,
   Eye,
@@ -64,6 +65,10 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { BatchDetailSheet } from "@/components/admin/batches/batch-detail-sheet";
+import {
+  BatchStudentsSheet,
+  type BatchStudentsTarget,
+} from "@/components/admin/batches/batch-students-sheet";
 import { cn } from "@/lib/utils";
 
 interface Schedule {
@@ -186,6 +191,11 @@ export function BatchesClient({
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<BatchRow | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [managing, setManaging] = useState<BatchStudentsTarget | null>(null);
+
+  function manageStudents(b: BatchRow) {
+    setManaging({ id: b.id, name: b.name, capacity: b.capacity });
+  }
 
   const totalPages = Math.max(1, Math.ceil(total / query.pageSize));
   const hasFilters = Boolean(query.search || query.status || query.courseId);
@@ -406,6 +416,9 @@ export function BatchesClient({
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => openEdit(b)}>
             <Pencil className="size-4" /> Edit
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => manageStudents(b)}>
+            <UserPlus className="size-4" /> Manage students
           </DropdownMenuItem>
           <DropdownMenuItem
             className="text-destructive focus:text-destructive"
@@ -768,6 +781,20 @@ export function BatchesClient({
             </div>
 
             <DialogFooter>
+              {editing && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="sm:mr-auto"
+                  onClick={() => {
+                    const b = editing;
+                    setDialogOpen(false);
+                    manageStudents(b);
+                  }}
+                >
+                  <UserPlus className="size-4" /> Manage students
+                </Button>
+              )}
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
                 Cancel
               </Button>
@@ -781,6 +808,8 @@ export function BatchesClient({
       </Dialog>
 
       <BatchDetailSheet batchId={detailId} onOpenChange={(o) => !o && setDetailId(null)} />
+
+      <BatchStudentsSheet batch={managing} onOpenChange={(o) => !o && setManaging(null)} />
 
       <AlertDialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>
         <AlertDialogContent>

@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
 import { ROLES } from "@/config/roles";
+import { notify } from "./notification-service";
 import type { BatchInput, BatchSchedule } from "@/lib/validations/batch";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -285,6 +286,151 @@ export async function deleteBatch(id: string): Promise<void> {
     throw AppError.badRequest("This batch has learners enrolled and can't be deleted.");
   }
   await prisma.batch.delete({ where: { id } });
+}
+
+// ── Roster (hand-added learners) ───────────────────────────────────────────────
+// The join code lets learners enrol themselves, but plenty walk in offline. These
+// let an admin put a student straight onto a batch's course.
+
+export interface BatchStudent {
+  userId: string;
+  name: string;
+  email: string;
+  avatar: string | null;
+}
+
+/** Learners currently on a batch (i.e. enrolled in its course under this batch). */
+export async function listBatchStudents(batchId: string): Promise<BatchStudent[]> {
+  const rows = await prisma.enrollment.findMany({
+    where: { batchId },
+    select: { user: { select: { id: true, name: true, email: true, avatarUrl: true } } },
+    orderBy: { user: { name: "asc" } },
+  });
+  return rows.map((r) => ({
+    userId: r.user.id,
+    name: r.user.name,
+    email: r.user.email,
+    avatar: r.user.avatarUrl,
+  }));
+}
+
+/** Students to offer in the batch's "add learner" picker. */
+export async function listStudentsForBatchSelect(search?: string): Promise<BatchStudent[]> {
+  const rows = await prisma.user.findMany({
+    where: {
+      role: { slug: ROLES.STUDENT },
+      ...(search
+        ? { OR: [{ name: { contains: search } }, { email: { contains: search } }] }
+        : {}),
+    },
+    select: { id: true, name: true, email: true, avatarUrl: true },
+    orderBy: { name: "asc" },
+    take: 50,
+  });
+  return rows.map((u) => ({ userId: u.id, name: u.name, email: u.email, avatar: u.avatarUrl }));
+}
+
+/**
+ * Put learners onto a batch. A student who already owns the course is simply
+ * moved onto this batch; a brand-new learner gets an ADMIN_GRANT enrolment (and
+ * bumps the course's total). Re-adding someone already here is a no-op. Returns
+ * how many were actually added or moved.
+ *
+ * `enrolledCount` is nudged by the real delta rather than recomputed, so a
+ * batch's advertised head-count only ever moves by genuine admin actions.
+ */
+export async function addBatchStudents(batchId: string, userIds: string[]): Promise<number> {
+  const batch = await prisma.batch.findUnique({
+    where: { id: batchId },
+    select: { id: true, name: true, courseId: true, course: { select: { title: true, slug: true } } },
+  });
+  if (!batch) throw AppError.notFound("Batch not found.");
+
+  const ids = [...new Set(userIds)];
+  if (ids.length === 0) return 0;
+
+  const existing = await prisma.enrollment.findMany({
+    where: { courseId: batch.courseId, userId: { in: ids } },
+    select: { id: true, userId: true, batchId: true },
+  });
+  const byUser = new Map(existing.map((e) => [e.userId, e]));
+
+  const ops: Prisma.PrismaPromise<unknown>[] = [];
+  const added: string[] = [];
+  let newEnrolments = 0;
+
+  for (const userId of ids) {
+    const e = byUser.get(userId);
+    if (e) {
+      if (e.batchId === batchId) continue; // already on this batch
+      ops.push(
+        prisma.enrollment.update({
+          where: { id: e.id },
+          data: { batchId, status: "ACTIVE" },
+        }),
+      );
+    } else {
+      ops.push(
+        prisma.enrollment.create({
+          data: { userId, courseId: batch.courseId, batchId, status: "ACTIVE", source: "ADMIN_GRANT" },
+        }),
+      );
+      newEnrolments += 1;
+    }
+    added.push(userId);
+  }
+
+  if (added.length === 0) return 0;
+
+  if (newEnrolments > 0) {
+    ops.push(
+      prisma.course.update({
+        where: { id: batch.courseId },
+        data: { enrollmentCount: { increment: newEnrolments } },
+      }),
+    );
+  }
+  ops.push(
+    prisma.batch.update({
+      where: { id: batchId },
+      data: { enrolledCount: { increment: added.length } },
+    }),
+  );
+
+  await prisma.$transaction(ops);
+
+  await notify({
+    userIds: added,
+    type: "COURSE",
+    title: "You've been added to a batch",
+    message: `You're now on “${batch.name}” for ${batch.course.title}.`,
+    actionUrl: `/student/learn/${batch.course.slug}`,
+  });
+
+  return added.length;
+}
+
+/**
+ * Take a learner off a batch. Their enrolment (and course access) stays put —
+ * they're just unlinked from the cohort, mirroring an online buyer with no batch.
+ */
+export async function removeBatchStudent(batchId: string, userId: string): Promise<void> {
+  const { count } = await prisma.enrollment.updateMany({
+    where: { batchId, userId },
+    data: { batchId: null },
+  });
+  if (count === 0) return;
+
+  const batch = await prisma.batch.findUnique({
+    where: { id: batchId },
+    select: { enrolledCount: true },
+  });
+  if (batch) {
+    await prisma.batch.update({
+      where: { id: batchId },
+      data: { enrolledCount: Math.max(0, batch.enrolledCount - count) },
+    });
+  }
 }
 
 /** All batches matching a filter, flattened for CSV export (no pagination). */

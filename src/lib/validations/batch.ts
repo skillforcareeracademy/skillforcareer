@@ -54,5 +54,11 @@ export const batchSchema = z.object({
 export const createBatchSchema = batchSchema;
 export const updateBatchSchema = batchSchema;
 
+/** Learners an admin hand-picks onto a batch (walk-ins, offline sign-ups). */
+export const batchStudentsSchema = z.object({
+  userIds: z.array(z.string().min(1)).min(1, "Pick at least one student").max(200),
+});
+
 export type BatchInput = z.infer<typeof batchSchema>;
 export type BatchSchedule = z.infer<typeof scheduleSchema>;
+export type BatchStudentsInput = z.infer<typeof batchStudentsSchema>;
