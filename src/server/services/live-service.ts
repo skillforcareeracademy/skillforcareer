@@ -63,7 +63,9 @@ export async function listMeetingsAdmin(q: MeetingListQuery) {
     prisma.meeting.count({ where }),
     prisma.meeting.findMany({
       where,
-      orderBy: { scheduledStart: "desc" },
+      // Most-recently-created first, so a class an admin just scheduled surfaces
+      // at the top regardless of when it's due (matches the other admin lists).
+      orderBy: { createdAt: "desc" },
       skip: (q.page - 1) * q.pageSize,
       take: q.pageSize,
       include: {
@@ -520,7 +522,9 @@ export async function listOfflineClasses(q: {
     prisma.meeting.count({ where }),
     prisma.meeting.findMany({
       where,
-      orderBy: { scheduledStart: "desc" },
+      // Most-recently-created first, so a class an admin just scheduled surfaces
+      // at the top regardless of when it's due (matches the other admin lists).
+      orderBy: { createdAt: "desc" },
       skip: (q.page - 1) * q.pageSize,
       take: q.pageSize,
       include: {

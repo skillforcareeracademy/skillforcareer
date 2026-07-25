@@ -17,7 +17,7 @@ import {
   FileText,
 } from "lucide-react";
 import { toast } from "sonner";
-import { api } from "@/lib/api-client";
+import { api, ApiError } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -176,9 +176,23 @@ export function CoursePlayer({
     const content = noteDraft.trim();
     if (!content) return;
     const ts = videoRef.current ? Math.floor(videoRef.current.currentTime) : 0;
-    setNoteDraft("");
-    await api.post(`/api/lessons/${currentId}/notes`, { content, timestampSeconds: ts }).catch(() => {});
-    setNotes(await api.get<NoteItem[]>(`/api/lessons/${currentId}/notes`).catch(() => notes));
+    try {
+      // Append the saved note straight from the create response. Previously we
+      // re-fetched the whole list and fell back to a stale copy on failure —
+      // so a hiccup on the refetch made a just-saved note vanish.
+      const res = await api.post<{ id: string }>(`/api/lessons/${currentId}/notes`, {
+        content,
+        timestampSeconds: ts,
+      });
+      setNoteDraft("");
+      setNotes((prev) =>
+        [...prev, { id: res.id, content, timestampSeconds: ts, createdAt: new Date().toISOString() }].sort(
+          (a, b) => a.timestampSeconds - b.timestampSeconds,
+        ),
+      );
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Couldn't save note.");
+    }
   }
   async function removeNote(id: string) {
     setNotes((prev) => prev.filter((n) => n.id !== id));
@@ -187,9 +201,20 @@ export function CoursePlayer({
   async function addBookmark() {
     const ts = videoRef.current ? Math.floor(videoRef.current.currentTime) : 0;
     const label = bmLabel.trim();
-    setBmLabel("");
-    await api.post(`/api/lessons/${currentId}/bookmarks`, { timestampSeconds: ts, label: label || undefined }).catch(() => {});
-    setBookmarks(await api.get<BookmarkItem[]>(`/api/lessons/${currentId}/bookmarks`).catch(() => bookmarks));
+    try {
+      const res = await api.post<{ id: string }>(`/api/lessons/${currentId}/bookmarks`, {
+        timestampSeconds: ts,
+        label: label || undefined,
+      });
+      setBmLabel("");
+      setBookmarks((prev) =>
+        [...prev, { id: res.id, label: label || null, timestampSeconds: ts, createdAt: new Date().toISOString() }].sort(
+          (a, b) => a.timestampSeconds - b.timestampSeconds,
+        ),
+      );
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Couldn't save bookmark.");
+    }
   }
   async function removeBookmark(id: string) {
     setBookmarks((prev) => prev.filter((b) => b.id !== id));
