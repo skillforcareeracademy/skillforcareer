@@ -4,12 +4,13 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import { Loader2, Undo2, Trash2, ReceiptText } from "lucide-react";
+import { Loader2, Undo2, Trash2, ReceiptText, BellRing } from "lucide-react";
 import { api, ApiError } from "@/lib/api-client";
 import {
   PAYMENT_STATUSES,
   PAYMENT_STATUS_LABEL,
   PAYMENT_PROVIDER_LABEL,
+  PAYMENT_METHOD_LABEL,
 } from "@/lib/validations/payment";
 import {
   Sheet,
@@ -39,6 +40,14 @@ interface Refund {
   status: string;
   createdAt: string;
 }
+interface Installment {
+  id: string;
+  installmentNo: number;
+  amount: number;
+  dueDate: string;
+  status: string;
+  paidAt: string | null;
+}
 interface Detail {
   id: string;
   invoiceNumber: string;
@@ -51,10 +60,13 @@ interface Detail {
   currency: string;
   status: string;
   provider: string;
+  method: string | null;
+  account: { name: string; kind: string } | null;
   type: string;
   providerPaymentId: string | null;
   createdAt: string;
   paidAt: string | null;
+  installments: Installment[];
   refunds: Refund[];
   refundedTotal: number;
 }
@@ -154,6 +166,19 @@ function DetailBody({ paymentId, onClosed }: { paymentId: string; onClosed: () =
       setBusy(false);
     }
   }
+  async function remind() {
+    setBusy(true);
+    try {
+      await api.post(`/api/payments/${paymentId}/remind`);
+      toast.success("Reminder sent.");
+      await load();
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Couldn't send reminder.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   if (error) {
     return (
@@ -177,6 +202,12 @@ function DetailBody({ paymentId, onClosed }: { paymentId: string; onClosed: () =
 
   const remaining = data.netAmount - data.refundedTotal;
   const refundable = data.status === "PAID" || data.status === "PARTIALLY_REFUNDED";
+  const hasPendingInstallment = data.installments.some(
+    (i) => i.status !== "PAID" && i.status !== "CANCELLED",
+  );
+  const outstanding =
+    (data.type === "EMI" && hasPendingInstallment) ||
+    ["PENDING", "PROCESSING", "FAILED"].includes(data.status);
 
   return (
     <div className="flex flex-col">
@@ -213,6 +244,8 @@ function DetailBody({ paymentId, onClosed }: { paymentId: string; onClosed: () =
         {/* Meta */}
         <dl className="space-y-2 text-sm">
           {data.courseTitle && <Line label="Course" value={data.courseTitle} />}
+          {data.method && <Line label="Method" value={PAYMENT_METHOD_LABEL[data.method] ?? data.method} />}
+          {data.account && <Line label="Received in" value={data.account.name} />}
           <Line label="Created" value={format(new Date(data.createdAt), "d MMM yyyy, h:mm a")} />
           {data.paidAt && <Line label="Paid" value={format(new Date(data.paidAt), "d MMM yyyy, h:mm a")} />}
           <div className="flex items-center justify-between gap-3">
@@ -233,6 +266,55 @@ function DetailBody({ paymentId, onClosed }: { paymentId: string; onClosed: () =
             </dd>
           </div>
         </dl>
+
+        {outstanding && (
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-50 p-3 dark:bg-amber-500/10">
+            <p className="text-sm text-amber-800 dark:text-amber-200">
+              This payment has an outstanding balance.
+            </p>
+            <Button variant="outline" size="sm" onClick={remind} disabled={busy}>
+              {busy ? <Loader2 className="size-4 animate-spin" /> : <BellRing className="size-4" />}
+              Send reminder
+            </Button>
+          </div>
+        )}
+
+        {/* EMI schedule */}
+        {data.installments.length > 0 && (
+          <section>
+            <p className="mb-3 flex items-center gap-2 text-sm font-medium">
+              <ReceiptText className="size-4 text-muted-foreground" /> Installments
+              <span className="text-muted-foreground font-normal">({data.installments.length})</span>
+            </p>
+            <ul className="divide-y rounded-xl border">
+              {data.installments.map((i) => (
+                <li key={i.id} className="flex items-center justify-between gap-3 p-3 text-sm">
+                  <div className="min-w-0">
+                    <p className="font-medium">
+                      #{i.installmentNo} · {inr(i.amount)}
+                    </p>
+                    <p className="text-muted-foreground text-xs">
+                      Due {format(new Date(i.dueDate), "d MMM yyyy")}
+                    </p>
+                  </div>
+                  <Badge
+                    variant="secondary"
+                    className={cn(
+                      "shrink-0",
+                      i.status === "PAID"
+                        ? STATUS_BADGE.PAID
+                        : i.status === "OVERDUE"
+                          ? STATUS_BADGE.FAILED
+                          : "text-muted-foreground",
+                    )}
+                  >
+                    {i.status === "PAID" ? "Paid" : i.status === "OVERDUE" ? "Overdue" : "Scheduled"}
+                  </Badge>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         {/* Refunds */}
         <section>

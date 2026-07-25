@@ -14,6 +14,8 @@ import {
   Undo2,
   Eye,
   X,
+  Landmark,
+  BellRing,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
@@ -22,7 +24,10 @@ import {
   PAYMENT_STATUS_LABEL,
   PAYMENT_PROVIDERS,
   PAYMENT_PROVIDER_LABEL,
+  PAYMENT_METHODS,
+  PAYMENT_METHOD_LABEL,
 } from "@/lib/validations/payment";
+import { PaymentAccountsDialog } from "@/components/admin/payments/payment-accounts-dialog";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
@@ -79,6 +84,8 @@ interface PaymentRow {
   currency: string;
   status: string;
   provider: string;
+  method: string | null;
+  accountName: string | null;
   createdAt: string;
   paidAt: string | null;
 }
@@ -95,6 +102,7 @@ interface Query {
   courseId?: string;
   status?: string;
   provider?: string;
+  method?: string;
 }
 interface UserOpt {
   id: string;
@@ -104,6 +112,12 @@ interface UserOpt {
 interface CourseOpt {
   id: string;
   title: string;
+}
+interface AccountOpt {
+  id: string;
+  name: string;
+  kind: string;
+  autoReconcile: boolean;
 }
 
 const ALL = "all";
@@ -121,6 +135,7 @@ export function PaymentsClient({
   stats,
   users,
   courses,
+  accounts,
 }: {
   payments: PaymentRow[];
   total: number;
@@ -128,17 +143,22 @@ export function PaymentsClient({
   stats: Stats;
   users: UserOpt[];
   courses: CourseOpt[];
+  accounts: AccountOpt[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const [search, setSearch] = useState(query.search ?? "");
   const [recordOpen, setRecordOpen] = useState(false);
+  const [accountsOpen, setAccountsOpen] = useState(false);
   const [form, setForm] = useState({
     userId: "",
     courseId: "",
     amount: "",
     status: "PAID",
     provider: "MANUAL",
+    method: "UPI",
+    accountId: "",
+    paidAt: "",
     couponCode: "",
     type: "ONE_TIME",
     installments: "3",
@@ -175,7 +195,9 @@ export function PaymentsClient({
   const [detailId, setDetailId] = useState<string | null>(null);
 
   const totalPages = Math.max(1, Math.ceil(total / query.pageSize));
-  const hasFilters = Boolean(query.search || query.courseId || query.status || query.provider);
+  const hasFilters = Boolean(
+    query.search || query.courseId || query.status || query.provider || query.method,
+  );
 
   const setParams = useCallback(
     (next: Record<string, string | number | undefined>) => {
@@ -184,6 +206,7 @@ export function PaymentsClient({
         course: query.courseId,
         status: query.status,
         provider: query.provider,
+        method: query.method,
         page: query.page,
         ...next,
       };
@@ -192,6 +215,7 @@ export function PaymentsClient({
       if (merged.course) p.set("course", String(merged.course));
       if (merged.status) p.set("status", String(merged.status));
       if (merged.provider) p.set("provider", String(merged.provider));
+      if (merged.method) p.set("method", String(merged.method));
       if (merged.page && Number(merged.page) > 1) p.set("page", String(merged.page));
       const qs = p.toString();
       router.push(qs ? `${pathname}?${qs}` : pathname);
@@ -201,7 +225,7 @@ export function PaymentsClient({
 
   function clearFilters() {
     setSearch("");
-    setParams({ search: undefined, course: undefined, status: undefined, provider: undefined, page: 1 });
+    setParams({ search: undefined, course: undefined, status: undefined, provider: undefined, method: undefined, page: 1 });
   }
   function set<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -210,20 +234,27 @@ export function PaymentsClient({
   async function onRecord(e: FormEvent) {
     e.preventDefault();
     setRecording(true);
+    const isEmi = form.method === "EMI";
     try {
       await api.post("/api/payments", {
         userId: form.userId,
         courseId: form.courseId || undefined,
         amount: Number(form.amount),
         status: form.status,
-        provider: form.provider,
+        provider: form.method === "ONLINE" ? "RAZORPAY" : "MANUAL",
+        method: form.method,
+        accountId: form.accountId || undefined,
+        paidAt:
+          form.status === "PAID" && form.paidAt
+            ? new Date(form.paidAt).toISOString()
+            : undefined,
         couponCode: coupon ? coupon.code : undefined,
-        type: form.type,
-        installments: form.type === "EMI" ? Number(form.installments) : undefined,
+        type: isEmi ? "EMI" : "ONE_TIME",
+        installments: isEmi ? Number(form.installments) : undefined,
       });
       toast.success("Payment recorded.");
       setRecordOpen(false);
-      setForm({ userId: "", courseId: "", amount: "", status: "PAID", provider: "MANUAL", couponCode: "", type: "ONE_TIME", installments: "3" });
+      setForm({ userId: "", courseId: "", amount: "", status: "PAID", provider: "MANUAL", method: "UPI", accountId: "", paidAt: "", couponCode: "", type: "ONE_TIME", installments: "3" });
       setCoupon(null);
       router.refresh();
     } catch (err) {
@@ -233,6 +264,16 @@ export function PaymentsClient({
       } else toast.error("Couldn't record payment.");
     } finally {
       setRecording(false);
+    }
+  }
+
+  async function sendReminder(p: PaymentRow) {
+    try {
+      const res = await api.post<{ message: string }>(`/api/payments/${p.id}/remind`);
+      toast.success(res.message ?? "Reminder sent.");
+    } catch (err) {
+      if (err instanceof ApiError) toast.error(err.message);
+      else toast.error("Couldn't send reminder.");
     }
   }
 
@@ -273,6 +314,9 @@ export function PaymentsClient({
           <DropdownMenuItem onClick={() => setDetailId(p.id)}>
             <Eye className="size-4" /> View &amp; refund
           </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => sendReminder(p)}>
+            <BellRing className="size-4" /> Send reminder
+          </DropdownMenuItem>
           <DropdownMenuItem
             className="text-destructive focus:text-destructive"
             onClick={() => setDeleting(p)}
@@ -312,20 +356,27 @@ export function PaymentsClient({
     },
     { key: "status", header: "Status", cell: statusBadge },
     {
-      key: "provider",
-      header: "Provider",
+      key: "method",
+      header: "Method",
       cell: (p) => (
-        <span className="text-muted-foreground text-sm">
-          {PAYMENT_PROVIDER_LABEL[p.provider] ?? p.provider}
-        </span>
+        <div className="text-sm">
+          <p>
+            {p.method
+              ? (PAYMENT_METHOD_LABEL[p.method] ?? p.method)
+              : (PAYMENT_PROVIDER_LABEL[p.provider] ?? p.provider)}
+          </p>
+          {p.accountName && (
+            <p className="text-muted-foreground truncate text-xs">{p.accountName}</p>
+          )}
+        </div>
       ),
     },
     {
       key: "date",
-      header: "Date",
+      header: "Date & time",
       cell: (p) => (
         <span className="text-muted-foreground text-sm whitespace-nowrap">
-          {format(new Date(p.createdAt), "d MMM yyyy")}
+          {format(new Date(p.paidAt ?? p.createdAt), "d MMM yyyy, h:mm a")}
         </span>
       ),
     },
@@ -369,9 +420,14 @@ export function PaymentsClient({
         title="Payments"
         description="Track revenue, record payments and manage refunds."
         actions={
-          <Button onClick={() => setRecordOpen(true)}>
-            <Plus className="size-4" /> Record payment
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setAccountsOpen(true)}>
+              <Landmark className="size-4" /> Accounts
+            </Button>
+            <Button onClick={() => setRecordOpen(true)}>
+              <Plus className="size-4" /> Record payment
+            </Button>
+          </div>
         }
       />
 
@@ -450,6 +506,24 @@ export function PaymentsClient({
                   {PAYMENT_PROVIDERS.map((s) => (
                     <SelectItem key={s} value={s}>
                       {PAYMENT_PROVIDER_LABEL[s]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
+                value={query.method ?? ALL}
+                onValueChange={(v) => setParams({ method: !v || v === ALL ? undefined : v, page: 1 })}
+              >
+                <SelectTrigger className="w-32">
+                  <SelectValue>
+                    {(v) => (!v || v === ALL ? "Method" : PAYMENT_METHOD_LABEL[String(v)])}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>All methods</SelectItem>
+                  {PAYMENT_METHODS.map((m) => (
+                    <SelectItem key={m} value={m}>
+                      {PAYMENT_METHOD_LABEL[m]}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -553,21 +627,59 @@ export function PaymentsClient({
                 </Select>
               </div>
             </div>
-            <div className="space-y-1.5">
-              <Label>Provider</Label>
-              <Select value={form.provider} onValueChange={(v) => v && set("provider", v)}>
-                <SelectTrigger className="w-full">
-                  <SelectValue>{(v) => PAYMENT_PROVIDER_LABEL[String(v)]}</SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {PAYMENT_PROVIDERS.map((s) => (
-                    <SelectItem key={s} value={s}>
-                      {PAYMENT_PROVIDER_LABEL[s]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label>Payment method</Label>
+                <Select value={form.method} onValueChange={(v) => v && set("method", v)}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue>{(v) => PAYMENT_METHOD_LABEL[String(v)]}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PAYMENT_METHODS.map((m) => (
+                      <SelectItem key={m} value={m}>
+                        {PAYMENT_METHOD_LABEL[m]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Received in</Label>
+                <Select value={form.accountId || NONE} onValueChange={(v) => set("accountId", v === NONE ? "" : (v ?? ""))}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue>
+                      {(v) =>
+                        !v || v === NONE
+                          ? "Not specified"
+                          : (accounts.find((a) => a.id === v)?.name ?? "Not specified")
+                      }
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NONE}>Not specified</SelectItem>
+                    {accounts.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>
+                        {a.name}
+                        {a.autoReconcile ? " · auto" : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
+
+            {form.status === "PAID" && (
+              <div className="space-y-1.5">
+                <Label htmlFor="pay-date">Payment date &amp; time</Label>
+                <Input
+                  id="pay-date"
+                  type="datetime-local"
+                  value={form.paidAt}
+                  onChange={(e) => set("paidAt", e.target.value)}
+                />
+                <p className="text-muted-foreground text-xs">Leave blank to use the current time.</p>
+              </div>
+            )}
 
             {/* Coupon */}
             <div className="space-y-1.5">
@@ -594,38 +706,27 @@ export function PaymentsClient({
               )}
             </div>
 
-            {/* EMI */}
-            <div className="grid grid-cols-2 gap-4">
+            {/* EMI — shown when the method is EMI */}
+            {form.method === "EMI" && (
               <div className="space-y-1.5">
-                <Label>Payment type</Label>
-                <Select value={form.type} onValueChange={(v) => v && set("type", v)}>
+                <Label htmlFor="pay-emi">Installments</Label>
+                <Select value={form.installments} onValueChange={(v) => v && set("installments", v)}>
                   <SelectTrigger className="w-full">
-                    <SelectValue>{(v) => (v === "EMI" ? "EMI (installments)" : "One-time")}</SelectValue>
+                    <SelectValue>{(v) => `${v} months`}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="ONE_TIME">One-time</SelectItem>
-                    <SelectItem value="EMI">EMI (installments)</SelectItem>
+                    {[2, 3, 4, 6, 9, 12].map((n) => (
+                      <SelectItem key={n} value={String(n)}>
+                        {n} months
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
+                <p className="text-muted-foreground text-xs">
+                  A monthly installment schedule is generated over the net amount.
+                </p>
               </div>
-              {form.type === "EMI" && (
-                <div className="space-y-1.5">
-                  <Label htmlFor="pay-emi">Installments</Label>
-                  <Select value={form.installments} onValueChange={(v) => v && set("installments", v)}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue>{(v) => `${v} months`}</SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {[2, 3, 4, 6, 9, 12].map((n) => (
-                        <SelectItem key={n} value={String(n)}>
-                          {n} months
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-            </div>
+            )}
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setRecordOpen(false)}>
@@ -641,6 +742,8 @@ export function PaymentsClient({
       </Dialog>
 
       <PaymentDetailSheet paymentId={detailId} onOpenChange={(o) => !o && setDetailId(null)} />
+
+      <PaymentAccountsDialog open={accountsOpen} onOpenChange={setAccountsOpen} />
 
       <AlertDialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>
         <AlertDialogContent>

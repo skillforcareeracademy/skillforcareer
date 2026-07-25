@@ -7,6 +7,7 @@ import {
   listUsersForSelect,
   listCoursesForSelect,
 } from "@/server/services/payment-service";
+import { listAccountsForSelect } from "@/server/services/payment-account-service";
 import { PaymentsClient } from "@/components/admin/payments/payments-client";
 
 export const metadata: Metadata = { title: "Payments" };
@@ -29,13 +30,15 @@ export default async function PaymentsPage({
     courseId: str(sp.course),
     status: str(sp.status),
     provider: str(sp.provider),
+    method: str(sp.method),
   };
 
-  const [{ payments, total }, stats, users, courses] = await Promise.all([
+  const [{ payments, total }, stats, users, courses, accounts] = await Promise.all([
     listPaymentsAdmin(query),
     paymentStats(),
     listUsersForSelect(),
     listCoursesForSelect(),
+    listAccountsForSelect(),
   ]);
 
   return (
@@ -46,6 +49,7 @@ export default async function PaymentsPage({
       stats={stats}
       users={users}
       courses={courses}
+      accounts={accounts}
     />
   );
 }

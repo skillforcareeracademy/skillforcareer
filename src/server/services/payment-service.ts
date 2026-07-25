@@ -4,6 +4,12 @@ import { notify, notifyStaff } from "./notification-service";
 import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
 import { validateCoupon } from "@/server/services/coupon-service";
+import { getRazorpayAccount } from "@/server/services/payment-account-service";
+import {
+  createRazorpayOrder,
+  verifyCheckoutSignature,
+  razorpayKeyId,
+} from "@/lib/razorpay";
 import type { RecordPaymentInput, RefundInput } from "@/lib/validations/payment";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -32,6 +38,7 @@ export interface PaymentListQuery {
   courseId?: string;
   status?: string;
   provider?: string;
+  method?: string;
 }
 
 export async function listPaymentsAdmin(q: PaymentListQuery) {
@@ -47,6 +54,7 @@ export async function listPaymentsAdmin(q: PaymentListQuery) {
   if (q.courseId) and.push({ courseId: q.courseId });
   if (q.status) and.push({ status: q.status as Prisma.PaymentWhereInput["status"] });
   if (q.provider) and.push({ provider: q.provider as Prisma.PaymentWhereInput["provider"] });
+  if (q.method) and.push({ method: q.method as Prisma.PaymentWhereInput["method"] });
   const where: Prisma.PaymentWhereInput = and.length ? { AND: and } : {};
 
   const [total, rows] = await Promise.all([
@@ -59,6 +67,7 @@ export async function listPaymentsAdmin(q: PaymentListQuery) {
       include: {
         user: { select: { name: true, email: true, avatarUrl: true } },
         course: { select: { title: true } },
+        account: { select: { name: true } },
       },
     }),
   ]);
@@ -77,6 +86,8 @@ export async function listPaymentsAdmin(q: PaymentListQuery) {
       currency: p.currency,
       status: p.status,
       provider: p.provider,
+      method: p.method,
+      accountName: p.account?.name ?? null,
       createdAt: p.createdAt.toISOString(),
       paidAt: p.paidAt ? p.paidAt.toISOString() : null,
     })),
@@ -111,6 +122,8 @@ export async function getPaymentDetail(id: string) {
     include: {
       user: { select: { name: true, email: true, avatarUrl: true } },
       course: { select: { title: true } },
+      account: { select: { name: true, kind: true } },
+      installments: { orderBy: { installmentNo: "asc" } },
       refunds: { orderBy: { createdAt: "desc" } },
     },
   });
@@ -128,10 +141,20 @@ export async function getPaymentDetail(id: string) {
     currency: p.currency,
     status: p.status,
     provider: p.provider,
+    method: p.method,
+    account: p.account ? { name: p.account.name, kind: p.account.kind } : null,
     type: p.type,
     providerPaymentId: p.providerPaymentId,
     createdAt: p.createdAt.toISOString(),
     paidAt: p.paidAt ? p.paidAt.toISOString() : null,
+    installments: p.installments.map((i) => ({
+      id: i.id,
+      installmentNo: i.installmentNo,
+      amount: num(i.amount),
+      dueDate: i.dueDate.toISOString(),
+      status: i.status,
+      paidAt: i.paidAt ? i.paidAt.toISOString() : null,
+    })),
     refunds: p.refunds.map((r) => ({
       id: r.id,
       amount: num(r.amount),
@@ -177,12 +200,29 @@ export async function recordPayment(input: RecordPaymentInput): Promise<string> 
   }
   const net = Math.max(0, Math.round((input.amount - discountAmount) * 100) / 100);
 
+  // Booked-against account (optional). Guard it exists so a stale picker can't
+  // orphan the reference.
+  let accountId: string | null = null;
+  if (input.accountId) {
+    const account = await prisma.paymentAccount.findUnique({
+      where: { id: input.accountId },
+      select: { id: true },
+    });
+    if (!account) throw AppError.badRequest("Selected payment account no longer exists.");
+    accountId = account.id;
+  }
+
+  // Admin may backdate a cash/QR payment they're recording after the fact.
+  const paidAt =
+    input.status === "PAID" ? (input.paidAt ? new Date(input.paidAt) : new Date()) : null;
+
   const invoiceNumber = await uniqueInvoice(new Date().getFullYear());
   const payment = await prisma.payment.create({
     data: {
       userId: input.userId,
       courseId: input.courseId || null,
       couponId,
+      accountId,
       invoiceNumber,
       amount: new Prisma.Decimal(input.amount),
       discountAmount: new Prisma.Decimal(discountAmount),
@@ -192,7 +232,8 @@ export async function recordPayment(input: RecordPaymentInput): Promise<string> 
       status: input.status,
       provider: input.provider,
       type: input.type,
-      paidAt: input.status === "PAID" ? new Date() : null,
+      method: input.method ?? null,
+      paidAt,
     },
     select: { id: true },
   });
@@ -292,4 +333,249 @@ export async function deletePayment(id: string): Promise<void> {
   if (!existing) throw AppError.notFound("Payment not found.");
   await prisma.refund.deleteMany({ where: { paymentId: id } });
   await prisma.payment.delete({ where: { id } });
+}
+
+// ── Online checkout (Razorpay) ─────────────────────────────────────────────────
+// A learner buys a paid course: we create a Razorpay order + a PENDING payment,
+// the browser completes checkout, and fulfilment (mark PAID + enrol) happens
+// idempotently — driven authoritatively by the webhook, with the client callback
+// as a fast-path. Whichever lands first wins; the other is a no-op.
+
+export interface CheckoutSession {
+  paymentId: string;
+  orderId: string;
+  amount: number; // paise
+  currency: string;
+  keyId: string | null;
+  courseTitle: string;
+  prefill: { name: string; email: string };
+}
+
+export async function createCourseOrder(
+  userId: string,
+  courseId: string,
+  couponCode?: string,
+): Promise<CheckoutSession> {
+  const course = await prisma.course.findUnique({
+    where: { id: courseId },
+    select: { id: true, title: true, slug: true, status: true, price: true, discountPrice: true },
+  });
+  if (!course) throw AppError.notFound("Course not found.");
+  if (course.status !== "PUBLISHED") throw AppError.badRequest("This course isn't available yet.");
+
+  const already = await prisma.enrollment.findUnique({
+    where: { userId_courseId: { userId, courseId } },
+    select: { id: true },
+  });
+  if (already) throw AppError.badRequest("You're already enrolled in this course.");
+
+  const base = num(course.discountPrice ?? course.price);
+  if (base <= 0) throw AppError.badRequest("This course is free — enrol directly.");
+
+  let discountAmount = 0;
+  let couponId: string | null = null;
+  if (couponCode) {
+    const r = await validateCoupon(couponCode, base, courseId);
+    if (!r.valid) throw AppError.badRequest(r.reason ?? "Invalid coupon.");
+    discountAmount = r.discount ?? 0;
+    couponId = r.couponId ?? null;
+  }
+  const net = Math.max(1, Math.round((base - discountAmount) * 100) / 100);
+  const amountPaise = Math.round(net * 100);
+
+  const [user, razorAccount] = await Promise.all([
+    prisma.user.findUnique({ where: { id: userId }, select: { name: true, email: true } }),
+    getRazorpayAccount(),
+  ]);
+
+  const invoiceNumber = await uniqueInvoice(new Date().getFullYear());
+  const order = await createRazorpayOrder({
+    amountPaise,
+    currency: "INR",
+    receipt: invoiceNumber,
+    notes: { courseId, userId },
+  });
+
+  const payment = await prisma.payment.create({
+    data: {
+      userId,
+      courseId,
+      couponId,
+      accountId: razorAccount?.id ?? null,
+      invoiceNumber,
+      amount: new Prisma.Decimal(base),
+      discountAmount: new Prisma.Decimal(discountAmount),
+      taxAmount: new Prisma.Decimal(0),
+      netAmount: new Prisma.Decimal(net),
+      currency: "INR",
+      status: "PENDING",
+      provider: "RAZORPAY",
+      type: "ONE_TIME",
+      method: "ONLINE",
+      providerOrderId: order.id,
+    },
+    select: { id: true },
+  });
+
+  return {
+    paymentId: payment.id,
+    orderId: order.id,
+    amount: amountPaise,
+    currency: "INR",
+    keyId: razorpayKeyId(),
+    courseTitle: course.title,
+    prefill: { name: user?.name ?? "", email: user?.email ?? "" },
+  };
+}
+
+/**
+ * Mark a checkout payment PAID and enrol the learner — idempotently. The status
+ * flip is an atomic conditional update; only the caller that actually flips it
+ * (count === 1) runs the enrolment + counter + coupon + notifications, so the
+ * webhook and the client callback can both call this safely.
+ */
+async function fulfillPaidCheckout(
+  paymentId: string,
+  providerPaymentId?: string,
+): Promise<{ slug: string | null; alreadyPaid: boolean }> {
+  const payment = await prisma.payment.findUnique({
+    where: { id: paymentId },
+    select: {
+      id: true,
+      userId: true,
+      courseId: true,
+      couponId: true,
+      accountId: true,
+      invoiceNumber: true,
+      netAmount: true,
+      course: { select: { slug: true, title: true } },
+      user: { select: { name: true } },
+    },
+  });
+  if (!payment) throw AppError.notFound("Payment not found.");
+
+  const razorAccount = payment.accountId ? null : await getRazorpayAccount();
+
+  const claim = await prisma.payment.updateMany({
+    where: { id: paymentId, status: { not: "PAID" } },
+    data: {
+      status: "PAID",
+      paidAt: new Date(),
+      method: "ONLINE",
+      provider: "RAZORPAY",
+      ...(providerPaymentId ? { providerPaymentId } : {}),
+      ...(payment.accountId ? {} : razorAccount ? { accountId: razorAccount.id } : {}),
+    },
+  });
+  if (claim.count === 0) {
+    return { slug: payment.course?.slug ?? null, alreadyPaid: true };
+  }
+
+  // We own fulfilment for this payment.
+  if (payment.courseId) {
+    const existing = await prisma.enrollment.findUnique({
+      where: { userId_courseId: { userId: payment.userId, courseId: payment.courseId } },
+      select: { id: true },
+    });
+    let enrollmentId = existing?.id ?? null;
+    if (!existing) {
+      const e = await prisma.enrollment.create({
+        data: { userId: payment.userId, courseId: payment.courseId, status: "ACTIVE", source: "PURCHASE" },
+        select: { id: true },
+      });
+      enrollmentId = e.id;
+      await prisma.course.update({
+        where: { id: payment.courseId },
+        data: { enrollmentCount: { increment: 1 } },
+      });
+    }
+    await prisma.payment.update({ where: { id: paymentId }, data: { enrollmentId } });
+  }
+  if (payment.couponId) {
+    await prisma.coupon.update({ where: { id: payment.couponId }, data: { usedCount: { increment: 1 } } });
+  }
+
+  const amount = `₹${num(payment.netAmount).toLocaleString("en-IN")}`;
+  await Promise.all([
+    notify({
+      userIds: [payment.userId],
+      type: "PAYMENT",
+      title: "Payment successful",
+      message: `We've received ${amount}${payment.course ? ` for “${payment.course.title}”` : ""}. Invoice ${payment.invoiceNumber}.`,
+      actionUrl: payment.course ? `/student/learn/${payment.course.slug}` : "/student/profile",
+    }),
+    notifyStaff({
+      type: "PAYMENT",
+      title: "Online payment received",
+      message: `${amount} from ${payment.user?.name ?? "a learner"}. Invoice ${payment.invoiceNumber}.`,
+      actionUrl: "/admin/payments",
+    }),
+  ]);
+
+  return { slug: payment.course?.slug ?? null, alreadyPaid: false };
+}
+
+/** Client-side checkout callback — verified, then fulfilled. */
+export async function verifyAndFulfillCheckout(input: {
+  paymentId: string;
+  razorpayOrderId: string;
+  razorpayPaymentId: string;
+  razorpaySignature: string;
+}): Promise<{ slug: string | null }> {
+  const ok = verifyCheckoutSignature({
+    orderId: input.razorpayOrderId,
+    paymentId: input.razorpayPaymentId,
+    signature: input.razorpaySignature,
+  });
+  if (!ok) throw AppError.badRequest("Payment verification failed.");
+
+  const payment = await prisma.payment.findUnique({
+    where: { id: input.paymentId },
+    select: { id: true, providerOrderId: true },
+  });
+  if (!payment) throw AppError.notFound("Payment not found.");
+  if (payment.providerOrderId !== input.razorpayOrderId) {
+    throw AppError.badRequest("Order mismatch.");
+  }
+  const { slug } = await fulfillPaidCheckout(input.paymentId, input.razorpayPaymentId);
+  return { slug };
+}
+
+/** Server-to-server webhook — the authoritative fulfilment path. */
+export async function handleRazorpayWebhook(event: unknown): Promise<{ handled: boolean }> {
+  const e = event as {
+    event?: string;
+    payload?: {
+      payment?: { entity?: { id?: string; order_id?: string } };
+      order?: { entity?: { id?: string } };
+    };
+  };
+  const type = e?.event;
+
+  if (type === "payment.captured" || type === "order.paid") {
+    const orderId =
+      e.payload?.payment?.entity?.order_id ?? e.payload?.order?.entity?.id ?? null;
+    const providerPaymentId = e.payload?.payment?.entity?.id;
+    if (!orderId) return { handled: false };
+    const payment = await prisma.payment.findFirst({
+      where: { providerOrderId: orderId },
+      select: { id: true },
+    });
+    if (!payment) return { handled: false };
+    await fulfillPaidCheckout(payment.id, providerPaymentId);
+    return { handled: true };
+  }
+
+  if (type === "payment.failed") {
+    const orderId = e.payload?.payment?.entity?.order_id;
+    if (orderId) {
+      await prisma.payment.updateMany({
+        where: { providerOrderId: orderId, status: { not: "PAID" } },
+        data: { status: "FAILED" },
+      });
+    }
+    return { handled: true };
+  }
+
+  return { handled: false };
 }

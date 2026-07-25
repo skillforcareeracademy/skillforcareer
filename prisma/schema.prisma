@@ -128,6 +128,25 @@ enum PaymentType {
   SUBSCRIPTION
 }
 
+// How the learner actually paid — distinct from the gateway/provider.
+enum PaymentMethod {
+  UPI
+  ONLINE
+  CASH
+  EMI
+}
+
+// A configurable receiving account. RAZORPAY-kind accounts reconcile
+// automatically via webhook; the rest (personal QR/UPI, bank, cash) are
+// reconciled by hand when the admin records the payment.
+enum PaymentAccountKind {
+  RAZORPAY
+  UPI_QR
+  BANK
+  CASH
+  OTHER
+}
+
 enum CouponType {
   PERCENTAGE
   FIXED
@@ -877,19 +896,23 @@ model Payment {
   status            PaymentStatus   @default(PENDING)
   provider          PaymentProvider @default(RAZORPAY)
   type              PaymentType     @default(ONE_TIME)
+  method            PaymentMethod?
+  accountId         String?
   providerOrderId   String?
   providerPaymentId String?
   providerSignature String?
   metadata          Json?
   paidAt            DateTime?
+  lastRemindedAt    DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user         User          @relation(fields: [userId], references: [id], onUpdate: NoAction)
-  course       Course?       @relation(fields: [courseId], references: [id], onUpdate: NoAction)
-  enrollment   Enrollment?   @relation(fields: [enrollmentId], references: [id], onUpdate: NoAction)
-  coupon       Coupon?       @relation(fields: [couponId], references: [id], onUpdate: NoAction)
+  user         User            @relation(fields: [userId], references: [id], onUpdate: NoAction)
+  course       Course?         @relation(fields: [courseId], references: [id], onUpdate: NoAction)
+  enrollment   Enrollment?     @relation(fields: [enrollmentId], references: [id], onUpdate: NoAction)
+  coupon       Coupon?         @relation(fields: [couponId], references: [id], onUpdate: NoAction)
+  account      PaymentAccount? @relation(fields: [accountId], references: [id], onUpdate: NoAction)
   installments Installment[]
   refunds      Refund[]
 
@@ -897,7 +920,27 @@ model Payment {
   @@index([courseId])
   @@index([enrollmentId])
   @@index([couponId])
+  @@index([accountId])
   @@index([status])
+}
+
+model PaymentAccount {
+  id            String             @id @default(cuid())
+  name          String
+  kind          PaymentAccountKind @default(UPI_QR)
+  // UPI id / bank hint / free-text label for the account.
+  identifier    String?
+  // Razorpay accounts auto-reconcile via webhook; others are marked by hand.
+  autoReconcile Boolean            @default(false)
+  isActive      Boolean            @default(true)
+  notes         String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  payments Payment[]
+
+  @@index([isActive])
 }
 
 model Coupon {
@@ -938,6 +981,7 @@ model Installment {
   dueDate       DateTime
   status        InstallmentStatus @default(SCHEDULED)
   paidAt        DateTime?
+  lastRemindedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

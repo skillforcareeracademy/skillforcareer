@@ -18,8 +18,7 @@ import {
 import { getPublicCourseBySlug } from "@/server/services/course-service";
 import { getSessionUser } from "@/lib/auth/api-guard";
 import { isEnrolled } from "@/server/services/enrollment-service";
-import { EnrollButton } from "@/components/marketing/enroll-button";
-import { CouponApply } from "@/components/marketing/coupon-apply";
+import { PurchasePanel } from "@/components/marketing/purchase-panel";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -204,15 +203,14 @@ export default async function CourseDetailPage({
                   )}
                 </div>
 
-                {!isFree && !enrolled && <CouponApply courseId={c.id} price={effective} />}
-
                 <div className="space-y-2.5">
-                  <EnrollButton
+                  <PurchasePanel
                     courseId={c.id}
                     slug={c.slug}
                     isAuthed={Boolean(user)}
                     isEnrolled={enrolled}
                     isFree={isFree}
+                    price={effective}
                   />
                   {enrolled && (
                     <p className="text-muted-foreground text-center text-xs">
