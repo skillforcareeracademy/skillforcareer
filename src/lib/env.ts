@@ -40,8 +40,27 @@ const serverSchema = z.object({
 
   EVENT_SIGNING_SECRET: z.string().min(16).optional(),
 
-  STORAGE_DRIVER: z.enum(["local", "s3"]).default("local"),
+  // Where uploaded bytes live. `local` writes to STORAGE_LOCAL_DIR, which only
+  // works on a host with a writable, persistent disk — NOT on Vercel, whose
+  // filesystem is read-only apart from /tmp and is discarded between requests.
+  // Serverless therefore defaults to `db`; set STORAGE_DRIVER explicitly to
+  // override. See src/lib/storage.ts.
+  STORAGE_DRIVER: z
+    .enum(["local", "db", "s3"])
+    .default(process.env.VERCEL ? "db" : "local"),
   STORAGE_LOCAL_DIR: z.string().default("./storage/uploads"),
+
+  // S3-compatible object storage (AWS S3, Cloudflare R2, Backblaze B2, MinIO…).
+  // Only read when STORAGE_DRIVER=s3. Any S3-compatible endpoint works, so the
+  // bucket stays portable — no vendor lock-in.
+  S3_BUCKET: z.string().optional(),
+  S3_REGION: z.string().default("ap-south-1"),
+  S3_ENDPOINT: z.string().url().optional(),
+  S3_ACCESS_KEY_ID: z.string().optional(),
+  S3_SECRET_ACCESS_KEY: z.string().optional(),
+  // Public CDN/base URL for the bucket. When unset, files are streamed back
+  // through /api/files/<key> instead of being linked directly.
+  S3_PUBLIC_BASE_URL: z.string().url().optional(),
 
   // Live signaling runs as its own process — SIGNAL_URL is where the browser
   // connects, SIGNAL_PORT/ALLOWED_ORIGINS configure that process itself.

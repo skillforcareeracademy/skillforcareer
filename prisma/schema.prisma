@@ -1251,6 +1251,23 @@ model EventOutbox {
   @@index([createdAt])
 }
 
+/// Uploaded bytes held in the database (STORAGE_DRIVER=db). Vercel's filesystem
+/// is read-only apart from /tmp and is discarded between requests, so the
+/// `local` driver cannot work there; keeping bytes here fixes uploads without
+/// renting an object store. Served back by GET /api/files/<id><ext>, which sets
+/// immutable cache headers so the CDN fetches each asset only once.
+/// Large media (class recordings) belongs on S3 — see src/lib/storage.ts.
+model MediaAsset {
+  id        String   @id @default(cuid())
+  mime      String
+  ext       String
+  size      Int
+  data      Bytes
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
 // ── Lead / CRM ────────────────────────────────────────────────────────────────
 
 enum LeadStatus {
