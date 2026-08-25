@@ -3,6 +3,12 @@ import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
 import { ROLES } from "@/config/roles";
 import { notify } from "./notification-service";
+import {
+  bumpBatchEnrolledCount,
+  bumpCourseEnrollmentCount,
+  moveEnrollmentsToBatch,
+  unlinkEnrollmentFromBatch,
+} from "@/server/repositories/counters";
 import type { BatchInput, BatchSchedule } from "@/lib/validations/batch";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -355,47 +361,51 @@ export async function addBatchStudents(batchId: string, userIds: string[]): Prom
   });
   const byUser = new Map(existing.map((e) => [e.userId, e]));
 
-  const ops: Prisma.PrismaPromise<unknown>[] = [];
-  const added: string[] = [];
-  let newEnrolments = 0;
+  /** Already own the course but sit on another batch (or none) — move them. */
+  const moveIds: string[] = [];
+  /** Brand new to the course — enrol them. */
+  const fresh: string[] = [];
 
   for (const userId of ids) {
     const e = byUser.get(userId);
     if (e) {
       if (e.batchId === batchId) continue; // already on this batch
-      ops.push(
-        prisma.enrollment.update({
-          where: { id: e.id },
-          data: { batchId, status: "ACTIVE" },
-        }),
-      );
+      moveIds.push(e.id);
     } else {
-      ops.push(
-        prisma.enrollment.create({
-          data: { userId, courseId: batch.courseId, batchId, status: "ACTIVE", source: "ADMIN_GRANT" },
-        }),
-      );
-      newEnrolments += 1;
+      fresh.push(userId);
     }
-    added.push(userId);
   }
 
+  const added = [
+    ...fresh,
+    ...moveIds.map((id) => existing.find((e) => e.id === id)!.userId),
+  ];
   if (added.length === 0) return 0;
 
-  if (newEnrolments > 0) {
+  // Four statements, whatever the roster size. Per-row `create`/`update` calls
+  // fan out into a relation-integrity SELECT each under relationMode="prisma",
+  // and against a database a region away that overran the 5 s transaction
+  // timeout as soon as two learners were picked at once — see
+  // src/server/repositories/counters.ts.
+  const ops: Prisma.PrismaPromise<unknown>[] = [];
+  if (fresh.length > 0) {
     ops.push(
-      prisma.course.update({
-        where: { id: batch.courseId },
-        data: { enrollmentCount: { increment: newEnrolments } },
+      prisma.enrollment.createMany({
+        data: fresh.map((userId) => ({
+          userId,
+          courseId: batch.courseId,
+          batchId,
+          status: "ACTIVE" as const,
+          source: "ADMIN_GRANT" as const,
+        })),
       }),
     );
+    ops.push(bumpCourseEnrollmentCount(batch.courseId, fresh.length));
   }
-  ops.push(
-    prisma.batch.update({
-      where: { id: batchId },
-      data: { enrolledCount: { increment: added.length } },
-    }),
-  );
+  if (moveIds.length > 0) {
+    ops.push(moveEnrollmentsToBatch(moveIds, batchId));
+  }
+  ops.push(bumpBatchEnrolledCount(batchId, added.length));
 
   await prisma.$transaction(ops);
 
@@ -415,22 +425,10 @@ export async function addBatchStudents(batchId: string, userIds: string[]): Prom
  * they're just unlinked from the cohort, mirroring an online buyer with no batch.
  */
 export async function removeBatchStudent(batchId: string, userId: string): Promise<void> {
-  const { count } = await prisma.enrollment.updateMany({
-    where: { batchId, userId },
-    data: { batchId: null },
-  });
+  const count = await unlinkEnrollmentFromBatch(batchId, userId);
   if (count === 0) return;
 
-  const batch = await prisma.batch.findUnique({
-    where: { id: batchId },
-    select: { enrolledCount: true },
-  });
-  if (batch) {
-    await prisma.batch.update({
-      where: { id: batchId },
-      data: { enrolledCount: Math.max(0, batch.enrolledCount - count) },
-    });
-  }
+  await bumpBatchEnrolledCount(batchId, -count);
 }
 
 /** All batches matching a filter, flattened for CSV export (no pagination). */

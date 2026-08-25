@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { notify, notifyStaff } from "./notification-service";
 import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
+import { bumpCourseEnrollmentCount } from "@/server/repositories/counters";
 import { validateCoupon } from "@/server/services/coupon-service";
 import { getRazorpayAccount } from "@/server/services/payment-account-service";
 import {
@@ -484,10 +485,7 @@ async function fulfillPaidCheckout(
         select: { id: true },
       });
       enrollmentId = e.id;
-      await prisma.course.update({
-        where: { id: payment.courseId },
-        data: { enrollmentCount: { increment: 1 } },
-      });
+      await bumpCourseEnrollmentCount(payment.courseId, 1);
     }
     await prisma.payment.update({ where: { id: paymentId }, data: { enrollmentId } });
   }

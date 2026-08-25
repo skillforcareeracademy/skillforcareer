@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { notify } from "./notification-service";
 import { AppError } from "@/lib/api/errors";
+import { bumpCourseEnrollmentCount } from "@/server/repositories/counters";
 
 export async function isEnrolled(userId: string, courseId: string): Promise<boolean> {
   const e = await prisma.enrollment.findUnique({
@@ -25,9 +26,12 @@ export async function enrollInCourse(userId: string, courseId: string): Promise<
   });
   if (existing) return { slug: course.slug };
 
+  // Raw counter bump rather than `course.update` — see counters.ts: under
+  // relationMode="prisma" that update fans out into a SELECT per relation and
+  // on its own overran this transaction's 5 s budget.
   await prisma.$transaction([
     prisma.enrollment.create({ data: { userId, courseId, status: "ACTIVE" } }),
-    prisma.course.update({ where: { id: courseId }, data: { enrollmentCount: { increment: 1 } } }),
+    bumpCourseEnrollmentCount(courseId, 1),
   ]);
 
   await notify({
