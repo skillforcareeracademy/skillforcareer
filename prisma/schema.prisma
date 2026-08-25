@@ -1261,6 +1261,8 @@ model MediaAsset {
   id        String   @id @default(cuid())
   mime      String
   ext       String
+  /// The uploader's own filename, echoed back in the URL and Content-Disposition.
+  name      String?
   size      Int
   data      Bytes
   createdAt DateTime @default(now())

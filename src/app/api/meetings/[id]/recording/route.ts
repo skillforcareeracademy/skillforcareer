@@ -28,7 +28,7 @@ export const POST = withRoute(async (req, { params }) => {
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());
-  const url = await saveUpload(buffer, ext);
+  const url = await saveUpload(buffer, ext, file.name);
   await setRecordingUrl(id, url);
   return created({ url });
 });
