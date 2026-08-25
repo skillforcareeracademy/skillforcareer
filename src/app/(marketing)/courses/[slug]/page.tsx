@@ -15,7 +15,11 @@ import {
   Smartphone,
   ShieldCheck,
 } from "lucide-react";
-import { getPublicCourseBySlug } from "@/server/services/course-service";
+import {
+  getPublicCourseBySlug,
+  listRecommendedCourses,
+  listCourseReviews,
+} from "@/server/services/course-service";
 import { getSessionUser } from "@/lib/auth/api-guard";
 import { isEnrolled } from "@/server/services/enrollment-service";
 import { PurchasePanel } from "@/components/marketing/purchase-panel";
@@ -29,6 +33,11 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { CoursePreview } from "@/components/marketing/course-preview";
+import { CourseReviews } from "@/components/marketing/course-reviews";
+import { RecommendedCourses } from "@/components/marketing/recommended-courses";
+import { ProcessSection } from "@/components/marketing/process-section";
+import { FaqSection } from "@/components/marketing/faq-section";
+import { LearnerVideos } from "@/components/marketing/learner-videos";
 
 export const dynamic = "force-dynamic";
 
@@ -78,7 +87,11 @@ export default async function CourseDetailPage({
   if (!c) notFound();
 
   const user = await getSessionUser();
-  const enrolled = user ? await isEnrolled(user.id, c.id) : false;
+  const [enrolled, reviews, recommended] = await Promise.all([
+    user ? isEnrolled(user.id, c.id) : Promise.resolve(false),
+    listCourseReviews(c.id),
+    listRecommendedCourses(c.id, c.category.slug),
+  ]);
 
   const isFree = c.pricingType === "FREE";
   const effective = c.discountPrice ?? c.price;
@@ -375,9 +388,23 @@ export default async function CourseDetailPage({
                 </div>
               </Card>
             </div>
+
+            <CourseReviews
+              reviews={reviews}
+              ratingAvg={c.ratingAvg}
+              ratingCount={c.ratingCount}
+            />
           </div>
         </div>
       </div>
+
+      {/* Everything below the fold is the same story the homepage tells — how
+          the programme runs, what past learners say, and the questions people
+          ask right before they pay. */}
+      <ProcessSection className="bg-muted/30 border-y" />
+      <LearnerVideos />
+      <FaqSection className="border-t" />
+      <RecommendedCourses courses={recommended} />
     </div>
   );
 }

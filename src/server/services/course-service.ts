@@ -500,3 +500,111 @@ export async function getPublicCourseBySlug(slug: string) {
     })),
   };
 }
+
+/**
+ * "Students also bought" for the course detail page: same category first, then
+ * whatever else is popular, so the rail is never short on a thin category.
+ * The current course is always excluded.
+ */
+export async function listRecommendedCourses(
+  courseId: string,
+  categorySlug: string,
+  take = 3,
+): Promise<TrendingProgram[]> {
+  const select = {
+    id: true,
+    title: true,
+    slug: true,
+    subtitle: true,
+    thumbnailUrl: true,
+    level: true,
+    price: true,
+    discountPrice: true,
+    pricingType: true,
+    ratingAvg: true,
+    ratingCount: true,
+    enrollmentCount: true,
+    durationMinutes: true,
+    isFeatured: true,
+    objectives: true,
+    category: { select: { name: true, slug: true } },
+    instructor: { select: { name: true } },
+  } satisfies Prisma.CourseSelect;
+
+  const sameCategory = await prisma.course.findMany({
+    where: {
+      status: "PUBLISHED",
+      id: { not: courseId },
+      category: { slug: categorySlug },
+    },
+    orderBy: [{ enrollmentCount: "desc" }, { ratingAvg: "desc" }],
+    take,
+    select,
+  });
+
+  let rows = sameCategory;
+  if (rows.length < take) {
+    const seen = [courseId, ...rows.map((r) => r.id)];
+    const filler = await prisma.course.findMany({
+      where: { status: "PUBLISHED", id: { notIn: seen } },
+      orderBy: [{ isFeatured: "desc" }, { enrollmentCount: "desc" }],
+      take: take - rows.length,
+      select,
+    });
+    rows = [...rows, ...filler];
+  }
+
+  return rows.map((c) => ({
+    id: c.id,
+    title: c.title,
+    slug: c.slug,
+    thumbnailUrl: c.thumbnailUrl,
+    level: c.level,
+    categoryName: c.category.name,
+    categorySlug: c.category.slug,
+    instructorName: c.instructor.name,
+    price: c.price.toNumber(),
+    discountPrice: c.discountPrice ? c.discountPrice.toNumber() : null,
+    pricingType: c.pricingType,
+    ratingAvg: c.ratingAvg,
+    ratingCount: c.ratingCount,
+    enrollments: c.enrollmentCount,
+    durationMinutes: c.durationMinutes,
+    isFeatured: c.isFeatured,
+    highlights: toStringArray(c.objectives).slice(0, 3),
+    subtitle: c.subtitle,
+  }));
+}
+
+export interface CourseReview {
+  id: string;
+  rating: number;
+  comment: string | null;
+  createdAt: string;
+  author: string;
+  avatarUrl: string | null;
+}
+
+/** Published learner reviews for the course detail page. */
+export async function listCourseReviews(courseId: string, take = 6): Promise<CourseReview[]> {
+  const rows = await prisma.review.findMany({
+    where: { courseId, isApproved: true },
+    orderBy: [{ createdAt: "desc" }],
+    take,
+    select: {
+      id: true,
+      rating: true,
+      comment: true,
+      createdAt: true,
+      user: { select: { name: true, avatarUrl: true } },
+    },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    rating: r.rating,
+    comment: r.comment,
+    createdAt: r.createdAt.toISOString(),
+    author: r.user.name,
+    avatarUrl: r.user.avatarUrl,
+  }));
+}

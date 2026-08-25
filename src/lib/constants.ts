@@ -32,6 +32,9 @@ export const QUERY_KEYS = {
 
 export const ROUTES = {
   home: "/",
+  courses: "/courses",
+  contact: "/contact",
+  webinars: "/webinars",
   login: "/login",
   register: "/register",
   verifyOtp: "/verify-otp",
