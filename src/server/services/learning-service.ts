@@ -15,7 +15,16 @@ export async function getCoursePlayer(userId: string, slug: string) {
         include: {
           lessons: {
             orderBy: { order: "asc" },
-            include: { video: { select: { url: true, durationSeconds: true } } },
+            include: {
+              video: { select: { url: true, durationSeconds: true } },
+              // The lesson's single replaceable document (PDF, Drive link, …),
+              // so document lessons render something instead of "no video".
+              attachments: {
+                take: 1,
+                orderBy: { createdAt: "desc" },
+                select: { url: true, name: true },
+              },
+            },
           },
         },
       },
@@ -49,6 +58,8 @@ export async function getCoursePlayer(userId: string, slug: string) {
         isPreview: l.isPreview,
         content: l.content,
         videoUrl: l.video?.url ?? null,
+        attachmentUrl: l.attachments[0]?.url ?? null,
+        attachmentName: l.attachments[0]?.name ?? null,
         completed: p?.completed ?? false,
         lastPosition: p?.lastPositionSeconds ?? 0,
       };

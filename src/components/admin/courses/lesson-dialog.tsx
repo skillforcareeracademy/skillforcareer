@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { RichTextEditor } from "@/components/shared/rich-text-editor";
+import { FileUpload } from "@/components/shared/file-upload";
 import { LESSON_TYPES } from "@/lib/validations/curriculum";
 
 interface LessonLite {
@@ -79,7 +80,10 @@ export function LessonDialog({
         type,
         videoUrl: type === "VIDEO" ? videoUrl : "",
         content: type === "ARTICLE" ? content : "",
-        attachmentUrl: type === "PDF" ? attachmentUrl : "",
+        attachmentUrl:
+          type === "PDF" || type === "ASSIGNMENT" || type === "QUIZ"
+            ? attachmentUrl
+            : "",
         durationSeconds: (Number(durationMin) || 0) * 60,
         isPreview,
       };
@@ -135,7 +139,16 @@ export function LessonDialog({
           {type === "VIDEO" && (
             <div className="space-y-1.5">
               <Label htmlFor="ls-video">Video URL</Label>
-              <Input id="ls-video" value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} placeholder="https://… (mp4 / stream)" />
+              <Input
+                id="ls-video"
+                value={videoUrl}
+                onChange={(e) => setVideoUrl(e.target.value)}
+                placeholder="YouTube, Google Drive, Vimeo or an .mp4 link"
+              />
+              <p className="text-muted-foreground text-xs">
+                YouTube, Vimeo and Google Drive links play inline — no need to
+                convert them to an embed URL first.
+              </p>
             </div>
           )}
           {type === "ARTICLE" && (
@@ -144,10 +157,24 @@ export function LessonDialog({
               <RichTextEditor value={content} onChange={setContent} />
             </div>
           )}
-          {type === "PDF" && (
-            <div className="space-y-1.5">
-              <Label htmlFor="ls-file">Document URL</Label>
-              <Input id="ls-file" value={attachmentUrl} onChange={(e) => setAttachmentUrl(e.target.value)} placeholder="https://… (pdf)" />
+          {(type === "PDF" || type === "ASSIGNMENT" || type === "QUIZ") && (
+            <div className="space-y-2.5">
+              <Label>{type === "PDF" ? "Document" : "Reference material (optional)"}</Label>
+              <FileUpload
+                value={attachmentUrl}
+                onChange={(url) => setAttachmentUrl(url)}
+              />
+              <div className="space-y-1.5">
+                <Label htmlFor="ls-file" className="text-muted-foreground text-xs font-normal">
+                  …or paste a link
+                </Label>
+                <Input
+                  id="ls-file"
+                  value={attachmentUrl}
+                  onChange={(e) => setAttachmentUrl(e.target.value)}
+                  placeholder="Google Drive, Docs or a direct .pdf link"
+                />
+              </div>
             </div>
           )}
 

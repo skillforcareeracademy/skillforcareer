@@ -8,6 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { resolveEmbed } from "@/lib/media";
 
 /**
  * Course media preview for the detail sidebar: the thumbnail, with a play
@@ -23,7 +24,10 @@ export function CoursePreview({
   title: string;
 }) {
   const [open, setOpen] = useState(false);
-  const hasVideo = Boolean(promoVideoUrl);
+  // Promo videos are usually a YouTube or Drive share link, which a <video>
+  // element cannot play — resolve it to the right embed first.
+  const embed = resolveEmbed(promoVideoUrl);
+  const hasVideo = embed != null && embed.kind !== "link";
 
   return (
     <>
@@ -65,13 +69,23 @@ export function CoursePreview({
             <DialogHeader className="sr-only">
               <DialogTitle>{title} — preview</DialogTitle>
             </DialogHeader>
-            <video
-              src={promoVideoUrl ?? undefined}
-              controls
-              autoPlay
-              playsInline
-              className="aspect-video w-full bg-black"
-            />
+            {embed?.kind === "video-file" ? (
+              <video
+                src={embed.src}
+                controls
+                autoPlay
+                playsInline
+                className="aspect-video w-full bg-black"
+              />
+            ) : (
+              <iframe
+                src={embed?.src}
+                title={`${title} — preview`}
+                className="aspect-video w-full bg-black"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+                allowFullScreen
+              />
+            )}
           </DialogContent>
         </Dialog>
       )}

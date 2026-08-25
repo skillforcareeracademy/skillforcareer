@@ -15,6 +15,7 @@ import {
   ArrowRight,
   Loader2,
   FileText,
+  ExternalLink,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
@@ -24,6 +25,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { resolveEmbed, embedLabel } from "@/lib/media";
 
 interface Lesson {
   id: string;
@@ -33,6 +35,8 @@ interface Lesson {
   isPreview: boolean;
   content: string | null;
   videoUrl: string | null;
+  attachmentUrl: string | null;
+  attachmentName: string | null;
   completed: boolean;
   lastPosition: number;
 }
@@ -101,6 +105,12 @@ export function CoursePlayer({
   const current = allLessons.find((l) => l.id === currentId) ?? allLessons[0];
   const currentIndex = allLessons.findIndex((l) => l.id === currentId);
   const next = allLessons[currentIndex + 1] ?? null;
+  /**
+   * How this lesson's material should be shown. A lesson carries either a video
+   * URL or a document/link attachment, and either may be a Drive or YouTube
+   * share link rather than a file the browser can play directly.
+   */
+  const embed = resolveEmbed(current?.videoUrl ?? current?.attachmentUrl);
   const isDone = current ? completed.has(current.id) : false;
 
   // Load notes + bookmarks whenever the lesson changes.
@@ -239,11 +249,11 @@ export function CoursePlayer({
           className="relative overflow-hidden rounded-2xl bg-black select-none"
           onContextMenu={(e) => e.preventDefault()}
         >
-          {current?.videoUrl ? (
+          {embed?.kind === "video-file" ? (
             <video
-              key={current.id}
+              key={current!.id}
               ref={videoRef}
-              src={current.videoUrl}
+              src={embed.src}
               controls
               playsInline
               controlsList="nodownload noplaybackrate"
@@ -253,18 +263,40 @@ export function CoursePlayer({
               onTimeUpdate={onTimeUpdate}
               onEnded={() => markComplete(true)}
             />
+          ) : embed?.kind === "iframe" || embed?.kind === "pdf" ? (
+            // YouTube / Vimeo / Google Drive / a hosted PDF. Each of these needs
+            // a frame rather than a <video>, which is why a pasted Drive link
+            // used to show nothing at all.
+            <iframe
+              key={current!.id}
+              src={embed.src}
+              title={current!.title}
+              className="aspect-video w-full bg-white"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+              allowFullScreen
+            />
+          ) : embed?.kind === "link" ? (
+            <div className="bg-muted grid aspect-video place-items-center p-6 text-center">
+              <div>
+                <FileText className="text-muted-foreground mx-auto mb-2 size-8" />
+                <p className="text-sm font-medium">{current?.title}</p>
+                <p className="text-muted-foreground mt-1 text-xs">
+                  This material opens in a new tab.
+                </p>
+              </div>
+            </div>
           ) : (
             <div className="bg-muted grid aspect-video place-items-center p-6 text-center">
               <div>
                 <FileText className="text-muted-foreground mx-auto mb-2 size-8" />
                 <p className="text-sm font-medium">{current?.title}</p>
-                <p className="text-muted-foreground text-xs">No video for this lesson.</p>
+                <p className="text-muted-foreground text-xs">No material for this lesson yet.</p>
               </div>
             </div>
           )}
 
           {/* Anti-piracy watermark — the viewer's email, so leaked screenshots are traceable. */}
-          {current?.videoUrl && viewerLabel && (
+          {embed?.kind === "video-file" && viewerLabel && (
             <div className="pointer-events-none absolute inset-0 flex flex-wrap items-center justify-center gap-x-16 gap-y-12 overflow-hidden opacity-[0.09]">
               {Array.from({ length: 8 }).map((_, i) => (
                 <span key={i} className="rotate-[-20deg] text-[11px] font-medium whitespace-nowrap text-white">
@@ -305,6 +337,18 @@ export function CoursePlayer({
             )}
           </div>
         </div>
+
+        {embed && (
+          <a
+            href={embed.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-muted-foreground hover:text-foreground mt-3 inline-flex items-center gap-1.5 text-sm"
+          >
+            <ExternalLink className="size-4" />
+            {current?.attachmentName ?? embedLabel(embed)}
+          </a>
+        )}
 
         {/* Article content */}
         {!current?.videoUrl && current?.content && (
