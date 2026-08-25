@@ -29,6 +29,8 @@ export const updateQuizSchema = z.object({
   title: z.string().trim().min(3, "Title is too short").max(150),
   description: z.string().trim().max(2000).optional().or(z.literal("")),
   courseId: z.string().optional().or(z.literal("")),
+  /** Cohorts this quiz is set for. Empty = everyone on the course. */
+  batchIds: z.array(z.string().min(1)).max(200).optional(),
   timeLimitMinutes: z.coerce.number().int().min(1).max(1440).optional(),
   passingScore: z.coerce.number().int().min(0).max(100).default(60),
   gradingMode: z.enum(GRADING_MODES).default("AUTO"),
@@ -47,6 +49,8 @@ export const questionSchema = z
     type: z.enum(QUESTION_TYPES),
     text: z.string().trim().min(1, "Question text is required").max(2000),
     points: z.coerce.number().int().min(1).max(100).default(1),
+    /** Model answer for written questions — for the marker, and for export. */
+    correctAnswer: z.string().trim().max(4000).optional().or(z.literal("")),
     explanation: z.string().trim().max(2000).optional().or(z.literal("")),
     options: z.array(optionSchema).max(10).default([]),
   })
@@ -70,6 +74,14 @@ export const reorderQuestionsSchema = z.object({
   ids: z.array(z.string()).min(1),
 });
 
+/** Bulk question upload — the same shape the export produces. */
+export const importQuestionsSchema = z.object({
+  questions: z.array(questionSchema).min(1, "Nothing to import").max(500),
+  /** Replace what's there rather than appending. */
+  replace: z.boolean().default(false),
+});
+
 export type CreateQuizInput = z.infer<typeof createQuizSchema>;
 export type UpdateQuizInput = z.infer<typeof updateQuizSchema>;
 export type QuestionInput = z.infer<typeof questionSchema>;
+export type ImportQuestionsInput = z.infer<typeof importQuestionsSchema>;

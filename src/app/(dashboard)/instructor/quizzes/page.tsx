@@ -5,6 +5,7 @@ import {
   listQuizzesAdmin,
   quizStats,
   listCoursesForSelect,
+  listBatchesForSelect,
 } from "@/server/services/quiz-service";
 import { QuizzesClient } from "@/components/admin/quizzes/quizzes-client";
 
@@ -27,14 +28,16 @@ export default async function InstructorQuizzesPage({
     pageSize: 10,
     search: str(sp.search),
     courseId: str(sp.course),
+    batchId: str(sp.batch),
     status: str(sp.status),
     ownerId: user.id,
   };
 
-  const [{ quizzes, total }, stats, courses] = await Promise.all([
+  const [{ quizzes, total }, stats, courses, batches] = await Promise.all([
     listQuizzesAdmin(query),
     quizStats(user.id),
     listCoursesForSelect(user.id),
+    listBatchesForSelect(undefined, user.id),
   ]);
 
   return (
@@ -44,6 +47,7 @@ export default async function InstructorQuizzesPage({
       query={query}
       stats={stats}
       courses={courses}
+      batches={batches}
       basePath="/instructor/quizzes"
     />
   );

@@ -61,6 +61,8 @@ interface QuizRow {
   title: string;
   courseId: string | null;
   courseTitle: string | null;
+  batchIds: string[];
+  batchNames: string[];
   createdByName: string;
   passingScore: number;
   timeLimitMinutes: number | null;
@@ -79,11 +81,18 @@ interface Query {
   pageSize: number;
   search?: string;
   courseId?: string;
+  batchId?: string;
   status?: string;
 }
 interface Opt {
   id: string;
   title: string;
+}
+interface BatchOpt {
+  id: string;
+  name: string;
+  courseId: string;
+  courseTitle: string;
 }
 
 const ALL = "all";
@@ -98,6 +107,7 @@ export function QuizzesClient({
   query,
   stats,
   courses,
+  batches,
   basePath = "/admin/quizzes",
 }: {
   quizzes: QuizRow[];
@@ -105,6 +115,7 @@ export function QuizzesClient({
   query: Query;
   stats: Stats;
   courses: Opt[];
+  batches: BatchOpt[];
   basePath?: string;
 }) {
   const router = useRouter();
@@ -117,13 +128,20 @@ export function QuizzesClient({
   const [deleting, setDeleting] = useState<QuizRow | null>(null);
 
   const totalPages = Math.max(1, Math.ceil(total / query.pageSize));
-  const hasFilters = Boolean(query.search || query.courseId || query.status);
+  const hasFilters = Boolean(
+    query.search || query.courseId || query.batchId || query.status,
+  );
+  /** Picking a course narrows the batch filter to that course's cohorts. */
+  const batchOptions = query.courseId
+    ? batches.filter((b) => b.courseId === query.courseId)
+    : batches;
 
   const setParams = useCallback(
     (next: Record<string, string | number | undefined>) => {
       const merged = {
         search: query.search,
         course: query.courseId,
+        batch: query.batchId,
         status: query.status,
         page: query.page,
         ...next,
@@ -131,6 +149,7 @@ export function QuizzesClient({
       const p = new URLSearchParams();
       if (merged.search) p.set("search", String(merged.search));
       if (merged.course) p.set("course", String(merged.course));
+      if (merged.batch) p.set("batch", String(merged.batch));
       if (merged.status) p.set("status", String(merged.status));
       if (merged.page && Number(merged.page) > 1) p.set("page", String(merged.page));
       const qs = p.toString();
@@ -141,7 +160,13 @@ export function QuizzesClient({
 
   function clearFilters() {
     setSearch("");
-    setParams({ search: undefined, course: undefined, status: undefined, page: 1 });
+    setParams({
+      search: undefined,
+      course: undefined,
+      batch: undefined,
+      status: undefined,
+      page: 1,
+    });
   }
 
   async function onCreate(e: FormEvent) {
@@ -246,6 +271,30 @@ export function QuizzesClient({
           </p>
         </div>
       ),
+    },
+    {
+      key: "batches",
+      header: "Set for",
+      cell: (z) =>
+        z.batchNames.length === 0 ? (
+          <span className="text-muted-foreground text-sm">Whole course</span>
+        ) : (
+          <span className="flex max-w-[13rem] flex-wrap gap-1">
+            {z.batchNames.slice(0, 2).map((name, i) => (
+              <Badge
+                key={name}
+                variant="secondary"
+                className="cursor-pointer text-[10px] font-normal"
+                onClick={() => setParams({ batch: z.batchIds[i], page: 1 })}
+              >
+                {name}
+              </Badge>
+            ))}
+            {z.batchNames.length > 2 && (
+              <span className="text-muted-foreground text-xs">+{z.batchNames.length - 2}</span>
+            )}
+          </span>
+        ),
     },
     {
       key: "questions",
@@ -381,7 +430,14 @@ export function QuizzesClient({
               </Select>
               <Select
                 value={query.courseId ?? ALL}
-                onValueChange={(v) => setParams({ course: !v || v === ALL ? undefined : v, page: 1 })}
+                onValueChange={(v) =>
+                  setParams({
+                    course: !v || v === ALL ? undefined : v,
+                    // A cohort from another course would filter everything out.
+                    batch: undefined,
+                    page: 1,
+                  })
+                }
               >
                 <SelectTrigger className="flex-1 sm:w-48">
                   <SelectValue>
@@ -397,6 +453,28 @@ export function QuizzesClient({
                   {courses.map((c) => (
                     <SelectItem key={c.id} value={c.id}>
                       {c.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
+                value={query.batchId ?? ALL}
+                onValueChange={(v) => setParams({ batch: !v || v === ALL ? undefined : v, page: 1 })}
+              >
+                <SelectTrigger className="flex-1 sm:w-44">
+                  <SelectValue>
+                    {(v) =>
+                      !v || v === ALL
+                        ? "All batches"
+                        : (batches.find((b) => b.id === v)?.name ?? "Batch")
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>All batches</SelectItem>
+                  {batchOptions.map((b) => (
+                    <SelectItem key={b.id} value={b.id}>
+                      {b.name}
                     </SelectItem>
                   ))}
                 </SelectContent>

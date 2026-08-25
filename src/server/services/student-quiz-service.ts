@@ -22,13 +22,24 @@ export interface StudentQuiz {
 export async function listStudentQuizzes(userId: string): Promise<StudentQuiz[]> {
   const enrollments = await prisma.enrollment.findMany({
     where: { userId, status: { in: ["ACTIVE", "COMPLETED"] } },
-    select: { courseId: true },
+    select: { courseId: true, batchId: true },
   });
   const courseIds = enrollments.map((e) => e.courseId);
   if (courseIds.length === 0) return [];
+  const batchIds = enrollments
+    .map((e) => e.batchId)
+    .filter((id): id is string => Boolean(id));
 
   const quizzes = await prisma.quiz.findMany({
-    where: { courseId: { in: courseIds }, isPublished: true },
+    // A quiz set for particular cohorts reaches only those cohorts; one with no
+    // cohorts named reaches everyone on its course, as it always has.
+    where: {
+      isPublished: true,
+      OR: [
+        { courseId: { in: courseIds }, batches: { none: {} } },
+        ...(batchIds.length ? [{ batches: { some: { batchId: { in: batchIds } } } }] : []),
+      ],
+    },
     orderBy: { updatedAt: "desc" },
     include: {
       course: { select: { title: true } },

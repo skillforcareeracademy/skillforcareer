@@ -31,6 +31,8 @@ export interface EditableQuestion {
   type: string;
   text: string;
   points: number;
+  /** Model answer for written questions — for the marker, never the learner. */
+  correctAnswer: string | null;
   explanation: string | null;
   options: { id: string; text: string; isCorrect: boolean }[];
 }
@@ -71,6 +73,7 @@ export function QuestionDialog({
   const [text, setText] = useState(question?.text ?? "");
   const [points, setPoints] = useState(String(question?.points ?? 1));
   const [explanation, setExplanation] = useState(question?.explanation ?? "");
+  const [correctAnswer, setCorrectAnswer] = useState(question?.correctAnswer ?? "");
   const [options, setOptions] = useState<Opt[]>(() =>
     question
       ? question.type === "SHORT_ANSWER"
@@ -115,6 +118,7 @@ export function QuestionDialog({
       type,
       text,
       points: Number(points) || 1,
+      correctAnswer: correctAnswer || undefined,
       explanation: explanation || undefined,
       options: isChoice ? options.map((o) => ({ text: o.text.trim(), isCorrect: o.isCorrect })) : [],
     };
@@ -241,6 +245,19 @@ export function QuestionDialog({
                   <Plus className="size-4" /> Add option
                 </Button>
               )}
+            </div>
+          )}
+
+          {!isChoice && (
+            <div className="space-y-1.5">
+              <Label htmlFor="q-answer">Model answer (optional)</Label>
+              <Textarea
+                id="q-answer"
+                rows={3}
+                value={correctAnswer}
+                onChange={(e) => setCorrectAnswer(e.target.value)}
+                placeholder="What a full-marks answer looks like — shown to the marker only."
+              />
             </div>
           )}
 

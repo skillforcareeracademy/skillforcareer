@@ -512,6 +512,7 @@ model Batch {
   meetings    Meeting[]
   attendance  Attendance[]
   assignments AssignmentBatch[]
+  quizzes     QuizBatch[]
 
   @@index([courseId])
   @@index([instructorId])
@@ -880,19 +881,37 @@ model Quiz {
   createdBy User          @relation("QuizCreator", fields: [createdById], references: [id], onUpdate: NoAction)
   questions Question[]
   attempts  QuizAttempt[]
+  batches   QuizBatch[]
 
   @@index([courseId])
   @@index([createdById])
 }
 
+/// Which cohorts a quiz is set for. No rows = everyone on the course.
+model QuizBatch {
+  id      String @id @default(cuid())
+  quizId  String
+  batchId String
+
+  createdAt DateTime @default(now())
+
+  quiz  Quiz  @relation(fields: [quizId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  batch Batch @relation(fields: [batchId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([quizId, batchId])
+  @@index([batchId])
+}
+
 model Question {
-  id          String       @id @default(cuid())
-  quizId      String
-  type        QuestionType @default(SINGLE_CHOICE)
-  text        String       @db.Text
-  points      Int          @default(1)
-  order       Int          @default(0)
-  explanation String?      @db.Text
+  id            String       @id @default(cuid())
+  quizId        String
+  type          QuestionType @default(SINGLE_CHOICE)
+  text          String       @db.Text
+  points        Int          @default(1)
+  order         Int          @default(0)
+  /// The model answer for SHORT_ANSWER questions — for the grader, and for export.
+  correctAnswer String?      @db.Text
+  explanation   String?      @db.Text
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

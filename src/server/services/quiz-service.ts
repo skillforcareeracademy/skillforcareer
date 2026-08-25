@@ -5,6 +5,7 @@ import type {
   CreateQuizInput,
   UpdateQuizInput,
   QuestionInput,
+  ImportQuestionsInput,
 } from "@/lib/validations/quiz";
 
 // ── Reads ────────────────────────────────────────────────────────────────────
@@ -14,6 +15,8 @@ export interface QuizListQuery {
   pageSize: number;
   search?: string;
   courseId?: string;
+  /** Only quizzes set for this cohort. */
+  batchId?: string;
   status?: string; // PUBLISHED | DRAFT
   /** Scope to quizzes an instructor created or owns via the course. */
   ownerId?: string;
@@ -23,6 +26,7 @@ export async function listQuizzesAdmin(q: QuizListQuery) {
   const and: Prisma.QuizWhereInput[] = [];
   if (q.search) and.push({ title: { contains: q.search } });
   if (q.courseId) and.push({ courseId: q.courseId });
+  if (q.batchId) and.push({ batches: { some: { batchId: q.batchId } } });
   if (q.status === "PUBLISHED") and.push({ isPublished: true });
   if (q.status === "DRAFT") and.push({ isPublished: false });
   if (q.ownerId) {
@@ -41,6 +45,7 @@ export async function listQuizzesAdmin(q: QuizListQuery) {
         course: { select: { title: true } },
         createdBy: { select: { name: true } },
         _count: { select: { questions: true, attempts: true } },
+        batches: { select: { batch: { select: { id: true, name: true } } } },
       },
     }),
   ]);
@@ -52,6 +57,8 @@ export async function listQuizzesAdmin(q: QuizListQuery) {
       title: z.title,
       courseId: z.courseId,
       courseTitle: z.course?.title ?? null,
+      batchIds: z.batches.map((b) => b.batch.id),
+      batchNames: z.batches.map((b) => b.batch.name),
       createdByName: z.createdBy.name,
       passingScore: z.passingScore,
       timeLimitMinutes: z.timeLimitMinutes,
@@ -92,6 +99,7 @@ export async function getQuizEdit(id: string) {
         orderBy: { order: "asc" },
         include: { options: { orderBy: { order: "asc" } } },
       },
+      batches: { select: { batch: { select: { id: true, name: true } } } },
     },
   });
   if (!z) throw AppError.notFound("Quiz not found.");
@@ -108,11 +116,14 @@ export async function getQuizEdit(id: string) {
     shuffleQuestions: z.shuffleQuestions,
     showAnswers: z.showAnswers,
     isPublished: z.isPublished,
+    batchIds: z.batches.map((b) => b.batch.id),
+    batches: z.batches.map((b) => b.batch),
     questions: z.questions.map((q) => ({
       id: q.id,
       type: q.type,
       text: q.text,
       points: q.points,
+      correctAnswer: q.correctAnswer,
       explanation: q.explanation,
       options: q.options.map((o) => ({ id: o.id, text: o.text, isCorrect: o.isCorrect })),
     })),
@@ -159,6 +170,41 @@ export async function updateQuiz(id: string, input: UpdateQuizInput): Promise<vo
       showAnswers: input.showAnswers,
     },
   });
+  await setQuizBatches(id, input.batchIds);
+}
+
+/**
+ * Replace the cohorts a quiz is set for. Deleted and re-created rather than
+ * diffed — a handful of rows, and two statements beat a per-row reconciliation
+ * against a database a region away.
+ */
+async function setQuizBatches(quizId: string, batchIds: string[] | undefined): Promise<void> {
+  const batches = [...new Set(batchIds ?? [])];
+  await prisma.$transaction([
+    prisma.quizBatch.deleteMany({ where: { quizId } }),
+    ...(batches.length
+      ? [prisma.quizBatch.createMany({ data: batches.map((batchId) => ({ quizId, batchId })) })]
+      : []),
+  ]);
+}
+
+/** Cohorts to offer when setting a quiz (all, or one course's). */
+export async function listBatchesForSelect(courseId?: string, instructorId?: string) {
+  const rows = await prisma.batch.findMany({
+    where: {
+      ...(courseId ? { courseId } : {}),
+      ...(instructorId ? { course: { instructorId } } : {}),
+    },
+    select: { id: true, name: true, courseId: true, course: { select: { title: true } } },
+    orderBy: [{ startDate: "desc" }, { name: "asc" }],
+    take: 300,
+  });
+  return rows.map((b) => ({
+    id: b.id,
+    name: b.name,
+    courseId: b.courseId,
+    courseTitle: b.course.title,
+  }));
 }
 
 export async function deleteQuiz(id: string): Promise<void> {
@@ -200,6 +246,7 @@ export async function createQuestion(quizId: string, input: QuestionInput): Prom
       type: input.type,
       text: input.text,
       points: input.points,
+      correctAnswer: input.correctAnswer || null,
       explanation: input.explanation || null,
       order: (last?.order ?? -1) + 1,
       options: { create: optionData(input) },
@@ -220,6 +267,7 @@ export async function updateQuestion(id: string, input: QuestionInput): Promise<
       type: input.type,
       text: input.text,
       points: input.points,
+      correctAnswer: input.correctAnswer || null,
       explanation: input.explanation || null,
       options: { create: optionData(input) },
     },
@@ -247,4 +295,63 @@ export async function quizIdForQuestion(questionId: string): Promise<string | nu
     select: { quizId: true },
   });
   return question?.quizId ?? null;
+}
+
+// ── Question bank import / export ────────────────────────────────────────────
+
+/** The question bank in the shape `importQuestions` reads back. */
+export async function exportQuestions(quizId: string) {
+  const rows = await prisma.question.findMany({
+    where: { quizId },
+    orderBy: { order: "asc" },
+    include: { options: { orderBy: { order: "asc" } } },
+  });
+  return {
+    questions: rows.map((q) => ({
+      type: q.type,
+      text: q.text,
+      points: q.points,
+      correctAnswer: q.correctAnswer ?? "",
+      explanation: q.explanation ?? "",
+      options: q.options.map((o) => ({ text: o.text, isCorrect: o.isCorrect })),
+    })),
+  };
+}
+
+export async function importQuestions(
+  quizId: string,
+  input: ImportQuestionsInput,
+): Promise<number> {
+  const quiz = await prisma.quiz.findUnique({ where: { id: quizId }, select: { id: true } });
+  if (!quiz) throw AppError.notFound("Quiz not found.");
+
+  if (input.replace) {
+    await prisma.question.deleteMany({ where: { quizId } });
+  }
+  const last = input.replace
+    ? null
+    : await prisma.question.findFirst({
+        where: { quizId },
+        orderBy: { order: "desc" },
+        select: { order: true },
+      });
+
+  let order = (last?.order ?? -1) + 1;
+  // Sequential rather than one createMany: each question owns its options, and
+  // a nested create is the only way to write both in a single statement.
+  for (const q of input.questions) {
+    await prisma.question.create({
+      data: {
+        quizId,
+        type: q.type,
+        text: q.text,
+        points: q.points,
+        order: order++,
+        correctAnswer: q.correctAnswer || null,
+        explanation: q.explanation || null,
+        options: { create: optionData(q) },
+      },
+    });
+  }
+  return input.questions.length;
 }

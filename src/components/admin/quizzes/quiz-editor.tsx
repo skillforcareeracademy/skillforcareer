@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState, type ChangeEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -13,6 +13,8 @@ import {
   Undo2,
   Check,
   ListChecks,
+  Upload,
+  Download,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
@@ -49,6 +51,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { QuestionDialog, type EditableQuestion } from "@/components/admin/quizzes/question-dialog";
+import { AudiencePicker } from "@/components/shared/audience-picker";
 import { cn } from "@/lib/utils";
 
 interface Quiz {
@@ -63,18 +66,30 @@ interface Quiz {
   shuffleQuestions: boolean;
   showAnswers: boolean;
   isPublished: boolean;
+  batchIds: string[];
   questions: EditableQuestion[];
   totalPoints: number;
+}
+interface BatchOpt {
+  id: string;
+  name: string;
+  courseId: string;
+  courseTitle: string;
 }
 
 export function QuizEditor({
   quiz,
   courses,
+  batches,
   basePath = "/admin/quizzes",
+  canExport = true,
 }: {
   quiz: Quiz;
   courses: { id: string; title: string }[];
+  batches: BatchOpt[];
   basePath?: string;
+  /** Instructors may import a question bank but not download the answer key. */
+  canExport?: boolean;
 }) {
   const router = useRouter();
   const [form, setForm] = useState({
@@ -87,6 +102,7 @@ export function QuizEditor({
     maxAttempts: String(quiz.maxAttempts),
     shuffleQuestions: quiz.shuffleQuestions,
     showAnswers: quiz.showAnswers,
+    batchIds: quiz.batchIds,
   });
   const [savingSettings, setSavingSettings] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -96,9 +112,52 @@ export function QuizEditor({
     editing: null,
   });
   const [deletingQuestion, setDeletingQuestion] = useState<EditableQuestion | null>(null);
+  const [importing, setImporting] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   function set<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
-    setForm((prev) => ({ ...prev, [key]: value }));
+    setForm((prev) => {
+      const next = { ...prev, [key]: value };
+      // Switching course invalidates cohorts picked from the previous one.
+      if (key === "courseId") {
+        next.batchIds = prev.batchIds.filter(
+          (id) => batches.find((b) => b.id === id)?.courseId === value,
+        );
+      }
+      return next;
+    });
+  }
+
+  /** Cohorts of the course this quiz belongs to. */
+  const formBatches = form.courseId
+    ? batches.filter((b) => b.courseId === form.courseId)
+    : batches;
+
+  /** Read a previously exported JSON bank back in, appending to what's here. */
+  async function onImport(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setImporting(true);
+    try {
+      const parsed = JSON.parse(await file.text());
+      const payload = Array.isArray(parsed) ? { questions: parsed } : parsed;
+      const res = await api.post<{ message: string }>(
+        `/api/quizzes/${quiz.id}/questions/import`,
+        { questions: payload.questions, replace: false },
+      );
+      toast.success(res.message);
+      router.refresh();
+    } catch (err) {
+      const d =
+        err instanceof ApiError ? (err.details as { issues?: { message: string }[] }) : undefined;
+      toast.error(
+        d?.issues?.[0]?.message ??
+          (err instanceof ApiError ? err.message : "That file isn't a question export."),
+      );
+    } finally {
+      setImporting(false);
+    }
   }
 
   async function saveSettings() {
@@ -114,6 +173,7 @@ export function QuizEditor({
         maxAttempts: Number(form.maxAttempts) || 1,
         shuffleQuestions: form.shuffleQuestions,
         showAnswers: form.showAnswers,
+        batchIds: form.batchIds,
       });
       toast.success("Settings saved.");
       router.refresh();
@@ -237,6 +297,22 @@ export function QuizEditor({
                 </SelectContent>
               </Select>
             </div>
+            {/* Who sits this quiz. Nothing chosen = everyone on the course,
+                which is how quizzes behaved before cohorts could be named. */}
+            <AudiencePicker
+              label="Batches"
+              emptyMeans="No batch chosen — everyone on the course sits it."
+              searchPlaceholder="Search batches…"
+              options={formBatches.map((b) => ({
+                id: b.id,
+                label: b.name,
+                hint: b.courseTitle,
+              }))}
+              selected={form.batchIds}
+              onChange={(ids) => set("batchIds", ids)}
+              maxHeight="11rem"
+            />
+
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="q-pass">Pass %</Label>
@@ -316,9 +392,39 @@ export function QuizEditor({
                 {quiz.totalPoints} points
               </CardDescription>
             </div>
-            <Button onClick={openAdd}>
-              <Plus className="size-4" /> Add question
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={() => fileRef.current?.click()}
+                disabled={importing}
+              >
+                {importing ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Upload className="size-4" />
+                )}
+                Import
+              </Button>
+              {canExport && (
+                <Button
+                  variant="outline"
+                  nativeButton={false}
+                  render={<a href={`/api/quizzes/${quiz.id}/questions/export`} download />}
+                >
+                  <Download className="size-4" /> Export
+                </Button>
+              )}
+              <Button onClick={openAdd}>
+                <Plus className="size-4" /> Add question
+              </Button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept="application/json,.json"
+                className="hidden"
+                onChange={onImport}
+              />
+            </div>
           </CardHeader>
           <CardContent>
             {quiz.questions.length === 0 ? (

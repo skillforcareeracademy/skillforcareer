@@ -2,7 +2,11 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { requireRole } from "@/lib/auth/require";
 import { ROLES } from "@/config/roles";
-import { getQuizEdit, listCoursesForSelect } from "@/server/services/quiz-service";
+import {
+  getQuizEdit,
+  listCoursesForSelect,
+  listBatchesForSelect,
+} from "@/server/services/quiz-service";
 import { QuizEditor } from "@/components/admin/quizzes/quiz-editor";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +22,10 @@ export default async function QuizEditorPage({
 
   const quiz = await getQuizEdit(id).catch(() => null);
   if (!quiz) notFound();
-  const courses = await listCoursesForSelect();
+  const [courses, batches] = await Promise.all([
+    listCoursesForSelect(),
+    listBatchesForSelect(),
+  ]);
 
-  return <QuizEditor quiz={quiz} courses={courses} />;
+  return <QuizEditor quiz={quiz} courses={courses} batches={batches} />;
 }

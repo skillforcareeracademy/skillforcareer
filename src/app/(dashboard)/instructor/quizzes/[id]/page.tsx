@@ -2,7 +2,11 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { requireRole } from "@/lib/auth/require";
 import { ROLES, PERMISSIONS } from "@/config/roles";
-import { getQuizEdit, listCoursesForSelect } from "@/server/services/quiz-service";
+import {
+  getQuizEdit,
+  listCoursesForSelect,
+  listBatchesForSelect,
+} from "@/server/services/quiz-service";
 import { prisma } from "@/lib/prisma";
 import { QuizEditor } from "@/components/admin/quizzes/quiz-editor";
 
@@ -33,6 +37,17 @@ export default async function InstructorQuizEditorPage({
     if (!owned) notFound();
   }
 
-  const courses = await listCoursesForSelect(isStaff ? undefined : user.id);
-  return <QuizEditor quiz={quiz} courses={courses} basePath="/instructor/quizzes" />;
+  const [courses, batches] = await Promise.all([
+    listCoursesForSelect(isStaff ? undefined : user.id),
+    listBatchesForSelect(undefined, isStaff ? undefined : user.id),
+  ]);
+  return (
+    <QuizEditor
+      quiz={quiz}
+      courses={courses}
+      batches={batches}
+      basePath="/instructor/quizzes"
+      canExport={isStaff}
+    />
+  );
 }
