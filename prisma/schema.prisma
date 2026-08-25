@@ -193,6 +193,12 @@ enum QuestionType {
   SHORT_ANSWER
 }
 
+enum AssignmentType {
+  FILE // classic upload / free-text submission
+  MCQ // multiple-choice questions, auto-gradable
+  QNA // written questions with a standard answer
+}
+
 enum GradingMode {
   AUTO
   MANUAL
@@ -322,6 +328,7 @@ model User {
   leadFollowUps     LeadFollowUp[]         @relation("LeadFollowUpAuthor")
   webinarsHosted    Webinar[]              @relation("WebinarHost")
   webinarsAttended  WebinarRegistration[]  @relation("WebinarAttendee")
+  assignmentsSet    AssignmentStudent[]    @relation("AssignmentAssignee")
 
   @@index([roleId])
   @@index([status])
@@ -504,6 +511,7 @@ model Batch {
   enrollments Enrollment[]
   meetings    Meeting[]
   attendance  Attendance[]
+  assignments AssignmentBatch[]
 
   @@index([courseId])
   @@index([instructorId])
@@ -726,16 +734,18 @@ model Discussion {
 // ══════════════════════════════════════════════════════════════════════════════
 
 model Assignment {
-  id           String    @id @default(cuid())
+  id           String         @id @default(cuid())
   courseId     String?
-  lessonId     String?   @unique
+  lessonId     String?        @unique
   createdById  String
   title        String
-  description  String?   @db.Text
-  instructions String?   @db.Text
-  maxScore     Int       @default(100)
+  description  String?        @db.Text
+  instructions String?        @db.Text
+  type         AssignmentType @default(FILE)
+  gradingMode  GradingMode    @default(MANUAL)
+  maxScore     Int            @default(100)
   dueDate      DateTime?
-  allowLate    Boolean   @default(false)
+  allowLate    Boolean        @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -744,9 +754,76 @@ model Assignment {
   lesson      Lesson?                @relation(fields: [lessonId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   createdBy   User                   @relation("AssignmentCreator", fields: [createdById], references: [id], onUpdate: NoAction)
   submissions AssignmentSubmission[]
+  questions   AssignmentQuestion[]
+  batches     AssignmentBatch[]
+  students    AssignmentStudent[]
 
   @@index([courseId])
   @@index([createdById])
+}
+
+/// Which cohorts an assignment is set for. No rows = everyone on the course.
+model AssignmentBatch {
+  id           String @id @default(cuid())
+  assignmentId String
+  batchId      String
+
+  createdAt DateTime @default(now())
+
+  assignment Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  batch      Batch      @relation(fields: [batchId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([assignmentId, batchId])
+  @@index([batchId])
+}
+
+/// Individual learners added on top of the chosen batches.
+model AssignmentStudent {
+  id           String @id @default(cuid())
+  assignmentId String
+  userId       String
+
+  createdAt DateTime @default(now())
+
+  assignment Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user       User       @relation("AssignmentAssignee", fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([assignmentId, userId])
+  @@index([userId])
+}
+
+/// A question on an MCQ / Q&A assignment — the quiz question model, kept
+/// separate so assignment marking and quiz attempts can evolve apart.
+model AssignmentQuestion {
+  id            String       @id @default(cuid())
+  assignmentId  String
+  type          QuestionType @default(SINGLE_CHOICE)
+  text          String       @db.Text
+  points        Int          @default(1)
+  order         Int          @default(0)
+  /// The model answer for written questions — shown to the grader, never the learner.
+  correctAnswer String?      @db.Text
+  explanation   String?      @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assignment Assignment                 @relation(fields: [assignmentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  options    AssignmentQuestionOption[]
+
+  @@index([assignmentId])
+}
+
+model AssignmentQuestionOption {
+  id         String  @id @default(cuid())
+  questionId String
+  text       String  @db.Text
+  isCorrect  Boolean @default(false)
+  order      Int     @default(0)
+
+  question AssignmentQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([questionId])
 }
 
 model AssignmentSubmission {
@@ -757,6 +834,10 @@ model AssignmentSubmission {
   status       SubmissionStatus @default(DRAFT)
   content      String?          @db.Text
   fileUrl      String?
+  /// MCQ / Q&A answers: [{ questionId, optionIds?: string[], text?: string, points?: number }]
+  answers      Json?
+  /// What auto-marking awarded before any manual override.
+  autoScore    Int?
   score        Int?
   feedback     String?          @db.Text
   gradedById   String?

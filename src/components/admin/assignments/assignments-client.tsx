@@ -17,6 +17,7 @@ import {
   Eye,
   Users,
   Award,
+  ListChecks,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
@@ -61,12 +62,24 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { AssignmentDetailSheet } from "@/components/admin/assignments/assignment-detail-sheet";
+import { AssignmentQuestionsSheet } from "@/components/admin/assignments/assignment-questions-sheet";
+import { AudiencePicker } from "@/components/shared/audience-picker";
+import {
+  ASSIGNMENT_TYPES,
+  ASSIGNMENT_TYPE_LABEL,
+  ASSIGNMENT_GRADING_MODES,
+  ASSIGNMENT_GRADING_MODE_LABEL,
+} from "@/lib/validations/assignment";
 
 interface AssignmentRow {
   id: string;
   title: string;
+  type: string;
+  gradingMode: string;
   courseId: string | null;
   courseTitle: string | null;
+  batchIds: string[];
+  batchNames: string[];
   createdByName: string;
   maxScore: number;
   dueDate: string | null;
@@ -86,10 +99,25 @@ interface Query {
   pageSize: number;
   search?: string;
   courseId?: string;
+  batchId?: string;
+  type?: string;
+  dueFrom?: string;
+  dueTo?: string;
 }
 interface Opt {
   id: string;
   title: string;
+}
+interface BatchOpt {
+  id: string;
+  name: string;
+  courseId: string;
+  courseTitle: string;
+}
+interface StudentOpt {
+  id: string;
+  name: string;
+  email: string;
 }
 
 const ALL = "all";
@@ -109,28 +137,45 @@ interface FormState {
   description: string;
   instructions: string;
   courseId: string;
+  type: string;
+  gradingMode: string;
   maxScore: string;
   dueDate: string;
   allowLate: boolean;
+  batchIds: string[];
+  studentIds: string[];
 }
 const EMPTY: FormState = {
   title: "",
   description: "",
   instructions: "",
   courseId: "",
+  type: "FILE",
+  gradingMode: "MANUAL",
   maxScore: "100",
   dueDate: "",
   allowLate: false,
+  batchIds: [],
+  studentIds: [],
 };
+/**
+ * Prefill from the row while the full record loads. The list carries enough for
+ * the dialog to open populated; description, instructions and the individual
+ * learners come from the detail fetch a moment later.
+ */
 function fromRow(a: AssignmentRow): FormState {
   return {
     title: a.title,
     description: "",
     instructions: "",
     courseId: a.courseId ?? "",
+    type: a.type,
+    gradingMode: a.gradingMode,
     maxScore: String(a.maxScore),
     dueDate: a.dueDate ? toLocalInput(a.dueDate) : "",
     allowLate: a.allowLate,
+    batchIds: a.batchIds,
+    studentIds: [],
   };
 }
 
@@ -140,12 +185,19 @@ export function AssignmentsClient({
   query,
   stats,
   courses,
+  batches,
+  students,
+  canExport = true,
 }: {
   assignments: AssignmentRow[];
   total: number;
   query: Query;
   stats: Stats;
   courses: Opt[];
+  batches: BatchOpt[];
+  students: StudentOpt[];
+  /** Instructors may import a question paper but not download the answer key. */
+  canExport?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -156,16 +208,37 @@ export function AssignmentsClient({
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<AssignmentRow | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [questionsFor, setQuestionsFor] = useState<AssignmentRow | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
 
   const totalPages = Math.max(1, Math.ceil(total / query.pageSize));
-  const hasFilters = Boolean(query.search || query.courseId);
+  const hasFilters = Boolean(
+    query.search || query.courseId || query.batchId || query.type || query.dueFrom || query.dueTo,
+  );
+  /** Picking a course narrows the batch filter to that course's cohorts. */
+  const batchOptions = query.courseId
+    ? batches.filter((b) => b.courseId === query.courseId)
+    : batches;
 
   const setParams = useCallback(
     (next: Record<string, string | number | undefined>) => {
-      const merged = { search: query.search, course: query.courseId, page: query.page, ...next };
+      const merged = {
+        search: query.search,
+        course: query.courseId,
+        batch: query.batchId,
+        type: query.type,
+        from: query.dueFrom,
+        to: query.dueTo,
+        page: query.page,
+        ...next,
+      };
       const p = new URLSearchParams();
       if (merged.search) p.set("search", String(merged.search));
       if (merged.course) p.set("course", String(merged.course));
+      if (merged.batch) p.set("batch", String(merged.batch));
+      if (merged.type) p.set("type", String(merged.type));
+      if (merged.from) p.set("from", String(merged.from));
+      if (merged.to) p.set("to", String(merged.to));
       if (merged.page && Number(merged.page) > 1) p.set("page", String(merged.page));
       const qs = p.toString();
       router.push(qs ? `${pathname}?${qs}` : pathname);
@@ -175,20 +248,64 @@ export function AssignmentsClient({
 
   function clearFilters() {
     setSearch("");
-    setParams({ search: undefined, course: undefined, page: 1 });
+    setParams({
+      search: undefined,
+      course: undefined,
+      batch: undefined,
+      type: undefined,
+      from: undefined,
+      to: undefined,
+      page: 1,
+    });
   }
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
-    setForm((prev) => ({ ...prev, [key]: value }));
+    setForm((prev) => {
+      const next = { ...prev, [key]: value };
+      // Switching course invalidates cohorts picked from the previous one.
+      if (key === "courseId") {
+        next.batchIds = prev.batchIds.filter(
+          (id) => batches.find((b) => b.id === id)?.courseId === value,
+        );
+      }
+      return next;
+    });
   }
+  /** Cohorts of the course chosen in the dialog. */
+  const formBatches = form.courseId
+    ? batches.filter((b) => b.courseId === form.courseId)
+    : batches;
+
   function openCreate() {
     setEditing(null);
     setForm(EMPTY);
     setDialogOpen(true);
   }
+  /**
+   * Open the editor straight away on what the list already knows, then fill in
+   * the long fields and the individually-set learners once they arrive — so the
+   * dialog never sits blank waiting on a round-trip.
+   */
   function openEdit(a: AssignmentRow) {
     setEditing(a);
     setForm(fromRow(a));
     setDialogOpen(true);
+    setLoadingDetail(true);
+    api
+      .get<{
+        description: string | null;
+        instructions: string | null;
+        students: { id: string }[];
+      }>(`/api/assignments/${a.id}`)
+      .then((d) =>
+        setForm((f) => ({
+          ...f,
+          description: d.description ?? "",
+          instructions: d.instructions ?? "",
+          studentIds: d.students.map((s) => s.id),
+        })),
+      )
+      .catch(() => {})
+      .finally(() => setLoadingDetail(false));
   }
 
   async function onSubmit(e: FormEvent) {
@@ -199,9 +316,13 @@ export function AssignmentsClient({
       description: form.description || undefined,
       instructions: form.instructions || undefined,
       courseId: form.courseId || undefined,
+      type: form.type,
+      gradingMode: form.gradingMode,
       maxScore: Number(form.maxScore) || 100,
       dueDate: form.dueDate || undefined,
       allowLate: form.allowLate,
+      batchIds: form.batchIds,
+      studentIds: form.studentIds,
     };
     try {
       if (editing) {
@@ -252,6 +373,11 @@ export function AssignmentsClient({
           <DropdownMenuItem onClick={() => setDetailId(a.id)}>
             <Eye className="size-4" /> View &amp; grade
           </DropdownMenuItem>
+          {a.type !== "FILE" && (
+            <DropdownMenuItem onClick={() => setQuestionsFor(a)}>
+              <ListChecks className="size-4" /> Questions
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem onClick={() => openEdit(a)}>
             <Pencil className="size-4" /> Edit
           </DropdownMenuItem>
@@ -287,12 +413,45 @@ export function AssignmentsClient({
       header: "Assignment",
       cell: (a) => (
         <div className="min-w-0">
-          <p className="truncate font-medium">{a.title}</p>
+          <p className="flex items-center gap-2 truncate font-medium">
+            <span className="truncate">{a.title}</span>
+            {a.type !== "FILE" && (
+              <Badge variant="secondary" className="shrink-0 text-[10px]">
+                {a.type}
+              </Badge>
+            )}
+          </p>
           <p className="text-muted-foreground truncate text-xs">
             {a.courseTitle ?? "No course"} · {a.createdByName}
           </p>
         </div>
       ),
+    },
+    {
+      key: "batches",
+      header: "Set for",
+      cell: (a) =>
+        a.batchNames.length === 0 ? (
+          <span className="text-muted-foreground text-sm">Whole course</span>
+        ) : (
+          <span className="flex max-w-[13rem] flex-wrap gap-1">
+            {a.batchNames.slice(0, 2).map((name, i) => (
+              <Badge
+                key={name}
+                variant="secondary"
+                className="cursor-pointer text-[10px] font-normal"
+                onClick={() => setParams({ batch: a.batchIds[i], page: 1 })}
+              >
+                {name}
+              </Badge>
+            ))}
+            {a.batchNames.length > 2 && (
+              <span className="text-muted-foreground text-xs">
+                +{a.batchNames.length - 2}
+              </span>
+            )}
+          </span>
+        ),
     },
     {
       key: "due",
@@ -408,12 +567,19 @@ export function AssignmentsClient({
                 onChange={(e) => setSearch(e.target.value)}
               />
             </form>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Select
                 value={query.courseId ?? ALL}
-                onValueChange={(v) => setParams({ course: !v || v === ALL ? undefined : v, page: 1 })}
+                onValueChange={(v) =>
+                  setParams({
+                    course: !v || v === ALL ? undefined : v,
+                    // A cohort from another course would filter everything out.
+                    batch: undefined,
+                    page: 1,
+                  })
+                }
               >
-                <SelectTrigger className="flex-1 sm:w-52">
+                <SelectTrigger className="w-44">
                   <SelectValue>
                     {(v) =>
                       !v || v === ALL
@@ -431,6 +597,65 @@ export function AssignmentsClient({
                   ))}
                 </SelectContent>
               </Select>
+              <Select
+                value={query.batchId ?? ALL}
+                onValueChange={(v) => setParams({ batch: !v || v === ALL ? undefined : v, page: 1 })}
+              >
+                <SelectTrigger className="w-40">
+                  <SelectValue>
+                    {(v) =>
+                      !v || v === ALL
+                        ? "All batches"
+                        : (batches.find((b) => b.id === v)?.name ?? "Batch")
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>All batches</SelectItem>
+                  {batchOptions.map((b) => (
+                    <SelectItem key={b.id} value={b.id}>
+                      {b.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
+                value={query.type ?? ALL}
+                onValueChange={(v) => setParams({ type: !v || v === ALL ? undefined : v, page: 1 })}
+              >
+                <SelectTrigger className="w-36">
+                  <SelectValue>
+                    {(v) => (!v || v === ALL ? "All types" : ASSIGNMENT_TYPE_LABEL[String(v)])}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>All types</SelectItem>
+                  {ASSIGNMENT_TYPES.map((t) => (
+                    <SelectItem key={t} value={t}>
+                      {ASSIGNMENT_TYPE_LABEL[t]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {/* Due-date window — "what's due this week" is the question the
+                  admin team actually asks of this page. */}
+              <div className="flex items-center gap-1.5">
+                <Input
+                  type="date"
+                  aria-label="Due on or after"
+                  className="w-[9.5rem]"
+                  value={query.dueFrom ?? ""}
+                  onChange={(e) => setParams({ from: e.target.value || undefined, page: 1 })}
+                />
+                <span className="text-muted-foreground text-sm">to</span>
+                <Input
+                  type="date"
+                  aria-label="Due on or before"
+                  className="w-[9.5rem]"
+                  value={query.dueTo ?? ""}
+                  onChange={(e) => setParams({ to: e.target.value || undefined, page: 1 })}
+                />
+              </div>
               {hasFilters && (
                 <Button variant="ghost" size="sm" onClick={clearFilters} className="text-muted-foreground">
                   <X className="size-4" /> Clear
@@ -466,6 +691,11 @@ export function AssignmentsClient({
             <DialogTitle>{editing ? "Edit assignment" : "New assignment"}</DialogTitle>
             <DialogDescription>
               {editing ? "Update this assignment." : "Create an assignment for a course."}
+              {loadingDetail && (
+                <span className="text-muted-foreground ml-2 inline-flex items-center gap-1">
+                  <Loader2 className="size-3 animate-spin" /> loading details…
+                </span>
+              )}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={onSubmit} className="space-y-4">
@@ -524,6 +754,88 @@ export function AssignmentsClient({
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
+                <Label>Assignment type</Label>
+                <Select
+                  value={form.type}
+                  onValueChange={(v) => {
+                    if (!v) return;
+                    // Written answers can only be marked by a person.
+                    set("type", v);
+                    if (v === "QNA") set("gradingMode", "MANUAL");
+                  }}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue>{(v) => ASSIGNMENT_TYPE_LABEL[String(v)]}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ASSIGNMENT_TYPES.map((t) => (
+                      <SelectItem key={t} value={t}>
+                        {ASSIGNMENT_TYPE_LABEL[t]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Marking</Label>
+                <Select
+                  value={form.gradingMode}
+                  onValueChange={(v) => v && set("gradingMode", v)}
+                  disabled={form.type === "QNA"}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue>{(v) => ASSIGNMENT_GRADING_MODE_LABEL[String(v)]}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ASSIGNMENT_GRADING_MODES.map((g) => (
+                      <SelectItem key={g} value={g}>
+                        {ASSIGNMENT_GRADING_MODE_LABEL[g]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {form.type !== "FILE" && (
+              <p className="text-muted-foreground rounded-lg border border-dashed p-3 text-xs">
+                {editing
+                  ? "Add the questions from the row menu — Questions."
+                  : "Create the assignment first, then add its questions from the row menu."}
+                {form.type === "MCQ"
+                  ? " Multiple-choice answers are marked automatically."
+                  : " Written answers are marked by hand against the model answer you set."}
+              </p>
+            )}
+
+            {/* Who it's set for. Nothing chosen = the whole course, which is how
+                assignments behaved before cohorts could be named. */}
+            <AudiencePicker
+              label="Batches"
+              emptyMeans="No batch chosen — everyone on the course gets it."
+              searchPlaceholder="Search batches…"
+              options={formBatches.map((b) => ({
+                id: b.id,
+                label: b.name,
+                hint: b.courseTitle,
+              }))}
+              selected={form.batchIds}
+              onChange={(ids) => set("batchIds", ids)}
+              maxHeight="12rem"
+            />
+
+            <AudiencePicker
+              label="Additional students"
+              emptyMeans="Nobody added individually."
+              searchPlaceholder="Search learners…"
+              options={students.map((st) => ({ id: st.id, label: st.name, hint: st.email }))}
+              selected={form.studentIds}
+              onChange={(ids) => set("studentIds", ids)}
+              maxHeight="12rem"
+            />
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
                 <Label htmlFor="a-max">Max score</Label>
                 <Input
                   id="a-max"
@@ -531,7 +843,13 @@ export function AssignmentsClient({
                   min={1}
                   value={form.maxScore}
                   onChange={(e) => set("maxScore", e.target.value)}
+                  disabled={form.type !== "FILE"}
                 />
+                {form.type !== "FILE" && (
+                  <p className="text-muted-foreground text-xs">
+                    Set from the questions&apos; total points.
+                  </p>
+                )}
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="a-due">Due date</Label>
@@ -566,6 +884,12 @@ export function AssignmentsClient({
       </Dialog>
 
       <AssignmentDetailSheet assignmentId={detailId} onOpenChange={(o) => !o && setDetailId(null)} />
+
+      <AssignmentQuestionsSheet
+        assignment={questionsFor}
+        canExport={canExport}
+        onOpenChange={(o) => !o && setQuestionsFor(null)}
+      />
 
       <AlertDialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>
         <AlertDialogContent>

@@ -11,6 +11,7 @@ import {
   Loader2,
   CheckCircle2,
   ClipboardList,
+  Users,
 } from "lucide-react";
 import { api, ApiError } from "@/lib/api-client";
 import { SUBMISSION_STATUS_LABEL } from "@/lib/validations/assignment";
@@ -28,19 +29,49 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
+interface AnswerRecord {
+  questionId: string;
+  optionIds?: string[];
+  text?: string;
+  points?: number;
+  isCorrect?: boolean | null;
+}
 interface Submission {
   id: string;
   status: string;
   score: number | null;
+  autoScore: number | null;
   feedback: string | null;
+  content: string | null;
+  fileUrl: string | null;
+  answers: AnswerRecord[] | null;
   submittedAt: string | null;
+  batchId: string | null;
+  batchName: string | null;
   student: { id: string; name: string; email: string; avatarUrl: string | null };
+}
+interface QuestionRow {
+  id: string;
+  type: string;
+  text: string;
+  points: number;
+  correctAnswer: string | null;
+  options: { id: string; text: string; isCorrect: boolean }[];
 }
 interface Detail {
   id: string;
   title: string;
+  type: string;
+  gradingMode: string;
   description: string | null;
   instructions: string | null;
   maxScore: number;
@@ -48,8 +79,12 @@ interface Detail {
   allowLate: boolean;
   course: { title: string; slug: string } | null;
   createdBy: { name: string; avatarUrl: string | null };
+  batches: { id: string; name: string }[];
+  questions: QuestionRow[];
   submissions: Submission[];
 }
+
+const ALL_BATCHES = "all";
 
 const STATUS_BADGE: Record<string, string> = {
   DRAFT: "bg-muted text-muted-foreground",
@@ -83,6 +118,8 @@ function DetailBody({ assignmentId }: { assignmentId: string }) {
   const [data, setData] = useState<Detail | null>(null);
   const [error, setError] = useState(false);
   const [gradingId, setGradingId] = useState<string | null>(null);
+  /** Read submissions one cohort at a time — the client's main ask here. */
+  const [batchFilter, setBatchFilter] = useState<string>(ALL_BATCHES);
 
   function load() {
     return api
@@ -123,8 +160,25 @@ function DetailBody({ assignmentId }: { assignmentId: string }) {
     );
   }
 
-  const graded = data.submissions.filter((s) => s.status === "GRADED").length;
-  const pending = data.submissions.filter((s) => s.status === "SUBMITTED" || s.status === "LATE").length;
+  // Every cohort that actually has a submission, plus any the work was set for.
+  const batchOptions = [
+    ...new Map(
+      [
+        ...data.batches.map((b) => [b.id, b.name] as const),
+        ...data.submissions
+          .filter((s) => s.batchId && s.batchName)
+          .map((s) => [s.batchId as string, s.batchName as string] as const),
+      ].map(([id, name]) => [id, name]),
+    ).entries(),
+  ].map(([id, name]) => ({ id, name }));
+
+  const visible =
+    batchFilter === ALL_BATCHES
+      ? data.submissions
+      : data.submissions.filter((s) => s.batchId === batchFilter);
+
+  const graded = visible.filter((s) => s.status === "GRADED").length;
+  const pending = visible.filter((s) => s.status === "SUBMITTED" || s.status === "LATE").length;
 
   return (
     <div className="flex flex-col">
@@ -182,7 +236,7 @@ function DetailBody({ assignmentId }: { assignmentId: string }) {
           <div className="mb-3 flex items-center gap-2 text-sm font-medium">
             <ClipboardList className="size-4 text-muted-foreground" />
             Submissions
-            <span className="text-muted-foreground font-normal">({data.submissions.length})</span>
+            <span className="text-muted-foreground font-normal">({visible.length})</span>
             {pending > 0 && (
               <Badge variant="secondary" className="ml-auto bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
                 {pending} to grade
@@ -190,17 +244,44 @@ function DetailBody({ assignmentId }: { assignmentId: string }) {
             )}
           </div>
 
-          {data.submissions.length === 0 ? (
+          {batchOptions.length > 0 && (
+            <div className="mb-3 flex items-center gap-2">
+              <Users className="text-muted-foreground size-4 shrink-0" />
+              <Select value={batchFilter} onValueChange={(v) => v && setBatchFilter(v)}>
+                <SelectTrigger className="w-full">
+                  <SelectValue>
+                    {(v) =>
+                      !v || v === ALL_BATCHES
+                        ? "All batches"
+                        : (batchOptions.find((b) => b.id === v)?.name ?? "Batch")
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_BATCHES}>All batches</SelectItem>
+                  {batchOptions.map((b) => (
+                    <SelectItem key={b.id} value={b.id}>
+                      {b.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {visible.length === 0 ? (
             <div className="rounded-xl border border-dashed py-8 text-center">
               <ClipboardList className="text-muted-foreground mx-auto mb-2 size-6" />
-              <p className="text-sm font-medium">No submissions yet</p>
+              <p className="text-sm font-medium">
+                {batchFilter === ALL_BATCHES ? "No submissions yet" : "Nothing from this batch"}
+              </p>
               <p className="text-muted-foreground mx-auto mt-1 max-w-xs text-xs">
                 Learner submissions will appear here for grading.
               </p>
             </div>
           ) : (
             <ul className="space-y-2">
-              {data.submissions.map((s) => (
+              {visible.map((s) => (
                 <li key={s.id} className="rounded-xl border p-3">
                   <div className="flex items-center gap-3">
                     <Avatar className="size-9">
@@ -211,6 +292,7 @@ function DetailBody({ assignmentId }: { assignmentId: string }) {
                       <p className="truncate text-sm font-medium">{s.student.name}</p>
                       <p className="text-muted-foreground truncate text-xs">
                         {s.submittedAt ? format(new Date(s.submittedAt), "d MMM, h:mm a") : "Not submitted"}
+                        {s.batchName ? ` · ${s.batchName}` : ""}
                       </p>
                     </div>
                     {s.score != null && (
@@ -223,6 +305,32 @@ function DetailBody({ assignmentId }: { assignmentId: string }) {
                       {SUBMISSION_STATUS_LABEL[s.status] ?? s.status}
                     </Badge>
                   </div>
+
+                  {/* What they actually answered — a marker shouldn't have to
+                      open another screen to see it. */}
+                  {data.questions.length > 0 && s.answers && s.answers.length > 0 && (
+                    <AnswerSheet
+                      questions={data.questions}
+                      answers={s.answers}
+                      autoScore={s.autoScore}
+                      maxScore={data.maxScore}
+                    />
+                  )}
+                  {s.content && (
+                    <p className="bg-muted/40 mt-2 rounded-lg p-3 text-sm whitespace-pre-wrap">
+                      {s.content}
+                    </p>
+                  )}
+                  {s.fileUrl && (
+                    <a
+                      href={s.fileUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary mt-2 inline-flex items-center gap-1.5 text-xs hover:underline"
+                    >
+                      <FileText className="size-3.5" /> Open submitted file
+                    </a>
+                  )}
 
                   {gradingId === s.id ? (
                     <GradeForm
@@ -248,7 +356,7 @@ function DetailBody({ assignmentId }: { assignmentId: string }) {
             </ul>
           )}
 
-          {data.submissions.length > 0 && (
+          {visible.length > 0 && (
             <p className="text-muted-foreground mt-3 text-xs">
               {graded} graded · {pending} pending
             </p>
@@ -342,5 +450,89 @@ function GradeForm({
         </Button>
       </div>
     </form>
+  );
+}
+
+/**
+ * A learner's answers laid against the paper, with the key shown alongside.
+ *
+ * Choice questions carry what the auto-marker awarded; written ones are the
+ * reason a person is reading this at all, so they get the model answer next to
+ * the response.
+ */
+function AnswerSheet({
+  questions,
+  answers,
+  autoScore,
+  maxScore,
+}: {
+  questions: QuestionRow[];
+  answers: AnswerRecord[];
+  autoScore: number | null;
+  maxScore: number;
+}) {
+  const byQuestion = new Map(answers.map((a) => [a.questionId, a]));
+
+  return (
+    <details className="mt-3 rounded-lg border">
+      <summary className="cursor-pointer px-3 py-2 text-sm font-medium">
+        Answers
+        {autoScore != null && (
+          <span className="text-muted-foreground ml-2 font-normal">
+            auto-marked {autoScore}/{maxScore}
+          </span>
+        )}
+      </summary>
+      <ol className="space-y-3 border-t p-3">
+        {questions.map((q, i) => {
+          const a = byQuestion.get(q.id);
+          const chosen = new Set(a?.optionIds ?? []);
+          return (
+            <li key={q.id} className="text-sm">
+              <p className="font-medium">
+                {i + 1}. {q.text}
+              </p>
+              {q.options.length > 0 ? (
+                <ul className="mt-1 space-y-0.5">
+                  {q.options.map((o) => {
+                    const picked = chosen.has(o.id);
+                    return (
+                      <li
+                        key={o.id}
+                        className={cn(
+                          "flex items-center gap-1.5 text-xs",
+                          o.isCorrect
+                            ? "text-emerald-700 dark:text-emerald-400"
+                            : picked
+                              ? "text-rose-600 dark:text-rose-400"
+                              : "text-muted-foreground",
+                        )}
+                      >
+                        <span className="w-10 shrink-0 font-medium">
+                          {picked ? "chose" : ""}
+                        </span>
+                        {o.text}
+                        {o.isCorrect && <CheckCircle2 className="size-3 shrink-0" />}
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <div className="mt-1 space-y-1">
+                  <p className="bg-muted/40 rounded p-2 text-xs whitespace-pre-wrap">
+                    {a?.text?.trim() ? a.text : "No answer given."}
+                  </p>
+                  {q.correctAnswer && (
+                    <p className="text-muted-foreground text-xs">
+                      <span className="font-medium">Model answer:</span> {q.correctAnswer}
+                    </p>
+                  )}
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </details>
   );
 }

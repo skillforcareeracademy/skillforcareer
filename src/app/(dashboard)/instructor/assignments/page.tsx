@@ -5,6 +5,8 @@ import {
   listAssignmentsAdmin,
   assignmentStats,
   listCoursesForSelect,
+  listBatchesForSelect,
+  listStudentsForSelect,
 } from "@/server/services/assignment-service";
 import { AssignmentsClient } from "@/components/admin/assignments/assignments-client";
 
@@ -27,13 +29,19 @@ export default async function InstructorAssignmentsPage({
     pageSize: 10,
     search: str(sp.search),
     courseId: str(sp.course),
+    batchId: str(sp.batch),
+    type: str(sp.type),
+    dueFrom: str(sp.from),
+    dueTo: str(sp.to),
     instructorId: user.id,
   };
 
-  const [{ assignments, total }, stats, courses] = await Promise.all([
+  const [{ assignments, total }, stats, courses, batches, students] = await Promise.all([
     listAssignmentsAdmin(query),
     assignmentStats(user.id),
     listCoursesForSelect(user.id),
+    listBatchesForSelect(undefined, user.id),
+    listStudentsForSelect(),
   ]);
 
   return (
@@ -43,6 +51,9 @@ export default async function InstructorAssignmentsPage({
       query={query}
       stats={stats}
       courses={courses}
+      batches={batches}
+      students={students}
+      canExport={false}
     />
   );
 }

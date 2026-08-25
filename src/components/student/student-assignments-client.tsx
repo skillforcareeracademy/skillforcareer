@@ -163,6 +163,9 @@ function SubmitDialog({
   const router = useRouter();
   const [content, setContent] = useState("");
   const [fileUrl, setFileUrl] = useState("");
+  /** Per-question answers, for MCQ / Q&A papers. */
+  const [picked, setPicked] = useState<Record<string, string[]>>({});
+  const [written, setWritten] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [key, setKey] = useState<string | null>(null);
 
@@ -171,23 +174,58 @@ function SubmitDialog({
     setKey(assignment.id);
     setContent(assignment.submission?.content ?? "");
     setFileUrl(assignment.submission?.fileUrl ?? "");
+    setPicked({});
+    setWritten({});
   }
 
   if (!assignment) return <Dialog open={false} onOpenChange={onOpenChange} />;
 
   const graded = assignment.submission?.status === "GRADED";
   const locked = graded;
+  /** A question paper rather than a free-text/upload submission. */
+  const isPaper = assignment.type !== "FILE" && assignment.questions.length > 0;
+
+  function choose(question: { id: string; type: string }, optionId: string) {
+    setPicked((prev) => {
+      const current = prev[question.id] ?? [];
+      if (question.type === "MULTIPLE_CHOICE") {
+        return {
+          ...prev,
+          [question.id]: current.includes(optionId)
+            ? current.filter((id) => id !== optionId)
+            : [...current, optionId],
+        };
+      }
+      // Single choice and true/false replace whatever was picked before.
+      return { ...prev, [question.id]: [optionId] };
+    });
+  }
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (!assignment) return;
     setSaving(true);
     try {
-      await api.post(`/api/assignments/${assignment.id}/submit`, {
-        content,
-        fileUrl: fileUrl || undefined,
-      });
-      toast.success("Assignment submitted.");
+      if (isPaper) {
+        const res = await api.post<{ message: string }>(
+          `/api/assignments/${assignment.id}/answers`,
+          {
+            answers: assignment.questions.map((q) => ({
+              questionId: q.id,
+              optionIds: picked[q.id] ?? [],
+              text: written[q.id] ?? "",
+            })),
+            fileUrl: fileUrl || undefined,
+          },
+        );
+        toast.success(res.message);
+      } else {
+        await api.post(`/api/assignments/${assignment.id}/submit`, {
+          content,
+          fileUrl: fileUrl || undefined,
+        });
+        toast.success("Assignment submitted.");
+      }
       onOpenChange(false);
       router.refresh();
     } catch (err) {
@@ -199,6 +237,15 @@ function SubmitDialog({
       setSaving(false);
     }
   }
+
+  /** Every question answered — what the submit button waits for. */
+  const paperComplete =
+    !isPaper ||
+    assignment.questions.every((q) =>
+      q.options.length > 0
+        ? (picked[q.id] ?? []).length > 0
+        : (written[q.id] ?? "").trim().length > 0,
+    );
 
   return (
     <Dialog open onOpenChange={onOpenChange}>
@@ -231,17 +278,70 @@ function SubmitDialog({
         )}
 
         <form onSubmit={submit} className="space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="sub-content">Your submission</Label>
-            <Textarea
-              id="sub-content"
-              rows={5}
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              placeholder="Write your answer, or paste your notes / repo link here…"
-              disabled={locked}
-            />
-          </div>
+          {isPaper ? (
+            <ol className="space-y-4">
+              {assignment.questions.map((q, i) => (
+                <li key={q.id} className="rounded-xl border p-4">
+                  <p className="text-sm font-medium">
+                    {i + 1}. {q.text}
+                    <span className="text-muted-foreground ml-2 text-xs font-normal">
+                      {q.points} point{q.points === 1 ? "" : "s"}
+                    </span>
+                  </p>
+                  {q.options.length > 0 ? (
+                    <div className="mt-3 space-y-2">
+                      {q.options.map((o) => {
+                        const on = (picked[q.id] ?? []).includes(o.id);
+                        return (
+                          <label
+                            key={o.id}
+                            className={
+                              on
+                                ? "border-primary bg-primary/5 flex cursor-pointer items-center gap-3 rounded-lg border p-2.5 text-sm"
+                                : "hover:bg-muted/50 flex cursor-pointer items-center gap-3 rounded-lg border p-2.5 text-sm"
+                            }
+                          >
+                            <input
+                              type={q.type === "MULTIPLE_CHOICE" ? "checkbox" : "radio"}
+                              name={`q-${q.id}`}
+                              checked={on}
+                              onChange={() => choose(q, o.id)}
+                              disabled={locked}
+                              className="accent-primary size-4"
+                            />
+                            {o.text}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <Textarea
+                      className="mt-3"
+                      rows={4}
+                      value={written[q.id] ?? ""}
+                      onChange={(e) =>
+                        setWritten((prev) => ({ ...prev, [q.id]: e.target.value }))
+                      }
+                      placeholder="Write your answer…"
+                      disabled={locked}
+                    />
+                  )}
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <div className="space-y-1.5">
+              <Label htmlFor="sub-content">Your submission</Label>
+              <Textarea
+                id="sub-content"
+                rows={5}
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                placeholder="Write your answer, or paste your notes / repo link here…"
+                disabled={locked}
+              />
+            </div>
+          )}
           <div className="space-y-1.5">
             <Label htmlFor="sub-file">Link (optional)</Label>
             <Input
@@ -264,7 +364,12 @@ function SubmitDialog({
               Close
             </Button>
             {!locked && (
-              <Button type="submit" disabled={saving || content.trim().length === 0}>
+              <Button
+                type="submit"
+                disabled={
+                  saving || (isPaper ? !paperComplete : content.trim().length === 0)
+                }
+              >
                 {saving && <Loader2 className="size-4 animate-spin" />}
                 {assignment.submission ? "Resubmit" : "Submit"}
               </Button>
