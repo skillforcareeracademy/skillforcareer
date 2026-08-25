@@ -16,6 +16,9 @@ import {
   Users,
   ExternalLink,
   CalendarClock,
+  Link2,
+  Video,
+  CheckCircle2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
@@ -59,20 +62,30 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  WebinarParticipantsSheet,
+  type WebinarParticipantsTarget,
+} from "@/components/admin/webinars/webinar-participants-sheet";
 
 interface WebinarRow {
   id: string;
   title: string;
   slug: string;
+  topic: string;
+  agenda: string;
   description: string;
   hostName: string;
   coverImageUrl: string;
   joinUrl: string;
+  roomCode: string | null;
   scheduledStart: string;
   durationMinutes: number;
   capacity: number | null;
+  attendanceDiscountPercent: number;
   isPublished: boolean;
   registrations: number;
+  /** How many sat through the whole session — the discount-eligible count. */
+  attended: number;
 }
 interface Stats {
   total: number;
@@ -95,6 +108,8 @@ function toLocalInput(iso: string): string {
 }
 const blank = {
   title: "",
+  topic: "",
+  agenda: "",
   description: "",
   hostName: "",
   scheduledStart: "",
@@ -102,6 +117,7 @@ const blank = {
   coverImageUrl: "",
   joinUrl: "",
   capacity: "",
+  attendanceDiscountPercent: "5",
   isPublished: true,
 };
 type FormState = typeof blank;
@@ -125,6 +141,8 @@ export function WebinarsClient({
   const [form, setForm] = useState<FormState>(blank);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<WebinarRow | null>(null);
+  const [participantsFor, setParticipantsFor] = useState<WebinarParticipantsTarget | null>(null);
+  const [generating, setGenerating] = useState<string | null>(null);
 
   const totalPages = Math.max(1, Math.ceil(total / query.pageSize));
 
@@ -150,6 +168,8 @@ export function WebinarsClient({
     setEditing(w);
     setForm({
       title: w.title,
+      topic: w.topic,
+      agenda: w.agenda,
       description: w.description,
       hostName: w.hostName,
       scheduledStart: toLocalInput(w.scheduledStart),
@@ -157,6 +177,7 @@ export function WebinarsClient({
       coverImageUrl: w.coverImageUrl,
       joinUrl: w.joinUrl,
       capacity: w.capacity != null ? String(w.capacity) : "",
+      attendanceDiscountPercent: String(w.attendanceDiscountPercent),
       isPublished: w.isPublished,
     });
     setDialogOpen(true);
@@ -167,6 +188,8 @@ export function WebinarsClient({
     setSaving(true);
     const payload = {
       title: form.title,
+      topic: form.topic || undefined,
+      agenda: form.agenda || undefined,
       description: form.description || undefined,
       hostName: form.hostName,
       scheduledStart: form.scheduledStart,
@@ -174,6 +197,7 @@ export function WebinarsClient({
       coverImageUrl: form.coverImageUrl || undefined,
       joinUrl: form.joinUrl || undefined,
       capacity: form.capacity ? Number(form.capacity) : undefined,
+      attendanceDiscountPercent: Number(form.attendanceDiscountPercent || 0),
       isPublished: form.isPublished,
     };
     try {
@@ -187,6 +211,42 @@ export function WebinarsClient({
       toast.error(d?.issues?.[0]?.message ?? (err instanceof ApiError ? err.message : "Couldn't save."));
     } finally {
       setSaving(false);
+    }
+  }
+
+  /**
+   * Issue the webinar's join link. Rather than asking staff to paste a Meet or
+   * Zoom URL, this spins up a room on the platform's own video system — so the
+   * link is always live, and attendance can be taken from it automatically.
+   */
+  async function generateLink(w: WebinarRow) {
+    setGenerating(w.id);
+    try {
+      const res = await api.post<{ joinUrl: string }>(`/api/webinars/${w.id}/room`, {});
+      const absolute = `${window.location.origin}${res.joinUrl}`;
+      try {
+        await navigator.clipboard.writeText(absolute);
+        toast.success("Join link ready — copied to your clipboard.");
+      } catch {
+        toast.success(`Join link ready: ${absolute}`);
+      }
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Couldn't create the join link.");
+    } finally {
+      setGenerating(null);
+    }
+  }
+
+  async function copyJoinLink(w: WebinarRow) {
+    const absolute = w.joinUrl.startsWith("http")
+      ? w.joinUrl
+      : `${window.location.origin}${w.joinUrl}`;
+    try {
+      await navigator.clipboard.writeText(absolute);
+      toast.success("Join link copied.");
+    } catch {
+      toast.error("Couldn't copy — check clipboard permissions.");
     }
   }
 
@@ -226,6 +286,44 @@ export function WebinarsClient({
           <MoreHorizontal className="size-4" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          <DropdownMenuItem
+            onClick={() =>
+              setParticipantsFor({
+                id: w.id,
+                title: w.title,
+                capacity: w.capacity,
+                durationMinutes: w.durationMinutes,
+              })
+            }
+          >
+            <Users className="size-4" /> Participants ({w.registrations})
+          </DropdownMenuItem>
+          {w.joinUrl ? (
+            <>
+              <DropdownMenuItem onClick={() => copyJoinLink(w)}>
+                <Link2 className="size-4" /> Copy join link
+              </DropdownMenuItem>
+              {w.roomCode && (
+                <DropdownMenuItem
+                  onClick={() => window.open(`/live/room/${w.roomCode}`, "_blank", "noopener")}
+                >
+                  <Video className="size-4" /> Open webinar room
+                </DropdownMenuItem>
+              )}
+            </>
+          ) : (
+            <DropdownMenuItem
+              disabled={generating === w.id}
+              onClick={() => generateLink(w)}
+            >
+              {generating === w.id ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Video className="size-4" />
+              )}
+              Generate join link
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem onClick={() => openEdit(w)}>
             <Pencil className="size-4" /> Edit
           </DropdownMenuItem>
@@ -264,11 +362,38 @@ export function WebinarsClient({
         <span className="text-sm whitespace-nowrap">{format(new Date(w.scheduledStart), "d MMM, h:mm a")}</span>
       ),
     },
-    { key: "regs", header: "Registered", className: "tabular-nums", cell: (w) => (
-      <span className="flex items-center gap-1 text-sm">
-        <Users className="text-muted-foreground size-3.5" /> {w.registrations}{w.capacity != null ? `/${w.capacity}` : ""}
-      </span>
-    ) },
+    {
+      key: "regs",
+      header: "Participants",
+      className: "tabular-nums",
+      cell: (w) => (
+        <button
+          type="button"
+          onClick={() =>
+            setParticipantsFor({
+              id: w.id,
+              title: w.title,
+              capacity: w.capacity,
+              durationMinutes: w.durationMinutes,
+            })
+          }
+          className="hover:text-primary flex items-center gap-1 text-sm transition-colors"
+        >
+          <Users className="text-muted-foreground size-3.5" />
+          {w.registrations}
+          {w.capacity != null ? `/${w.capacity}` : ""}
+          {w.attended > 0 && (
+            <span
+              className="ml-1 flex items-center gap-0.5 text-xs text-emerald-600"
+              title={`${w.attended} attended the full session`}
+            >
+              <CheckCircle2 className="size-3" />
+              {w.attended}
+            </span>
+          )}
+        </button>
+      ),
+    },
     {
       key: "status",
       header: "Status",
@@ -377,6 +502,28 @@ export function WebinarsClient({
               <Input id="w-title" value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} placeholder="e.g. Break into Data Science in 2026" />
             </div>
             <div className="space-y-1.5">
+              <Label htmlFor="w-topic">Topic</Label>
+              <Input
+                id="w-topic"
+                value={form.topic}
+                onChange={(e) => setForm((f) => ({ ...f, topic: e.target.value }))}
+                placeholder="The one line that says what this session is about"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="w-agenda">Agenda</Label>
+              <Textarea
+                id="w-agenda"
+                rows={4}
+                value={form.agenda}
+                onChange={(e) => setForm((f) => ({ ...f, agenda: e.target.value }))}
+                placeholder={"What gets covered, one point per line:\n• Why medical coding is hiring right now\n• CPC certification, start to finish\n• Live Q&A"}
+              />
+              <p className="text-muted-foreground text-xs">
+                One point per line — shown as a list on the public webinar page.
+              </p>
+            </div>
+            <div className="space-y-1.5">
               <Label htmlFor="w-desc">Description</Label>
               <Textarea id="w-desc" rows={3} value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} />
             </div>
@@ -398,7 +545,25 @@ export function WebinarsClient({
               <div className="space-y-1.5">
                 <Label htmlFor="w-cap">Capacity (optional)</Label>
                 <Input id="w-cap" type="number" value={form.capacity} onChange={(e) => setForm((f) => ({ ...f, capacity: e.target.value }))} placeholder="Unlimited" />
+                <p className="text-muted-foreground text-xs">
+                  Registration closes on the site once these seats are gone.
+                </p>
               </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="w-disc">Full-attendance discount (%)</Label>
+              <Input
+                id="w-disc"
+                type="number"
+                min={0}
+                max={100}
+                value={form.attendanceDiscountPercent}
+                onChange={(e) => setForm((f) => ({ ...f, attendanceDiscountPercent: e.target.value }))}
+              />
+              <p className="text-muted-foreground text-xs">
+                Anyone who stays for the whole session is sent a single-use code
+                for this much off any course. Set 0 to switch the offer off.
+              </p>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="w-cover">Cover image URL (optional)</Label>
@@ -407,6 +572,11 @@ export function WebinarsClient({
             <div className="space-y-1.5">
               <Label htmlFor="w-join">Join link (optional)</Label>
               <Input id="w-join" value={form.joinUrl} onChange={(e) => setForm((f) => ({ ...f, joinUrl: e.target.value }))} placeholder="Meeting URL shown to registrants" />
+              <p className="text-muted-foreground text-xs">
+                Leave this blank and use <span className="font-medium">Generate join link</span>{" "}
+                from the row menu — that creates a room on our own video system,
+                which is what lets attendance be taken automatically.
+              </p>
             </div>
             <div className="flex items-center justify-between rounded-lg border p-3">
               <div>
@@ -425,6 +595,11 @@ export function WebinarsClient({
           </form>
         </DialogContent>
       </Dialog>
+
+      <WebinarParticipantsSheet
+        webinar={participantsFor}
+        onOpenChange={(o) => !o && setParticipantsFor(null)}
+      />
 
       <AlertDialog open={deleting != null} onOpenChange={(o) => !o && setDeleting(null)}>
         <AlertDialogContent>

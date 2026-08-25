@@ -23,7 +23,7 @@ function randomCode(): string {
   return `${pick(3)}-${pick(4)}-${pick(3)}`;
 }
 
-async function uniqueRoomCode(): Promise<string> {
+export async function uniqueRoomCode(): Promise<string> {
   for (let i = 0; i < 50; i += 1) {
     const code = randomCode();
     const clash = await prisma.meeting.findUnique({
@@ -288,6 +288,8 @@ export async function checkRoomAccess(
     host: { id: string };
     courseId: string | null;
     batchId: string | null;
+    provider?: string;
+    roomCode?: string;
   },
 ): Promise<boolean> {
   if (meeting.host.id === userId) return true;
@@ -304,6 +306,26 @@ export async function checkRoomAccess(
     select: { id: true },
   });
   if (invited) return true;
+
+  // A webinar room has no course or batch behind it — registering for the
+  // webinar is what grants entry.
+  if (meeting.provider === "webinar" && meeting.roomCode) {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true },
+    });
+    if (user) {
+      const registered = await prisma.webinarRegistration.findFirst({
+        where: {
+          webinar: { roomCode: meeting.roomCode },
+          OR: [{ userId }, { email: user.email.trim().toLowerCase() }],
+        },
+        select: { id: true },
+      });
+      if (registered) return true;
+    }
+    return false;
+  }
 
   const or: Prisma.EnrollmentWhereInput[] = [];
   if (meeting.courseId) or.push({ courseId: meeting.courseId });

@@ -34,6 +34,8 @@ interface Meeting {
   title: string;
   status: string;
   roomCode: string;
+  /** "webrtc" | "offline" | "webinar" — webinar rooms keep their own register. */
+  provider: string;
   isRecordingEnabled: boolean;
   host: { id: string; name: string; avatarUrl: string | null };
   courseTitle: string | null;
@@ -61,6 +63,10 @@ interface ChatMessage {
   text: string;
   me: boolean;
 }
+
+/** How often a webinar room reports watch time. Often enough to survive a
+ *  crashed tab, rare enough to stay out of the way of the call. */
+const PRESENCE_INTERVAL_MS = 60_000;
 
 const RTC_CONFIG: RTCConfiguration = {
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
@@ -148,6 +154,46 @@ export function LiveRoom({
     const t = setInterval(() => setElapsed((e) => e + 1), 1000);
     return () => clearInterval(t);
   }, [joined]);
+
+  /**
+   * Webinar attendance, taken automatically: the room reports how long this
+   * viewer has had it open, and the server keeps the high-water mark. Sitting
+   * through the whole session is what earns the extra discount, so nobody
+   * should have to tick a register for it.
+   */
+  useEffect(() => {
+    if (!joined || meeting.provider !== "webinar") return;
+
+    const startedAt = Date.now();
+    const url = "/api/webinars/presence";
+
+    function report(final = false) {
+      const seconds = Math.round((Date.now() - startedAt) / 1000);
+      const body = JSON.stringify({ roomCode: meeting.roomCode, seconds });
+      // A closing tab won't wait for fetch; a beacon survives it.
+      if (final && navigator.sendBeacon) {
+        navigator.sendBeacon(url, new Blob([body], { type: "application/json" }));
+        return;
+      }
+      void fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+        keepalive: true,
+      }).catch(() => {});
+    }
+
+    const t = setInterval(() => report(), PRESENCE_INTERVAL_MS);
+    const onHidden = () => {
+      if (document.visibilityState === "hidden") report(true);
+    };
+    document.addEventListener("visibilitychange", onHidden);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", onHidden);
+      report(true);
+    };
+  }, [joined, meeting.provider, meeting.roomCode]);
 
   // Signaling + WebRTC mesh once joined.
   useEffect(() => {
