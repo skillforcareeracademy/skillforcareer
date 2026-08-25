@@ -99,11 +99,18 @@ interface Query {
   search?: string;
   status?: string;
   courseId?: string;
+  batchId?: string;
 }
 interface Opt {
   id: string;
   title?: string;
   name?: string;
+}
+interface BatchOpt {
+  id: string;
+  name: string;
+  courseId: string;
+  courseTitle: string;
 }
 
 const STATUS_BADGE: Record<string, string> = {
@@ -180,7 +187,7 @@ export function LiveClient({
   stats: Stats;
   hosts: Opt[];
   courses: Opt[];
-  batches: Opt[];
+  batches: BatchOpt[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -225,7 +232,13 @@ export function LiveClient({
   }
 
   const totalPages = Math.max(1, Math.ceil(total / query.pageSize));
-  const hasFilters = Boolean(query.search || query.status || query.courseId);
+  const hasFilters = Boolean(
+    query.search || query.status || query.courseId || query.batchId,
+  );
+  /** Once a course is picked the batch list narrows to that course's cohorts. */
+  const batchOptions = query.courseId
+    ? batches.filter((b) => b.courseId === query.courseId)
+    : batches;
 
   const setParams = useCallback(
     (next: Record<string, string | number | undefined>) => {
@@ -233,6 +246,7 @@ export function LiveClient({
         search: query.search,
         status: query.status,
         course: query.courseId,
+        batch: query.batchId,
         page: query.page,
         ...next,
       };
@@ -240,6 +254,7 @@ export function LiveClient({
       if (merged.search) p.set("search", String(merged.search));
       if (merged.status) p.set("status", String(merged.status));
       if (merged.course) p.set("course", String(merged.course));
+      if (merged.batch) p.set("batch", String(merged.batch));
       if (merged.page && Number(merged.page) > 1) p.set("page", String(merged.page));
       const qs = p.toString();
       router.push(qs ? `${pathname}?${qs}` : pathname);
@@ -249,11 +264,30 @@ export function LiveClient({
 
   function clearFilters() {
     setSearch("");
-    setParams({ search: undefined, status: undefined, course: undefined, page: 1 });
+    setParams({
+      search: undefined,
+      status: undefined,
+      course: undefined,
+      batch: undefined,
+      page: 1,
+    });
   }
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
-    setForm((prev) => ({ ...prev, [key]: value }));
+    setForm((prev) => {
+      // Changing the course invalidates any batch already picked from another.
+      const next = { ...prev, [key]: value };
+      if (key === "courseId" && prev.batchId) {
+        const batch = batches.find((b) => b.id === prev.batchId);
+        if (batch && batch.courseId !== value) next.batchId = "";
+      }
+      return next;
+    });
   }
+
+  /** Cohorts of the course chosen in the create/edit dialog. */
+  const formBatches = form.courseId
+    ? batches.filter((b) => b.courseId === form.courseId)
+    : batches;
   function openCreate() {
     setEditing(null);
     setForm(blankForm(defaultHost));
@@ -405,14 +439,28 @@ export function LiveClient({
       ),
     },
     {
-      key: "context",
-      header: "Course / Batch",
+      key: "course",
+      header: "Course",
       cell: (m) => (
-        <div className="min-w-0 text-sm">
-          <p className="truncate">{m.courseTitle ?? "—"}</p>
-          {m.batchName && <p className="text-muted-foreground truncate text-xs">{m.batchName}</p>}
-        </div>
+        <span className="block max-w-[14rem] truncate text-sm">{m.courseTitle ?? "—"}</span>
       ),
+    },
+    {
+      key: "batch",
+      header: "Batch",
+      cell: (m) =>
+        m.batchName ? (
+          <button
+            type="button"
+            onClick={() => setParams({ batch: m.batchId ?? undefined, page: 1 })}
+            className="hover:text-primary block max-w-[12rem] truncate text-left text-sm transition-colors"
+            title={`Show only ${m.batchName}`}
+          >
+            {m.batchName}
+          </button>
+        ) : (
+          <span className="text-muted-foreground text-sm">—</span>
+        ),
     },
     {
       key: "when",
@@ -578,6 +626,28 @@ export function LiveClient({
                   ))}
                 </SelectContent>
               </Select>
+              <Select
+                value={query.batchId ?? ALL}
+                onValueChange={(v) => setParams({ batch: !v || v === ALL ? undefined : v, page: 1 })}
+              >
+                <SelectTrigger className="flex-1 sm:w-48">
+                  <SelectValue>
+                    {(v) =>
+                      !v || v === ALL
+                        ? "All batches"
+                        : (batches.find((b) => b.id === v)?.name ?? "Batch")
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>All batches</SelectItem>
+                  {batchOptions.map((b) => (
+                    <SelectItem key={b.id} value={b.id}>
+                      {b.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               {hasFilters && (
                 <Button variant="ghost" size="sm" onClick={clearFilters} className="text-muted-foreground">
                   <X className="size-4" /> Clear
@@ -710,7 +780,7 @@ export function LiveClient({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value={NONE}>None</SelectItem>
-                    {batches.map((b) => (
+                    {formBatches.map((b) => (
                       <SelectItem key={b.id} value={b.id}>
                         {b.name}
                       </SelectItem>

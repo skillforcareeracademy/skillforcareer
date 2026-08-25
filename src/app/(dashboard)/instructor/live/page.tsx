@@ -29,6 +29,7 @@ export default async function InstructorLivePage({
     search: str(sp.search),
     status: str(sp.status),
     courseId: str(sp.course),
+    batchId: str(sp.batch),
     hostId: user.id,
   };
 

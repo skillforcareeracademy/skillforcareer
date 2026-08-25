@@ -26,6 +26,9 @@ export default async function OfflinePage({
     page: Math.max(1, Number(sp.page) || 1),
     pageSize: 12,
     search: str(sp.search),
+    status: str(sp.status),
+    courseId: str(sp.course),
+    batchId: str(sp.batch),
   };
 
   const [{ classes, total }, courses, batches] = await Promise.all([

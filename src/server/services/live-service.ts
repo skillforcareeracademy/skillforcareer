@@ -43,6 +43,8 @@ export interface MeetingListQuery {
   search?: string;
   status?: string;
   courseId?: string;
+  /** Narrow to one cohort — "how many classes has this batch had?". */
+  batchId?: string;
   /** Scope to one host's classes (instructor workspace). */
   hostId?: string;
 }
@@ -56,6 +58,7 @@ export async function listMeetingsAdmin(q: MeetingListQuery) {
   }
   if (q.status) and.push({ status: q.status as Prisma.MeetingWhereInput["status"] });
   if (q.courseId) and.push({ courseId: q.courseId });
+  if (q.batchId) and.push({ batchId: q.batchId });
   if (q.hostId) and.push({ hostId: q.hostId });
   const where: Prisma.MeetingWhereInput = and.length ? { AND: and } : {};
 
@@ -332,12 +335,19 @@ export async function listCoursesForSelect(instructorId?: string) {
 }
 
 export async function listBatchesForSelect(instructorId?: string) {
-  return prisma.batch.findMany({
+  const rows = await prisma.batch.findMany({
     where: instructorId ? { instructorId } : {},
-    select: { id: true, name: true },
+    select: { id: true, name: true, courseId: true, course: { select: { title: true } } },
     orderBy: { startDate: "desc" },
     take: 200,
   });
+  // `courseId` lets the batch filter narrow itself once a course is chosen.
+  return rows.map((b) => ({
+    id: b.id,
+    name: b.name,
+    courseId: b.courseId,
+    courseTitle: b.course.title,
+  }));
 }
 
 // ── Writes ───────────────────────────────────────────────────────────────────
@@ -511,10 +521,20 @@ export async function listOfflineClasses(q: {
   page: number;
   pageSize: number;
   search?: string;
+  status?: string;
+  courseId?: string;
+  batchId?: string;
   hostId?: string;
 }) {
   const and: Prisma.MeetingWhereInput[] = [{ provider: "offline" }];
-  if (q.search) and.push({ title: { contains: q.search } });
+  if (q.search) {
+    and.push({
+      OR: [{ title: { contains: q.search } }, { location: { contains: q.search } }],
+    });
+  }
+  if (q.status) and.push({ status: q.status as Prisma.MeetingWhereInput["status"] });
+  if (q.courseId) and.push({ courseId: q.courseId });
+  if (q.batchId) and.push({ batchId: q.batchId });
   if (q.hostId) and.push({ hostId: q.hostId });
   const where: Prisma.MeetingWhereInput = { AND: and };
 
@@ -540,6 +560,7 @@ export async function listOfflineClasses(q: {
     classes: rows.map((m) => ({
       id: m.id,
       title: m.title,
+      status: m.status,
       location: m.location,
       courseTitle: m.course?.title ?? null,
       batchName: m.batch?.name ?? null,

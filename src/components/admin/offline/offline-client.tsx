@@ -17,9 +17,14 @@ import {
   Users,
   Video,
   Link2,
+  Ban,
+  RotateCcw,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
+import { MEETING_STATUS_LABEL } from "@/lib/validations/live";
+import { Badge } from "@/components/ui/badge";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
@@ -63,6 +68,7 @@ import { StudentsSheet } from "@/components/admin/offline/students-sheet";
 interface OfflineRow {
   id: string;
   title: string;
+  status: string;
   location: string | null;
   courseTitle: string | null;
   batchName: string | null;
@@ -85,7 +91,27 @@ interface Query {
   page: number;
   pageSize: number;
   search?: string;
+  status?: string;
+  courseId?: string;
+  batchId?: string;
 }
+interface BatchOpt {
+  id: string;
+  name: string;
+  courseId: string;
+  courseTitle: string;
+}
+
+const ALL = "all";
+/** Offline sessions are never "live" — they happen in a room, not a browser. */
+const OFFLINE_STATUSES = ["SCHEDULED", "ENDED", "CANCELLED"] as const;
+
+const STATUS_BADGE: Record<string, string> = {
+  SCHEDULED: "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300",
+  LIVE: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
+  ENDED: "bg-muted text-muted-foreground",
+  CANCELLED: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300",
+};
 
 const NONE = "none";
 const blank = { title: "", description: "", courseId: "", batchId: "", scheduledStart: "", scheduledEnd: "", location: "" };
@@ -117,7 +143,7 @@ export function OfflineClient({
   total: number;
   query: Query;
   courses: Opt[];
-  batches: Opt[];
+  batches: BatchOpt[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -130,20 +156,106 @@ export function OfflineClient({
   const [deleting, setDeleting] = useState<OfflineRow | null>(null);
   const [attendId, setAttendId] = useState<string | null>(null);
   const [studentsFor, setStudentsFor] = useState<OfflineRow | null>(null);
+  const [rescheduling, setRescheduling] = useState<OfflineRow | null>(null);
+  const [reForm, setReForm] = useState({ scheduledStart: "", scheduledEnd: "", reason: "" });
+  const [reSaving, setReSaving] = useState(false);
+  const [cancelling, setCancelling] = useState<OfflineRow | null>(null);
 
   const totalPages = Math.max(1, Math.ceil(total / query.pageSize));
+  const hasFilters = Boolean(
+    query.search || query.status || query.courseId || query.batchId,
+  );
+  /** Choosing a course narrows the batch filter to that course's cohorts. */
+  const batchOptions = query.courseId
+    ? batches.filter((b) => b.courseId === query.courseId)
+    : batches;
 
   const setParams = useCallback(
     (next: Record<string, string | number | undefined>) => {
-      const merged = { search: query.search, page: query.page, ...next };
+      const merged = {
+        search: query.search,
+        status: query.status,
+        course: query.courseId,
+        batch: query.batchId,
+        page: query.page,
+        ...next,
+      };
       const p = new URLSearchParams();
       if (merged.search) p.set("search", String(merged.search));
+      if (merged.status) p.set("status", String(merged.status));
+      if (merged.course) p.set("course", String(merged.course));
+      if (merged.batch) p.set("batch", String(merged.batch));
       if (merged.page && Number(merged.page) > 1) p.set("page", String(merged.page));
       const qs = p.toString();
       router.push(qs ? `${pathname}?${qs}` : pathname);
     },
     [router, pathname, query],
   );
+
+  function clearFilters() {
+    setSearch("");
+    setParams({
+      search: undefined,
+      status: undefined,
+      course: undefined,
+      batch: undefined,
+      page: 1,
+    });
+  }
+
+  function openReschedule(c: OfflineRow) {
+    setRescheduling(c);
+    setReForm({
+      scheduledStart: toLocalInput(c.scheduledStart),
+      scheduledEnd: toLocalInput(c.scheduledEnd),
+      reason: "",
+    });
+  }
+
+  /** Moves the class and tells everyone enrolled — same endpoint live uses. */
+  async function submitReschedule(e: FormEvent) {
+    e.preventDefault();
+    if (!rescheduling) return;
+    setReSaving(true);
+    try {
+      const res = await api.post<{ notified: number }>(
+        `/api/meetings/${rescheduling.id}/reschedule`,
+        {
+          scheduledStart: reForm.scheduledStart,
+          scheduledEnd: reForm.scheduledEnd || undefined,
+          reason: reForm.reason || undefined,
+        },
+      );
+      toast.success(
+        res.notified > 0
+          ? `Class rescheduled · ${res.notified} learner${res.notified === 1 ? "" : "s"} notified.`
+          : "Class rescheduled.",
+      );
+      setRescheduling(null);
+      router.refresh();
+    } catch (err) {
+      const d = err instanceof ApiError ? (err.details as { issues?: { message: string }[] }) : undefined;
+      toast.error(d?.issues?.[0]?.message ?? (err instanceof ApiError ? err.message : "Couldn't reschedule."));
+    } finally {
+      setReSaving(false);
+    }
+  }
+
+  async function setStatus(c: OfflineRow, status: string) {
+    try {
+      await api.post(`/api/meetings/${c.id}/status`, { status });
+      toast.success(status === "CANCELLED" ? "Class cancelled." : "Class restored.");
+      setCancelling(null);
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Couldn't update the class.");
+    }
+  }
+
+  /** Cohorts of the course chosen in the create/edit dialog. */
+  const formBatches = form.courseId
+    ? batches.filter((b) => b.courseId === form.courseId)
+    : batches;
 
   function openCreate() {
     setEditing(null);
@@ -215,6 +327,14 @@ export function OfflineClient({
     }
   }
 
+  function statusBadge(status: string) {
+    return (
+      <Badge variant="secondary" className={STATUS_BADGE[status] ?? ""}>
+        {MEETING_STATUS_LABEL[status] ?? status}
+      </Badge>
+    );
+  }
+
   const columns: Column<OfflineRow>[] = [
     {
       key: "title",
@@ -222,9 +342,33 @@ export function OfflineClient({
       cell: (c) => (
         <button type="button" onClick={() => setAttendId(c.id)} className="min-w-0 text-left">
           <p className="hover:text-primary truncate font-medium transition-colors">{c.title}</p>
-          <p className="text-muted-foreground truncate text-xs">{c.courseTitle ?? c.batchName ?? "—"}</p>
+          <p className="text-muted-foreground truncate text-xs">{c.hostName}</p>
         </button>
       ),
+    },
+    {
+      key: "course",
+      header: "Course",
+      cell: (c) => (
+        <span className="block max-w-[13rem] truncate text-sm">{c.courseTitle ?? "—"}</span>
+      ),
+    },
+    {
+      key: "batch",
+      header: "Batch",
+      cell: (c) =>
+        c.batchName ? (
+          <button
+            type="button"
+            onClick={() => setParams({ batch: c.batchId ?? undefined, page: 1 })}
+            className="hover:text-primary block max-w-[11rem] truncate text-left text-sm transition-colors"
+            title={`Show only ${c.batchName}`}
+          >
+            {c.batchName}
+          </button>
+        ) : (
+          <span className="text-muted-foreground text-sm">—</span>
+        ),
     },
     {
       key: "when",
@@ -260,6 +404,7 @@ export function OfflineClient({
       className: "tabular-nums",
       cell: (c) => <span className="text-sm">{c.attendanceMarked} marked</span>,
     },
+    { key: "status", header: "Status", cell: (c) => statusBadge(c.status) },
     {
       key: "actions",
       header: <span className="sr-only">Actions</span>,
@@ -284,9 +429,24 @@ export function OfflineClient({
             >
               <Video className="size-4" /> Open video room
             </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => openReschedule(c)}>
+              <CalendarClock className="size-4" /> Reschedule
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => openEdit(c)}>
               <Pencil className="size-4" /> Edit
             </DropdownMenuItem>
+            {c.status === "CANCELLED" ? (
+              <DropdownMenuItem onClick={() => setStatus(c, "SCHEDULED")}>
+                <RotateCcw className="size-4" /> Restore class
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                onClick={() => setCancelling(c)}
+              >
+                <Ban className="size-4" /> Cancel class
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem
               className="text-destructive focus:text-destructive"
               onClick={() => setDeleting(c)}
@@ -319,10 +479,16 @@ export function OfflineClient({
         rowKey={(c) => c.id}
         renderCard={(c) => (
           <div className="rounded-xl border p-4">
-            <button type="button" onClick={() => setAttendId(c.id)} className="min-w-0 text-left">
-              <p className="truncate font-medium">{c.title}</p>
-              <p className="text-muted-foreground truncate text-xs">{c.courseTitle ?? c.batchName ?? "—"}</p>
-            </button>
+            <div className="flex items-start justify-between gap-2">
+              <button type="button" onClick={() => setAttendId(c.id)} className="min-w-0 flex-1 text-left">
+                <p className="truncate font-medium">{c.title}</p>
+                <p className="text-muted-foreground truncate text-xs">
+                  {c.courseTitle ?? "No course"}
+                  {c.batchName ? ` · ${c.batchName}` : ""}
+                </p>
+              </button>
+              {statusBadge(c.status)}
+            </div>
             <div className="text-muted-foreground mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
               <span className="flex items-center gap-1"><CalendarClock className="size-3" /> {format(new Date(c.scheduledStart), "d MMM, h:mm a")}</span>
               {c.location && <span className="flex items-center gap-1"><MapPin className="size-3" /> {c.location}</span>}
@@ -332,13 +498,80 @@ export function OfflineClient({
           </div>
         )}
         emptyIcon={School}
-        emptyTitle="No offline classes yet"
-        emptyDescription="Create an in-person session to track attendance."
+        emptyTitle={hasFilters ? "No matching offline classes" : "No offline classes yet"}
+        emptyDescription={
+          hasFilters
+            ? "Try adjusting your search or filters."
+            : "Create an in-person session to track attendance."
+        }
         toolbar={
-          <form onSubmit={(e) => { e.preventDefault(); setParams({ search: search || undefined, page: 1 }); }} className="relative max-w-xs flex-1">
-            <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
-            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search classes…" className="pl-9" />
-          </form>
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
+            <form
+              onSubmit={(e) => { e.preventDefault(); setParams({ search: search || undefined, page: 1 }); }}
+              className="relative flex-1 lg:max-w-xs"
+            >
+              <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+              <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search classes or venue…" className="pl-9" />
+            </form>
+            <div className="flex flex-wrap gap-2">
+              <Select
+                value={query.status ?? ALL}
+                onValueChange={(v) => setParams({ status: !v || v === ALL ? undefined : v, page: 1 })}
+              >
+                <SelectTrigger className="w-36">
+                  <SelectValue>
+                    {(v) => (!v || v === ALL ? "All statuses" : MEETING_STATUS_LABEL[String(v)])}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>All statuses</SelectItem>
+                  {OFFLINE_STATUSES.map((st) => (
+                    <SelectItem key={st} value={st}>{MEETING_STATUS_LABEL[st]}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
+                value={query.courseId ?? ALL}
+                onValueChange={(v) =>
+                  setParams({
+                    course: !v || v === ALL ? undefined : v,
+                    // A batch from another course would filter everything out.
+                    batch: undefined,
+                    page: 1,
+                  })
+                }
+              >
+                <SelectTrigger className="w-44">
+                  <SelectValue>
+                    {(v) => (!v || v === ALL ? "All courses" : (courses.find((c) => c.id === v)?.title ?? "Course"))}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>All courses</SelectItem>
+                  {courses.map((c) => <SelectItem key={c.id} value={c.id}>{c.title}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Select
+                value={query.batchId ?? ALL}
+                onValueChange={(v) => setParams({ batch: !v || v === ALL ? undefined : v, page: 1 })}
+              >
+                <SelectTrigger className="w-44">
+                  <SelectValue>
+                    {(v) => (!v || v === ALL ? "All batches" : (batches.find((b) => b.id === v)?.name ?? "Batch"))}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>All batches</SelectItem>
+                  {batchOptions.map((b) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              {hasFilters && (
+                <Button variant="ghost" size="sm" onClick={clearFilters} className="text-muted-foreground">
+                  <X className="size-4" /> Clear
+                </Button>
+              )}
+            </div>
+          </div>
         }
         footer={
           <div className="flex items-center justify-between">
@@ -367,7 +600,18 @@ export function OfflineClient({
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label>Course (optional)</Label>
-                <Select value={form.courseId || NONE} onValueChange={(v) => setForm((f) => ({ ...f, courseId: v === NONE ? "" : (v ?? "") }))}>
+                <Select
+                  value={form.courseId || NONE}
+                  onValueChange={(v) =>
+                    setForm((f) => {
+                      const courseId = v === NONE ? "" : (v ?? "");
+                      // Drop a batch that belongs to a different course.
+                      const batch = batches.find((b) => b.id === f.batchId);
+                      const batchId = batch && batch.courseId !== courseId ? "" : f.batchId;
+                      return { ...f, courseId, batchId };
+                    })
+                  }
+                >
                   <SelectTrigger className="w-full">
                     <SelectValue>{(v) => (!v || v === NONE ? "None" : (courses.find((c) => c.id === v)?.title ?? "Course"))}</SelectValue>
                   </SelectTrigger>
@@ -385,7 +629,7 @@ export function OfflineClient({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value={NONE}>None</SelectItem>
-                    {batches.map((b) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+                    {formBatches.map((b) => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -432,6 +676,78 @@ export function OfflineClient({
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={confirmDelete} className="bg-destructive hover:bg-destructive/90 text-white">
               Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Reschedule — reuses the live-class endpoint, so learners enrolled on
+          the course or batch get the same "moved to…" notification. */}
+      <Dialog open={!!rescheduling} onOpenChange={(o) => !o && setRescheduling(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Reschedule class</DialogTitle>
+            <DialogDescription>
+              Everyone enrolled is told about the new time.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={submitReschedule} className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="r-start">New start</Label>
+                <Input
+                  id="r-start"
+                  type="datetime-local"
+                  value={reForm.scheduledStart}
+                  onChange={(e) => setReForm((f) => ({ ...f, scheduledStart: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="r-end">New end (optional)</Label>
+                <Input
+                  id="r-end"
+                  type="datetime-local"
+                  value={reForm.scheduledEnd}
+                  onChange={(e) => setReForm((f) => ({ ...f, scheduledEnd: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="r-reason">Reason (optional)</Label>
+              <Input
+                id="r-reason"
+                value={reForm.reason}
+                onChange={(e) => setReForm((f) => ({ ...f, reason: e.target.value }))}
+                placeholder="Shared with learners in the notification"
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setRescheduling(null)}>Cancel</Button>
+              <Button type="submit" disabled={reSaving || !reForm.scheduledStart}>
+                {reSaving && <Loader2 className="size-4 animate-spin" />}
+                Reschedule
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!cancelling} onOpenChange={(o) => !o && setCancelling(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel “{cancelling?.title}”?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The class is marked cancelled but keeps its roster and attendance,
+              so you can restore it later.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep it</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => cancelling && setStatus(cancelling, "CANCELLED")}
+              className="bg-destructive hover:bg-destructive/90 text-white"
+            >
+              Cancel class
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
