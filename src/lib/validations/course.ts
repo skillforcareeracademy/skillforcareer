@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { optionalMediaUrl } from "./url";
 
 export const COURSE_LEVELS = [
   "BEGINNER",
@@ -9,7 +10,6 @@ export const COURSE_LEVELS = [
 export const DELIVERY_MODES = ["SELF_PACED", "LIVE", "HYBRID", "OFFLINE"] as const;
 export const PRICING_TYPES = ["FREE", "PAID", "SUBSCRIPTION"] as const;
 
-const optionalUrl = z.string().url("Enter a valid URL").optional().or(z.literal(""));
 const stringList = z.array(z.string().trim().min(1)).max(20).optional();
 
 /** Minimal create — the rest is filled in on the editor page. */
@@ -29,8 +29,8 @@ export const updateCourseSchema = z.object({
     .optional()
     .or(z.literal("")),
   description: z.string().max(30000).optional().or(z.literal("")),
-  thumbnailUrl: optionalUrl,
-  promoVideoUrl: optionalUrl,
+  thumbnailUrl: optionalMediaUrl,
+  promoVideoUrl: optionalMediaUrl,
   categoryId: z.string().min(1, "Choose a category"),
   level: z.enum(COURSE_LEVELS),
   deliveryMode: z.enum(DELIVERY_MODES),
