@@ -1,11 +1,12 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { DEFAULT_BRANDING, type Branding } from "@/lib/branding";
 import { BrandingProvider } from "./branding-provider";
 import { ThemeProvider } from "./theme-provider";
+import { RouteProgress } from "@/components/layout/route-progress";
 
 /**
  * Single client boundary composing all global providers. Mounted once in the
@@ -22,6 +23,11 @@ export function AppProviders({
     <ThemeProvider>
       <BrandingProvider value={branding}>
         <TooltipProvider delay={200}>
+          {/* Reads searchParams, so it needs its own boundary to keep the rest
+              of the tree statically renderable. */}
+          <Suspense fallback={null}>
+            <RouteProgress />
+          </Suspense>
           {children}
           <Toaster richColors position="top-right" closeButton />
         </TooltipProvider>
