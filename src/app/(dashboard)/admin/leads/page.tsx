@@ -1,7 +1,12 @@
 import type { Metadata } from "next";
 import { requirePermission } from "@/lib/auth/require";
 import { PERMISSIONS } from "@/config/roles";
-import { listLeadsAdmin, leadStats, listAssignees } from "@/server/services/lead-service";
+import {
+  listLeadsAdmin,
+  leadStats,
+  listAssignees,
+  listLeadCourses,
+} from "@/server/services/lead-service";
 import { LeadsClient } from "@/components/admin/leads/leads-client";
 
 export const metadata: Metadata = { title: "Leads" };
@@ -22,15 +27,34 @@ export default async function LeadsPage({
     page: Math.max(1, Number(sp.page) || 1),
     pageSize: 12,
     search: str(sp.search),
-    status: str(sp.status),
+    stage: str(sp.stage),
+    subStatus: str(sp.subStatus),
     source: str(sp.source),
+    classMode: str(sp.classMode),
+    courseId: str(sp.courseId),
+    assignedToId: str(sp.assignedToId),
+    quality: str(sp.quality),
+    minScore: str(sp.minScore),
+    due: str(sp.due),
+    from: str(sp.from),
+    to: str(sp.to),
   };
 
-  const [{ leads, total }, stats, assignees] = await Promise.all([
+  const [{ leads, total }, stats, assignees, courses] = await Promise.all([
     listLeadsAdmin(query),
     leadStats(),
     listAssignees(),
+    listLeadCourses(),
   ]);
 
-  return <LeadsClient leads={leads} total={total} query={query} stats={stats} assignees={assignees} />;
+  return (
+    <LeadsClient
+      leads={leads}
+      total={total}
+      query={query}
+      stats={stats}
+      assignees={assignees}
+      courses={courses}
+    />
+  );
 }

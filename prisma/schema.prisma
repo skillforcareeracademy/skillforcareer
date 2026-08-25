@@ -298,37 +298,38 @@ model User {
   updatedAt   DateTime  @updatedAt
 
   // Relations
-  coursesAuthored   Course[]               @relation("CourseInstructor")
-  batchesLed        Batch[]                @relation("BatchInstructor")
-  enrollments       Enrollment[]
-  lessonProgress    LessonProgress[]
-  notes             Note[]
-  bookmarks         Bookmark[]
-  reviews           Review[]
-  discussions       Discussion[]
-  payments          Payment[]
-  wallet            Wallet?
-  referralsMade     Referral[]             @relation("Referrer")
-  referralsReceived Referral[]             @relation("Referee")
-  assignmentsCreated Assignment[]          @relation("AssignmentCreator")
+  coursesAuthored    Course[]               @relation("CourseInstructor")
+  batchesLed         Batch[]                @relation("BatchInstructor")
+  enrollments        Enrollment[]
+  lessonProgress     LessonProgress[]
+  notes              Note[]
+  bookmarks          Bookmark[]
+  reviews            Review[]
+  discussions        Discussion[]
+  payments           Payment[]
+  wallet             Wallet?
+  referralsMade      Referral[]             @relation("Referrer")
+  referralsReceived  Referral[]             @relation("Referee")
+  assignmentsCreated Assignment[]           @relation("AssignmentCreator")
   submissions        AssignmentSubmission[] @relation("SubmissionStudent")
   gradedSubmissions  AssignmentSubmission[] @relation("SubmissionGrader")
-  quizzesCreated    Quiz[]                 @relation("QuizCreator")
-  quizAttempts      QuizAttempt[]
-  certificates      Certificate[]
-  notifications     Notification[]
-  activityLogs      ActivityLog[]
-  refreshTokens     RefreshToken[]
-  otpTokens         OtpToken[]
-  meetingsHosted    Meeting[]              @relation("MeetingHost")
-  meetingParts      MeetingParticipant[]
-  attendance        Attendance[]
-  liveChatMessages  LiveChatMessage[]
-  leadsAssigned     Lead[]                 @relation("LeadAssignee")
-  leadFollowUps     LeadFollowUp[]         @relation("LeadFollowUpAuthor")
-  webinarsHosted    Webinar[]              @relation("WebinarHost")
-  webinarsAttended  WebinarRegistration[]  @relation("WebinarAttendee")
-  assignmentsSet    AssignmentStudent[]    @relation("AssignmentAssignee")
+  quizzesCreated     Quiz[]                 @relation("QuizCreator")
+  quizAttempts       QuizAttempt[]
+  certificates       Certificate[]
+  notifications      Notification[]
+  activityLogs       ActivityLog[]
+  refreshTokens      RefreshToken[]
+  otpTokens          OtpToken[]
+  meetingsHosted     Meeting[]              @relation("MeetingHost")
+  meetingParts       MeetingParticipant[]
+  attendance         Attendance[]
+  liveChatMessages   LiveChatMessage[]
+  leadsAssigned      Lead[]                 @relation("LeadAssignee")
+  leadFollowUps      LeadFollowUp[]         @relation("LeadFollowUpAuthor")
+  leadDocuments      LeadDocument[]         @relation("LeadDocumentUploader")
+  webinarsHosted     Webinar[]              @relation("WebinarHost")
+  webinarsAttended   WebinarRegistration[]  @relation("WebinarAttendee")
+  assignmentsSet     AssignmentStudent[]    @relation("AssignmentAssignee")
 
   @@index([roleId])
   @@index([status])
@@ -388,15 +389,15 @@ model RefreshToken {
 }
 
 model OtpToken {
-  id        String     @id @default(cuid())
-  userId    String?
-  email     String
-  codeHash  String
-  purpose   OtpPurpose
-  attempts  Int        @default(0)
-  expiresAt DateTime
+  id         String     @id @default(cuid())
+  userId     String?
+  email      String
+  codeHash   String
+  purpose    OtpPurpose
+  attempts   Int        @default(0)
+  expiresAt  DateTime
   consumedAt DateTime?
-  createdAt DateTime   @default(now())
+  createdAt  DateTime   @default(now())
 
   user User? @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
@@ -432,17 +433,17 @@ model Category {
 }
 
 model Course {
-  id           String       @id @default(cuid())
-  title        String
-  slug         String       @unique
-  subtitle     String?
-  description  String?      @db.Text
-  thumbnailUrl String?
+  id            String       @id @default(cuid())
+  title         String
+  slug          String       @unique
+  subtitle      String?
+  description   String?      @db.Text
+  thumbnailUrl  String?
   promoVideoUrl String?
-  level        CourseLevel  @default(ALL_LEVELS)
-  deliveryMode DeliveryMode @default(SELF_PACED)
-  status       CourseStatus @default(DRAFT)
-  language     String       @default("en")
+  level         CourseLevel  @default(ALL_LEVELS)
+  deliveryMode  DeliveryMode @default(SELF_PACED)
+  status        CourseStatus @default(DRAFT)
+  language      String       @default("en")
 
   pricingType   PricingType @default(PAID)
   price         Decimal     @default(0) @db.Decimal(10, 2)
@@ -483,6 +484,7 @@ model Course {
   meetings     Meeting[]
   payments     Payment[]
   coupons      Coupon[]
+  leads        Lead[]
 
   @@index([categoryId])
   @@index([instructorId])
@@ -491,23 +493,23 @@ model Course {
 }
 
 model Batch {
-  id           String      @id @default(cuid())
-  courseId     String
-  instructorId String?
-  name         String
-  code         String      @unique
-  status       BatchStatus @default(UPCOMING)
-  capacity     Int?
-  enrolledCount Int        @default(0)
-  startDate    DateTime?
-  endDate      DateTime?
-  schedule     Json? // recurring session config
+  id            String      @id @default(cuid())
+  courseId      String
+  instructorId  String?
+  name          String
+  code          String      @unique
+  status        BatchStatus @default(UPCOMING)
+  capacity      Int?
+  enrolledCount Int         @default(0)
+  startDate     DateTime?
+  endDate       DateTime?
+  schedule      Json? // recurring session config
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  course      Course       @relation(fields: [courseId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  instructor  User?        @relation("BatchInstructor", fields: [instructorId], references: [id], onUpdate: NoAction)
+  course      Course            @relation(fields: [courseId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  instructor  User?             @relation("BatchInstructor", fields: [instructorId], references: [id], onUpdate: NoAction)
   enrollments Enrollment[]
   meetings    Meeting[]
   attendance  Attendance[]
@@ -859,19 +861,19 @@ model AssignmentSubmission {
 }
 
 model Quiz {
-  id              String      @id @default(cuid())
-  courseId        String?
-  lessonId        String?     @unique
-  createdById     String
-  title           String
-  description     String?     @db.Text
+  id               String      @id @default(cuid())
+  courseId         String?
+  lessonId         String?     @unique
+  createdById      String
+  title            String
+  description      String?     @db.Text
   timeLimitMinutes Int?
-  passingScore    Int         @default(60) // percentage
-  gradingMode     GradingMode @default(AUTO)
-  maxAttempts     Int         @default(1)
-  shuffleQuestions Boolean    @default(false)
-  showAnswers     Boolean     @default(true)
-  isPublished     Boolean     @default(false)
+  passingScore     Int         @default(60) // percentage
+  gradingMode      GradingMode @default(AUTO)
+  maxAttempts      Int         @default(1)
+  shuffleQuestions Boolean     @default(false)
+  showAnswers      Boolean     @default(true)
+  isPublished      Boolean     @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -936,17 +938,17 @@ model QuestionOption {
 }
 
 model QuizAttempt {
-  id              String            @id @default(cuid())
-  quizId          String
-  studentId       String
-  attemptNo       Int               @default(1)
-  status          QuizAttemptStatus @default(IN_PROGRESS)
-  score           Int?
-  maxScore        Int               @default(0)
-  timeSpentSeconds Int              @default(0)
-  startedAt       DateTime          @default(now())
-  submittedAt     DateTime?
-  gradedAt        DateTime?
+  id               String            @id @default(cuid())
+  quizId           String
+  studentId        String
+  attemptNo        Int               @default(1)
+  status           QuizAttemptStatus @default(IN_PROGRESS)
+  score            Int?
+  maxScore         Int               @default(0)
+  timeSpentSeconds Int               @default(0)
+  startedAt        DateTime          @default(now())
+  submittedAt      DateTime?
+  gradedAt         DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -961,13 +963,13 @@ model QuizAttempt {
 }
 
 model QuizResponse {
-  id              String  @id @default(cuid())
+  id              String   @id @default(cuid())
   attemptId       String
   questionId      String
   selectedOptions Json? // string[] of QuestionOption ids
-  answerText      String? @db.Text
+  answerText      String?  @db.Text
   isCorrect       Boolean?
-  pointsAwarded   Int     @default(0)
+  pointsAwarded   Int      @default(0)
 
   createdAt DateTime @default(now())
 
@@ -1075,13 +1077,13 @@ model Coupon {
 }
 
 model Installment {
-  id            String            @id @default(cuid())
-  paymentId     String
-  installmentNo Int
-  amount        Decimal           @db.Decimal(10, 2)
-  dueDate       DateTime
-  status        InstallmentStatus @default(SCHEDULED)
-  paidAt        DateTime?
+  id             String            @id @default(cuid())
+  paymentId      String
+  installmentNo  Int
+  amount         Decimal           @db.Decimal(10, 2)
+  dueDate        DateTime
+  status         InstallmentStatus @default(SCHEDULED)
+  paidAt         DateTime?
   lastRemindedAt DateTime?
 
   createdAt DateTime @default(now())
@@ -1273,7 +1275,6 @@ model Attendance {
   batch   Batch?   @relation(fields: [batchId], references: [id], onUpdate: NoAction)
 
   @@unique([meetingId, userId])
-
   @@index([userId])
   @@index([meetingId])
   @@index([batchId])
@@ -1381,6 +1382,40 @@ enum LeadStatus {
   LOST
 }
 
+/// The nine admissions stages from the client's status sheet. `Lead.subStatus`
+/// carries the free-text sub-status that belongs to the stage (the catalogue
+/// lives in src/lib/validations/lead.ts so counsellors' wording can change
+/// without a migration).
+enum LeadStage {
+  FRESH_LEAD
+  CONTACTED
+  INTERESTED
+  COUNSELLING_DEMO
+  FOLLOW_UP
+  ADMISSION_PENDING
+  CONVERTED
+  NOT_INTERESTED
+  INVALID_LEAD
+}
+
+/// Counsellor's read on how likely this lead is to convert.
+enum LeadQuality {
+  HOT
+  WARM
+  COLD
+  NOT_SURE
+}
+
+/// How the learner wants to attend — asked at enquiry time so counsellors can
+/// pitch the right batch.
+enum LeadClassMode {
+  ONLINE
+  OFFLINE
+  HYBRID
+  RECORDED
+  ANY
+}
+
 enum LeadSource {
   WEBSITE
   MANUAL
@@ -1390,35 +1425,99 @@ enum LeadSource {
   SOCIAL
 }
 
-/** A sales/admissions enquiry — from the website form or entered manually. */
+/**
+ * A sales/admissions enquiry — from the website form, a manual entry or a CSV
+ * import. The field list follows the client's counselling sheet: identity and
+ * contact, what they want to study, where they are in the funnel
+ * (stage + subStatus), their background, the centre visit being planned, and
+ * the money on the table.
+ */
 model Lead {
-  id             String     @id @default(cuid())
-  name           String
-  email          String?
-  phone          String
-  message        String?    @db.Text
+  id       String   @id @default(cuid())
+  /// Human-facing reference the counsellors quote — SFC1, SFC2, … Assigned by
+  /// `nextLeadNo()`; unique so a racing insert loses rather than duplicates.
+  leadNo   String?  @unique
+  /// When the enquiry came in. Separate from createdAt because an imported or
+  /// back-dated lead was received before the row existed.
+  leadDate DateTime @default(now())
+
+  name  String
+  email String?
+  phone String
+
+  /// Picked from the course dropdown. `courseInterest` keeps the free text for
+  /// website enquiries and imports that name a course we don't have a row for.
+  courseId       String?
   courseInterest String?
-  source         LeadSource @default(WEBSITE)
-  status         LeadStatus @default(NEW)
+  whyThisCourse  String? @db.Text
+
+  source    LeadSource     @default(WEBSITE)
+  /// Counsellor's read on the lead, and a 0-100 score for ranking the queue.
+  quality   LeadQuality?
+  leadScore Int?
+  stage     LeadStage      @default(FRESH_LEAD)
+  /// One of the stage's sub-statuses (see LEAD_SUB_STATUSES).
+  subStatus String?
+  status    LeadStatus     @default(NEW) // legacy — superseded by `stage`
+  classMode LeadClassMode?
+
+  // Background
+  qualification String?
+  jobStatus     String?
+  experiencedIn String?
+  address       String? @db.Text
+
+  // Planned centre visit
+  expectedVisit String?
+  visitDate     DateTime?
+  visitTime     String? // "16:30" — a wall-clock slot, not an instant
+
+  /// The next scheduled call-back. Drives the counsellor's due list and the
+  /// nightly reminder sweep, same as visitDate.
+  followUpDate DateTime?
+  followUpTime String?
+
+  /// Counsellor's running notes (the website enquiry message lands here too).
+  message String? @db.Text
+
+  // Money
+  feesOffered Decimal? @db.Decimal(10, 2)
+  finalFees   Decimal? @db.Decimal(10, 2)
+  emiCount    Int?
+
   assignedToId   String?
+  /// Stamped by the email/SMS reminder so a sweep can't nag the same lead twice.
+  lastRemindedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  course     Course?        @relation(fields: [courseId], references: [id], onUpdate: NoAction)
   assignedTo User?          @relation("LeadAssignee", fields: [assignedToId], references: [id], onUpdate: NoAction)
   followUps  LeadFollowUp[]
+  documents  LeadDocument[]
 
+  @@index([stage])
+  @@index([quality])
   @@index([status])
+  @@index([courseId])
   @@index([assignedToId])
+  @@index([leadDate])
+  @@index([visitDate])
+  @@index([followUpDate])
   @@index([createdAt])
 }
 
-/** A time-stamped follow-up note against a lead (with optional status snapshot). */
+/**
+ * A time-stamped follow-up note against a lead (with optional stage snapshot).
+ */
 model LeadFollowUp {
   id          String      @id @default(cuid())
   leadId      String
   note        String      @db.Text
-  status      LeadStatus?
+  stage       LeadStage?
+  subStatus   String?
+  status      LeadStatus? // legacy — superseded by `stage`
   createdById String
 
   createdAt DateTime @default(now())
@@ -1430,31 +1529,54 @@ model LeadFollowUp {
   @@index([createdById])
 }
 
+/**
+ * A document a counsellor attached to a lead — Aadhaar, marksheet, resume…
+ */
+model LeadDocument {
+  id     String  @id @default(cuid())
+  leadId String
+  name   String
+  url    String  @db.Text
+  mime   String?
+  size   Int?
+
+  uploadedById String?
+  createdAt    DateTime @default(now())
+
+  lead       Lead  @relation(fields: [leadId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  uploadedBy User? @relation("LeadDocumentUploader", fields: [uploadedById], references: [id], onUpdate: NoAction)
+
+  @@index([leadId])
+  @@index([uploadedById])
+}
+
 // ── Webinars ──────────────────────────────────────────────────────────────────
 
-/** A public webinar/masterclass anyone can register for (not course-gated). */
+/**
+ * A public webinar/masterclass anyone can register for (not course-gated).
+ */
 model Webinar {
-  id              String   @id @default(cuid())
-  title           String
-  slug            String   @unique
-  description     String?  @db.Text
+  id                        String   @id @default(cuid())
+  title                     String
+  slug                      String   @unique
+  description               String?  @db.Text
   /// One-line subject, shown above the agenda on the public page.
-  topic           String?
+  topic                     String?
   /// What will be covered, session by session.
-  agenda          String?  @db.Text
-  hostName        String
-  hostId          String?
-  coverImageUrl   String?
-  scheduledStart  DateTime
-  durationMinutes Int      @default(60)
-  joinUrl         String?
+  agenda                    String?  @db.Text
+  hostName                  String
+  hostId                    String?
+  coverImageUrl             String?
+  scheduledStart            DateTime
+  durationMinutes           Int      @default(60)
+  joinUrl                   String?
   /// Room code of the companion Meeting that backs "generate join link" — the
   /// uniqueness that matters lives on Meeting.roomCode, which this mirrors.
-  roomCode        String?
-  capacity        Int?
+  roomCode                  String?
+  capacity                  Int?
   /// Extra discount, in percent, for anyone who attends the whole session.
-  attendanceDiscountPercent Int @default(5)
-  isPublished     Boolean  @default(false)
+  attendanceDiscountPercent Int      @default(5)
+  isPublished               Boolean  @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1469,12 +1591,12 @@ model Webinar {
 }
 
 model WebinarRegistration {
-  id        String   @id @default(cuid())
-  webinarId String
-  name      String
-  email     String
-  phone     String?
-  userId    String?
+  id           String  @id @default(cuid())
+  webinarId    String
+  name         String
+  email        String
+  phone        String?
+  userId       String?
   /// True when staff added this participant by hand rather than them signing up.
   addedByStaff Boolean @default(false)
 
@@ -1487,7 +1609,7 @@ model WebinarRegistration {
   attendedFully   Boolean   @default(false)
 
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
 
   webinar Webinar @relation(fields: [webinarId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   user    User?   @relation("WebinarAttendee", fields: [userId], references: [id], onUpdate: NoAction)

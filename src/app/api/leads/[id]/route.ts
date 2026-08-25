@@ -3,7 +3,11 @@ import { ok } from "@/lib/api/response";
 import { requireApiPermission } from "@/lib/auth/api-guard";
 import { PERMISSIONS } from "@/config/roles";
 import { updateLeadSchema } from "@/lib/validations/lead";
-import { updateLead, deleteLead, getLeadDetail } from "@/server/services/lead-service";
+import {
+  updateLead,
+  deleteLead,
+  getLeadDetail,
+} from "@/server/services/lead-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

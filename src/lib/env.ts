@@ -38,6 +38,16 @@ const serverSchema = z.object({
   SMTP_FROM_NAME: z.string().default("SkillForCareer"),
   SMTP_FROM_EMAIL: z.string().default(""),
 
+  // SMS goes out through any HTTP gateway (MSG91, Fast2SMS, Gupshup, a telco…)
+  // configured entirely from env, so the provider stays swappable. SMS_API_URL
+  // unset = SMS disabled; reminders then go by email only. See src/lib/sms.ts.
+  SMS_API_URL: z.string().optional(),
+  SMS_API_METHOD: z.enum(["GET", "POST"]).default("POST"),
+  SMS_API_KEY: z.string().optional(),
+  SMS_API_BODY: z.string().optional(),
+  SMS_SENDER_ID: z.string().optional(),
+  SMS_TEMPLATE_ID: z.string().optional(),
+
   EVENT_SIGNING_SECRET: z.string().min(16).optional(),
 
   // Where uploaded bytes live. `local` writes to STORAGE_LOCAL_DIR, which only

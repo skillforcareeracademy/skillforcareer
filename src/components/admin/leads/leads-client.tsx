@@ -2,11 +2,12 @@
 
 import { useCallback, useState, type FormEvent } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { formatDistanceToNow } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import {
   Plus,
   Search,
   Download,
+  Upload,
   Target,
   MoreHorizontal,
   Eye,
@@ -18,23 +19,32 @@ import {
   TrendingUp,
   XCircle,
   MessageSquare,
+  Paperclip,
+  SlidersHorizontal,
+  CopyCheck,
+  FileBarChart,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
 import {
-  LEAD_STATUSES,
+  LEAD_STAGES,
+  LEAD_STAGE_LABELS,
   LEAD_SOURCES,
-  LEAD_STATUS_LABELS,
   LEAD_SOURCE_LABELS,
-  type LeadSource,
+  LEAD_CLASS_MODES,
+  LEAD_CLASS_MODE_LABELS,
+  LEAD_QUALITIES,
+  LEAD_QUALITY_LABELS,
+  LEAD_SUB_STATUSES,
+  type LeadStage,
+  type LeadClassMode,
+  type LeadQuality,
 } from "@/lib/validations/lead";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
-import { PhoneInput } from "@/components/shared/phone-input";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Select,
@@ -67,38 +77,77 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { STATUS_BADGE, SOURCE_LABEL } from "@/components/admin/leads/lead-badges";
+import {
+  STAGE_BADGE,
+  SUB_STATUS_BADGE,
+  QUALITY_BADGE,
+  SOURCE_LABEL,
+  CLASS_MODE_LABEL,
+} from "@/components/admin/leads/lead-badges";
 import { LeadDetailSheet } from "@/components/admin/leads/lead-detail-sheet";
+import { LeadImportDialog } from "@/components/admin/leads/lead-import-dialog";
+import { LeadDuplicatesDialog } from "@/components/admin/leads/lead-duplicates-dialog";
+import {
+  LeadFormFields,
+  blankLeadForm,
+  leadFormPayload,
+  type CourseOption,
+  type LeadFormState,
+} from "@/components/admin/leads/lead-form";
 
 interface LeadRow {
   id: string;
+  leadNo: string | null;
+  leadDate: string;
   name: string;
   email: string | null;
   phone: string;
-  courseInterest: string | null;
+  course: string | null;
   source: string;
-  status: string;
+  stage: string;
+  subStatus: string | null;
+  quality: string | null;
+  leadScore: number | null;
+  classMode: string | null;
+  expectedVisit: string | null;
+  visitDate: string | null;
+  visitTime: string | null;
+  followUpDate: string | null;
+  followUpTime: string | null;
+  feesOffered: number | null;
+  finalFees: number | null;
   assignedToName: string | null;
   followUps: number;
+  documents: number;
   createdAt: string;
 }
 interface Stats {
   total: number;
-  newLeads: number;
+  fresh: number;
   inProgress: number;
   converted: number;
-  lost: number;
+  dropped: number;
 }
 interface Query {
   page: number;
   pageSize: number;
   search?: string;
-  status?: string;
+  stage?: string;
+  subStatus?: string;
   source?: string;
+  classMode?: string;
+  courseId?: string;
+  assignedToId?: string;
+  quality?: string;
+  minScore?: string;
+  due?: string;
+  from?: string;
+  to?: string;
 }
 
 const ALL = "all";
-const blankForm = { name: "", phone: "", email: "", courseInterest: "", message: "", source: "MANUAL" as LeadSource };
+const inr = (n: number | null) =>
+  n == null ? null : `₹${n.toLocaleString("en-IN")}`;
 
 export function LeadsClient({
   leads,
@@ -106,67 +155,121 @@ export function LeadsClient({
   query,
   stats,
   assignees,
+  courses,
 }: {
   leads: LeadRow[];
   total: number;
   query: Query;
   stats: Stats;
   assignees: { id: string; name: string }[];
+  courses: CourseOption[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const [search, setSearch] = useState(query.search ?? "");
+  const [showFilters, setShowFilters] = useState(
+    Boolean(
+      query.classMode ||
+      query.courseId ||
+      query.assignedToId ||
+      query.subStatus ||
+      query.quality ||
+      query.minScore ||
+      query.due ||
+      query.from ||
+      query.to,
+    ),
+  );
   const [createOpen, setCreateOpen] = useState(false);
-  const [form, setForm] = useState(blankForm);
+  const [importOpen, setImportOpen] = useState(false);
+  const [duplicatesOpen, setDuplicatesOpen] = useState(false);
+  const [form, setForm] = useState<LeadFormState>(blankLeadForm);
   const [creating, setCreating] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<LeadRow | null>(null);
 
   const totalPages = Math.max(1, Math.ceil(total / query.pageSize));
-  const hasFilters = Boolean(query.search || query.status || query.source);
+  const hasFilters = Boolean(
+    query.search ||
+    query.stage ||
+    query.subStatus ||
+    query.source ||
+    query.classMode ||
+    query.courseId ||
+    query.assignedToId ||
+    query.quality ||
+    query.minScore ||
+    query.due ||
+    query.from ||
+    query.to,
+  );
+
+  const FILTER_KEYS = [
+    "search",
+    "stage",
+    "subStatus",
+    "source",
+    "classMode",
+    "courseId",
+    "assignedToId",
+    "quality",
+    "minScore",
+    "due",
+    "from",
+    "to",
+  ] as const;
 
   const setParams = useCallback(
     (next: Record<string, string | number | undefined>) => {
-      const merged = { search: query.search, status: query.status, source: query.source, page: query.page, ...next };
+      const merged: Record<string, string | number | undefined> = {
+        ...Object.fromEntries(FILTER_KEYS.map((k) => [k, query[k]])),
+        page: query.page,
+        ...next,
+      };
       const p = new URLSearchParams();
-      if (merged.search) p.set("search", String(merged.search));
-      if (merged.status) p.set("status", String(merged.status));
-      if (merged.source) p.set("source", String(merged.source));
-      if (merged.page && Number(merged.page) > 1) p.set("page", String(merged.page));
+      for (const key of FILTER_KEYS) {
+        if (merged[key]) p.set(key, String(merged[key]));
+      }
+      if (merged.page && Number(merged.page) > 1)
+        p.set("page", String(merged.page));
       const qs = p.toString();
       router.push(qs ? `${pathname}?${qs}` : pathname);
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [router, pathname, query],
   );
 
-  const exportHref = (() => {
+  /** Both downloads carry the list's current filters, so what you see is what
+   *  you get — the client asked for reports "as per filters and statuses". */
+  const filterQuery = (() => {
     const p = new URLSearchParams();
-    if (query.search) p.set("search", query.search);
-    if (query.status) p.set("status", query.status);
-    if (query.source) p.set("source", query.source);
+    for (const key of FILTER_KEYS) {
+      if (query[key]) p.set(key, String(query[key]));
+    }
     const qs = p.toString();
-    return `/api/leads/export${qs ? `?${qs}` : ""}`;
+    return qs ? `?${qs}` : "";
   })();
+  const exportHref = `/api/leads/export${filterQuery}`;
+  const reportHref = `/api/leads/report${filterQuery}`;
 
   async function onCreate(e: FormEvent) {
     e.preventDefault();
     setCreating(true);
     try {
-      await api.post("/api/leads", {
-        name: form.name,
-        phone: form.phone,
-        email: form.email || undefined,
-        courseInterest: form.courseInterest || undefined,
-        message: form.message || undefined,
-        source: form.source,
-      });
+      await api.post("/api/leads", leadFormPayload(form));
       toast.success("Lead added.");
       setCreateOpen(false);
-      setForm(blankForm);
+      setForm(blankLeadForm());
       router.refresh();
     } catch (err) {
-      const d = err instanceof ApiError ? (err.details as { issues?: { message: string }[] }) : undefined;
-      toast.error(d?.issues?.[0]?.message ?? (err instanceof ApiError ? err.message : "Couldn't add lead."));
+      const d =
+        err instanceof ApiError
+          ? (err.details as { issues?: { message: string }[] })
+          : undefined;
+      toast.error(
+        d?.issues?.[0]?.message ??
+          (err instanceof ApiError ? err.message : "Couldn't add lead."),
+      );
     } finally {
       setCreating(false);
     }
@@ -185,24 +288,70 @@ export function LeadsClient({
   }
 
   const statCards = [
-    { label: "Total leads", value: stats.total, icon: Target, tone: "text-rose-500" },
-    { label: "New", value: stats.newLeads, icon: Sparkles, tone: "text-sky-500" },
-    { label: "In progress", value: stats.inProgress, icon: UserCheck, tone: "text-amber-500" },
-    { label: "Converted", value: stats.converted, icon: TrendingUp, tone: "text-emerald-500" },
-    { label: "Lost", value: stats.lost, icon: XCircle, tone: "text-muted-foreground" },
+    {
+      label: "Total leads",
+      value: stats.total,
+      icon: Target,
+      tone: "text-rose-500",
+    },
+    {
+      label: "Fresh",
+      value: stats.fresh,
+      icon: Sparkles,
+      tone: "text-sky-500",
+    },
+    {
+      label: "In progress",
+      value: stats.inProgress,
+      icon: UserCheck,
+      tone: "text-amber-500",
+    },
+    {
+      label: "Converted",
+      value: stats.converted,
+      icon: TrendingUp,
+      tone: "text-emerald-500",
+    },
+    {
+      label: "Not interested",
+      value: stats.dropped,
+      icon: XCircle,
+      tone: "text-muted-foreground",
+    },
   ];
+
+  /** A call-back whose day has already passed reads as overdue. */
+  function isOverdue(iso: string): boolean {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    return new Date(iso) < start;
+  }
+
+  /** "29 Aug, 16:30" / "This Saturday" / "—" — whatever the counsellor captured. */
+  function visitLabel(l: LeadRow): string {
+    if (l.visitDate) {
+      return `${format(new Date(l.visitDate), "d MMM")}${l.visitTime ? `, ${l.visitTime}` : ""}`;
+    }
+    return l.expectedVisit ?? "—";
+  }
 
   function rowActions(l: LeadRow) {
     return (
       <DropdownMenu>
-        <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" />} aria-label="Actions">
+        <DropdownMenuTrigger
+          render={<Button variant="ghost" size="icon-sm" />}
+          aria-label="Actions"
+        >
           <MoreHorizontal className="size-4" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuItem onClick={() => setDetailId(l.id)}>
             <Eye className="size-4" /> View &amp; follow up
           </DropdownMenuItem>
-          <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setDeleting(l)}>
+          <DropdownMenuItem
+            className="text-destructive focus:text-destructive"
+            onClick={() => setDeleting(l)}
+          >
             <Trash2 className="size-4" /> Delete
           </DropdownMenuItem>
         </DropdownMenuContent>
@@ -210,13 +359,31 @@ export function LeadsClient({
     );
   }
 
+  const dash = <span className="text-muted-foreground">—</span>;
+
   const columns: Column<LeadRow>[] = [
+    {
+      key: "leadNo",
+      header: "Lead no.",
+      headerClassName: "w-24",
+      cell: (l) => (
+        <span className="font-mono text-xs whitespace-nowrap">
+          {l.leadNo ?? "—"}
+        </span>
+      ),
+    },
     {
       key: "name",
       header: "Lead",
       cell: (l) => (
-        <button type="button" onClick={() => setDetailId(l.id)} className="min-w-0 text-left">
-          <p className="hover:text-primary truncate font-medium transition-colors">{l.name}</p>
+        <button
+          type="button"
+          onClick={() => setDetailId(l.id)}
+          className="min-w-0 text-left"
+        >
+          <p className="hover:text-primary truncate font-medium transition-colors">
+            {l.name}
+          </p>
           <p className="text-muted-foreground flex items-center gap-1 truncate text-xs">
             <PhoneIcon className="size-3" /> {l.phone}
           </p>
@@ -224,61 +391,192 @@ export function LeadsClient({
       ),
     },
     {
-      key: "interest",
-      header: "Interest",
-      cell: (l) => <span className="text-sm">{l.courseInterest ?? <span className="text-muted-foreground">—</span>}</span>,
+      key: "course",
+      header: "Course",
+      cell: (l) => <span className="text-sm">{l.course ?? dash}</span>,
     },
-    { key: "source", header: "Source", cell: (l) => <span className="text-sm">{SOURCE_LABEL(l.source)}</span> },
-    { key: "status", header: "Status", cell: (l) => STATUS_BADGE(l.status) },
+    {
+      key: "stage",
+      header: "Stage / status",
+      cell: (l) => (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {STAGE_BADGE(l.stage)}
+          {SUB_STATUS_BADGE(l.subStatus)}
+        </div>
+      ),
+    },
+    {
+      key: "quality",
+      header: "Quality",
+      cell: (l) => (
+        <div className="flex items-center gap-1.5">
+          {QUALITY_BADGE(l.quality) ?? dash}
+          {l.leadScore != null && (
+            <span className="text-muted-foreground text-xs tabular-nums">
+              {l.leadScore}
+            </span>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: "mode",
+      header: "Mode",
+      cell: (l) => (
+        <span className="text-sm">{CLASS_MODE_LABEL(l.classMode)}</span>
+      ),
+    },
+    {
+      key: "visit",
+      header: "Visit",
+      cell: (l) => (
+        <span className="text-sm whitespace-nowrap">{visitLabel(l)}</span>
+      ),
+    },
+    {
+      key: "followUp",
+      header: "Follow-up",
+      cell: (l) => {
+        if (!l.followUpDate) return dash;
+        const overdue = isOverdue(l.followUpDate);
+        return (
+          <span
+            className={`text-sm whitespace-nowrap ${overdue ? "text-destructive font-medium" : ""}`}
+          >
+            {format(new Date(l.followUpDate), "d MMM")}
+            {l.followUpTime ? `, ${l.followUpTime}` : ""}
+          </span>
+        );
+      },
+    },
+    {
+      key: "fees",
+      header: "Fees",
+      cell: (l) => (
+        <span className="text-sm whitespace-nowrap tabular-nums">
+          {inr(l.finalFees ?? l.feesOffered) ?? dash}
+        </span>
+      ),
+    },
     {
       key: "assigned",
       header: "Assigned",
-      cell: (l) => <span className="text-sm">{l.assignedToName ?? <span className="text-muted-foreground">—</span>}</span>,
+      cell: (l) => <span className="text-sm">{l.assignedToName ?? dash}</span>,
     },
     {
       key: "created",
       header: "Received",
-      cell: (l) => <span className="text-muted-foreground text-sm whitespace-nowrap">{formatDistanceToNow(new Date(l.createdAt), { addSuffix: true })}</span>,
+      cell: (l) => (
+        <span className="text-muted-foreground text-sm whitespace-nowrap">
+          {formatDistanceToNow(new Date(l.leadDate), { addSuffix: true })}
+        </span>
+      ),
     },
-    { key: "actions", header: <span className="sr-only">Actions</span>, headerClassName: "w-10", cell: rowActions },
+    {
+      key: "actions",
+      header: <span className="sr-only">Actions</span>,
+      headerClassName: "w-10",
+      cell: rowActions,
+    },
   ];
 
   function renderCard(l: LeadRow) {
     return (
       <div className="rounded-xl border p-4">
         <div className="flex items-start justify-between gap-2">
-          <button type="button" onClick={() => setDetailId(l.id)} className="min-w-0 text-left">
-            <p className="truncate font-medium">{l.name}</p>
+          <button
+            type="button"
+            onClick={() => setDetailId(l.id)}
+            className="min-w-0 text-left"
+          >
+            <p className="truncate font-medium">
+              {l.name}
+              {l.leadNo && (
+                <span className="text-muted-foreground ml-1.5 font-mono text-xs">
+                  {l.leadNo}
+                </span>
+              )}
+            </p>
             <p className="text-muted-foreground flex items-center gap-1 truncate text-xs">
               <PhoneIcon className="size-3" /> {l.phone}
             </p>
           </button>
           {rowActions(l)}
         </div>
-        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-          {STATUS_BADGE(l.status)}
-          <span className="text-muted-foreground">{SOURCE_LABEL(l.source)}</span>
+        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
+          {STAGE_BADGE(l.stage)}
+          {SUB_STATUS_BADGE(l.subStatus)}
+          {QUALITY_BADGE(l.quality)}
+        </div>
+        <div className="text-muted-foreground mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+          <span>{SOURCE_LABEL(l.source)}</span>
+          {l.classMode && <span>{CLASS_MODE_LABEL(l.classMode)}</span>}
+          {inr(l.finalFees ?? l.feesOffered) && (
+            <span>{inr(l.finalFees ?? l.feesOffered)}</span>
+          )}
           {l.followUps > 0 && (
-            <span className="text-muted-foreground flex items-center gap-1">
+            <span className="flex items-center gap-1">
               <MessageSquare className="size-3" /> {l.followUps}
             </span>
           )}
+          {l.documents > 0 && (
+            <span className="flex items-center gap-1">
+              <Paperclip className="size-3" /> {l.documents}
+            </span>
+          )}
         </div>
-        {l.courseInterest && <p className="text-muted-foreground mt-1.5 text-xs">Interest: {l.courseInterest}</p>}
+        {l.course && (
+          <p className="text-muted-foreground mt-1.5 text-xs">
+            Course: {l.course}
+          </p>
+        )}
+        {l.followUpDate && (
+          <p
+            className={`mt-1 text-xs ${isOverdue(l.followUpDate) ? "text-destructive font-medium" : "text-muted-foreground"}`}
+          >
+            Follow-up: {format(new Date(l.followUpDate), "d MMM")}
+            {l.followUpTime ? `, ${l.followUpTime}` : ""}
+          </p>
+        )}
       </div>
     );
   }
 
-  const canAdd = form.name.trim().length >= 2 && form.phone.trim().length >= 6;
+  const subStatusOptions = query.stage
+    ? (LEAD_SUB_STATUSES[query.stage as LeadStage] ?? [])
+    : Array.from(new Set(Object.values(LEAD_SUB_STATUSES).flat()));
+
+  const canAdd =
+    form.name.trim().length >= 2 &&
+    form.phone.trim().length >= 6 &&
+    form.expectedVisit.trim().length > 0 &&
+    form.feesOffered.trim().length > 0;
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Leads"
-        description="Enquiries from the website and manual entries — track and follow up."
+        description="Enquiries from the website, walk-ins and imported sheets — track and follow up."
         actions={
-          <div className="flex gap-2">
-            <Button variant="outline" nativeButton={false} render={<a href={exportHref} />}>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => setDuplicatesOpen(true)}>
+              <CopyCheck className="size-4" /> Duplicates
+            </Button>
+            <Button variant="outline" onClick={() => setImportOpen(true)}>
+              <Upload className="size-4" /> Import
+            </Button>
+            <Button
+              variant="outline"
+              nativeButton={false}
+              render={<a href={reportHref} />}
+            >
+              <FileBarChart className="size-4" /> Report
+            </Button>
+            <Button
+              variant="outline"
+              nativeButton={false}
+              render={<a href={exportHref} />}
+            >
               <Download className="size-4" /> Export
             </Button>
             <Button onClick={() => setCreateOpen(true)}>
@@ -296,8 +594,12 @@ export function LeadsClient({
                 <s.icon className={`size-5 ${s.tone}`} />
               </div>
               <div className="min-w-0">
-                <p className="text-2xl font-semibold leading-none tabular-nums">{s.value}</p>
-                <p className="text-muted-foreground mt-1 truncate text-xs">{s.label}</p>
+                <p className="text-2xl leading-none font-semibold tabular-nums">
+                  {s.value}
+                </p>
+                <p className="text-muted-foreground mt-1 truncate text-xs">
+                  {s.label}
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -311,55 +613,335 @@ export function LeadsClient({
         renderCard={renderCard}
         emptyIcon={Target}
         emptyTitle="No leads yet"
-        emptyDescription="Website enquiries and manual leads will show up here."
+        emptyDescription="Website enquiries, walk-ins and imported sheets will show up here."
         toolbar={
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                setParams({ search: search || undefined, page: 1 });
-              }}
-              className="relative flex-1"
-            >
-              <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
-              <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, phone, email…" className="pl-9" />
-            </form>
-            <Select value={query.status ?? ALL} onValueChange={(v) => setParams({ status: !v || v === ALL ? undefined : v, page: 1 })}>
-              <SelectTrigger className="w-full sm:w-40">
-                <SelectValue>{(v) => (!v || v === ALL ? "All statuses" : LEAD_STATUS_LABELS[v as keyof typeof LEAD_STATUS_LABELS])}</SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>All statuses</SelectItem>
-                {LEAD_STATUSES.map((s) => (
-                  <SelectItem key={s} value={s}>
-                    {LEAD_STATUS_LABELS[s]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={query.source ?? ALL} onValueChange={(v) => setParams({ source: !v || v === ALL ? undefined : v, page: 1 })}>
-              <SelectTrigger className="w-full sm:w-36">
-                <SelectValue>{(v) => (!v || v === ALL ? "All sources" : LEAD_SOURCE_LABELS[v as keyof typeof LEAD_SOURCE_LABELS])}</SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>All sources</SelectItem>
-                {LEAD_SOURCES.map((s) => (
-                  <SelectItem key={s} value={s}>
-                    {LEAD_SOURCE_LABELS[s]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {hasFilters && (
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setSearch("");
-                  setParams({ search: undefined, status: undefined, source: undefined, page: 1 });
+          <div className="space-y-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  setParams({ search: search || undefined, page: 1 });
                 }}
+                className="relative flex-1"
               >
-                Clear
+                <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+                <Input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search lead no., name, phone, email…"
+                  className="pl-9"
+                />
+              </form>
+              <Select
+                value={query.stage ?? ALL}
+                onValueChange={(v) =>
+                  setParams({
+                    stage: !v || v === ALL ? undefined : v,
+                    subStatus: undefined,
+                    page: 1,
+                  })
+                }
+              >
+                <SelectTrigger className="w-full sm:w-48">
+                  <SelectValue>
+                    {(v) =>
+                      !v || v === ALL
+                        ? "All stages"
+                        : LEAD_STAGE_LABELS[v as LeadStage]
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>All stages</SelectItem>
+                  {LEAD_STAGES.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {LEAD_STAGE_LABELS[s]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
+                value={query.source ?? ALL}
+                onValueChange={(v) =>
+                  setParams({
+                    source: !v || v === ALL ? undefined : v,
+                    page: 1,
+                  })
+                }
+              >
+                <SelectTrigger className="w-full sm:w-36">
+                  <SelectValue>
+                    {(v) =>
+                      !v || v === ALL
+                        ? "All sources"
+                        : LEAD_SOURCE_LABELS[
+                            v as keyof typeof LEAD_SOURCE_LABELS
+                          ]
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>All sources</SelectItem>
+                  {LEAD_SOURCES.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {LEAD_SOURCE_LABELS[s]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                variant={showFilters ? "secondary" : "ghost"}
+                onClick={() => setShowFilters((v) => !v)}
+              >
+                <SlidersHorizontal className="size-4" /> More
               </Button>
+              {hasFilters && (
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setSearch("");
+                    setParams(
+                      Object.fromEntries([
+                        ...FILTER_KEYS.map((k) => [k, undefined]),
+                        ["page", 1],
+                      ]),
+                    );
+                  }}
+                >
+                  Clear
+                </Button>
+              )}
+            </div>
+
+            {showFilters && (
+              <div className="grid gap-3 rounded-lg border p-3 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Status</Label>
+                  <Select
+                    value={query.subStatus ?? ALL}
+                    onValueChange={(v) =>
+                      setParams({
+                        subStatus: !v || v === ALL ? undefined : v,
+                        page: 1,
+                      })
+                    }
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue>
+                        {(v) => (!v || v === ALL ? "Any status" : String(v))}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ALL}>Any status</SelectItem>
+                      {subStatusOptions.map((s) => (
+                        <SelectItem key={s} value={s}>
+                          {s}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Course</Label>
+                  <Select
+                    value={query.courseId ?? ALL}
+                    onValueChange={(v) =>
+                      setParams({
+                        courseId: !v || v === ALL ? undefined : v,
+                        page: 1,
+                      })
+                    }
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue>
+                        {(v) =>
+                          !v || v === ALL
+                            ? "All courses"
+                            : (courses.find((c) => c.id === v)?.title ??
+                              "All courses")
+                        }
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ALL}>All courses</SelectItem>
+                      {courses.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.title}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Class mode</Label>
+                  <Select
+                    value={query.classMode ?? ALL}
+                    onValueChange={(v) =>
+                      setParams({
+                        classMode: !v || v === ALL ? undefined : v,
+                        page: 1,
+                      })
+                    }
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue>
+                        {(v) =>
+                          !v || v === ALL
+                            ? "Any mode"
+                            : LEAD_CLASS_MODE_LABELS[v as LeadClassMode]
+                        }
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ALL}>Any mode</SelectItem>
+                      {LEAD_CLASS_MODES.map((m) => (
+                        <SelectItem key={m} value={m}>
+                          {LEAD_CLASS_MODE_LABELS[m]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Assigned to</Label>
+                  <Select
+                    value={query.assignedToId ?? ALL}
+                    onValueChange={(v) =>
+                      setParams({
+                        assignedToId: !v || v === ALL ? undefined : v,
+                        page: 1,
+                      })
+                    }
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue>
+                        {(v) =>
+                          !v || v === ALL
+                            ? "Anyone"
+                            : v === "unassigned"
+                              ? "Unassigned"
+                              : (assignees.find((a) => a.id === v)?.name ??
+                                "Anyone")
+                        }
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ALL}>Anyone</SelectItem>
+                      <SelectItem value="unassigned">Unassigned</SelectItem>
+                      {assignees.map((a) => (
+                        <SelectItem key={a.id} value={a.id}>
+                          {a.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Follow-up due</Label>
+                  <Select
+                    value={query.due ?? ALL}
+                    onValueChange={(v) =>
+                      setParams({
+                        due: !v || v === ALL ? undefined : v,
+                        page: 1,
+                      })
+                    }
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue>
+                        {(v) =>
+                          !v || v === ALL
+                            ? "Any time"
+                            : v === "overdue"
+                              ? "Overdue"
+                              : v === "today"
+                                ? "Due today"
+                                : "Next 7 days"
+                        }
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ALL}>Any time</SelectItem>
+                      <SelectItem value="overdue">Overdue</SelectItem>
+                      <SelectItem value="today">Due today</SelectItem>
+                      <SelectItem value="week">Next 7 days</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Lead quality</Label>
+                  <Select
+                    value={query.quality ?? ALL}
+                    onValueChange={(v) =>
+                      setParams({
+                        quality: !v || v === ALL ? undefined : v,
+                        page: 1,
+                      })
+                    }
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue>
+                        {(v) =>
+                          !v || v === ALL
+                            ? "Any quality"
+                            : LEAD_QUALITY_LABELS[v as LeadQuality]
+                        }
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ALL}>Any quality</SelectItem>
+                      {LEAD_QUALITIES.map((q) => (
+                        <SelectItem key={q} value={q}>
+                          {LEAD_QUALITY_LABELS[q]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs" htmlFor="f-score">
+                    Minimum lead score
+                  </Label>
+                  <Input
+                    id="f-score"
+                    inputMode="numeric"
+                    placeholder="e.g. 60"
+                    defaultValue={query.minScore ?? ""}
+                    onBlur={(e) => {
+                      const value = e.target.value.trim();
+                      if (value !== (query.minScore ?? "")) {
+                        setParams({ minScore: value || undefined, page: 1 });
+                      }
+                    }}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs" htmlFor="f-from">
+                    Lead date from
+                  </Label>
+                  <Input
+                    id="f-from"
+                    type="date"
+                    value={query.from ?? ""}
+                    onChange={(e) =>
+                      setParams({ from: e.target.value || undefined, page: 1 })
+                    }
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs" htmlFor="f-to">
+                    Lead date to
+                  </Label>
+                  <Input
+                    id="f-to"
+                    type="date"
+                    value={query.to ?? ""}
+                    onChange={(e) =>
+                      setParams({ to: e.target.value || undefined, page: 1 })
+                    }
+                  />
+                </div>
+              </div>
             )}
           </div>
         }
@@ -367,13 +949,23 @@ export function LeadsClient({
           <div className="flex items-center justify-between">
             <span className="text-muted-foreground text-sm">{total} leads</span>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" disabled={query.page <= 1} onClick={() => setParams({ page: query.page - 1 })}>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={query.page <= 1}
+                onClick={() => setParams({ page: query.page - 1 })}
+              >
                 Previous
               </Button>
               <span className="text-muted-foreground text-sm">
                 Page {query.page} of {totalPages}
               </span>
-              <Button variant="outline" size="sm" disabled={query.page >= totalPages} onClick={() => setParams({ page: query.page + 1 })}>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={query.page >= totalPages}
+                onClick={() => setParams({ page: query.page + 1 })}
+              >
                 Next
               </Button>
             </div>
@@ -383,53 +975,26 @@ export function LeadsClient({
 
       {/* Add lead */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Add a lead</DialogTitle>
-            <DialogDescription>Manually capture an enquiry.</DialogDescription>
+            <DialogDescription>
+              A lead number (SFC…) is assigned automatically when you save.
+            </DialogDescription>
           </DialogHeader>
           <form onSubmit={onCreate} className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="l-name">Name</Label>
-                <Input id="l-name" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Phone</Label>
-                <PhoneInput value={form.phone} onChange={(v) => setForm((f) => ({ ...f, phone: v }))} />
-              </div>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="l-email">Email (optional)</Label>
-                <Input id="l-email" type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Source</Label>
-                <Select value={form.source} onValueChange={(v) => setForm((f) => ({ ...f, source: (v as LeadSource) ?? "MANUAL" }))}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue>{(v) => LEAD_SOURCE_LABELS[(v as LeadSource) ?? "MANUAL"]}</SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {LEAD_SOURCES.map((s) => (
-                      <SelectItem key={s} value={s}>
-                        {LEAD_SOURCE_LABELS[s]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="l-interest">Course interest (optional)</Label>
-              <Input id="l-interest" value={form.courseInterest} onChange={(e) => setForm((f) => ({ ...f, courseInterest: e.target.value }))} />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="l-msg">Notes (optional)</Label>
-              <Textarea id="l-msg" rows={2} value={form.message} onChange={(e) => setForm((f) => ({ ...f, message: e.target.value }))} />
-            </div>
+            <LeadFormFields
+              form={form}
+              onChange={(patch) => setForm((f) => ({ ...f, ...patch }))}
+              courses={courses}
+              assignees={assignees}
+            />
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setCreateOpen(false)}
+              >
                 Cancel
               </Button>
               <Button type="submit" disabled={creating || !canAdd}>
@@ -441,19 +1006,37 @@ export function LeadsClient({
         </DialogContent>
       </Dialog>
 
-      <LeadDetailSheet leadId={detailId} assignees={assignees} onOpenChange={(o) => !o && setDetailId(null)} />
+      <LeadImportDialog open={importOpen} onOpenChange={setImportOpen} />
 
-      <AlertDialog open={deleting != null} onOpenChange={(o) => !o && setDeleting(null)}>
+      <LeadDuplicatesDialog
+        open={duplicatesOpen}
+        onOpenChange={setDuplicatesOpen}
+      />
+
+      <LeadDetailSheet
+        leadId={detailId}
+        assignees={assignees}
+        courses={courses}
+        onOpenChange={(o) => !o && setDetailId(null)}
+      />
+
+      <AlertDialog
+        open={deleting != null}
+        onOpenChange={(o) => !o && setDeleting(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete this lead?</AlertDialogTitle>
             <AlertDialogDescription>
-              {deleting?.name}&apos;s enquiry and all follow-ups will be permanently removed.
+              {deleting?.name}&apos;s enquiry, follow-ups and documents will be
+              permanently removed.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete}>Delete</AlertDialogAction>
+            <AlertDialogAction onClick={confirmDelete}>
+              Delete
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
