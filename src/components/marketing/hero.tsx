@@ -1,17 +1,19 @@
 import Link from "next/link";
-import Image from "next/image";
-import { Star, ShieldCheck, Trophy } from "lucide-react";
 import { CourseSearch } from "@/components/shared/course-search";
-import { HERO_AVATARS } from "@/config/marketing";
+import { iconFor, toneFor } from "@/config/icons";
 import { listPopularCourses } from "@/server/services/course-service";
+import type { HomeData } from "@/lib/validations/homepage";
+import { cn } from "@/lib/utils";
 
 /** "Complete Data Science Bootcamp: Python" → "Complete Data Science Bootcamp" */
 function chipLabel(title: string): string {
   return title.split(/\s*[:—–|(]\s*/)[0].trim();
 }
 
-export async function Hero() {
-  const popular = await listPopularCourses(6);
+export async function Hero({ data }: { data: HomeData<"hero"> }) {
+  // Chips are the catalogue's own most-enrolled courses, not copy an admin has
+  // to keep in step with it — so the toggle is all the editor needs to expose.
+  const popular = data.showPopular ? await listPopularCourses(data.popularLimit) : [];
 
   return (
     <section className="relative overflow-hidden">
@@ -23,46 +25,57 @@ export async function Hero() {
 
       <div className="container-page py-16 sm:py-24">
         <div className="mx-auto max-w-3xl text-center">
-          <span className="border-border/70 bg-background/60 text-muted-foreground mb-6 inline-flex items-center gap-2 rounded-full border py-1 pr-3.5 pl-1.5 text-xs font-medium backdrop-blur">
-            <span className="flex -space-x-2">
-              {HERO_AVATARS.map((src, i) => (
-                <Image
-                  key={src}
-                  src={src}
-                  alt={`Learner ${i + 1}`}
-                  width={24}
-                  height={24}
-                  className="ring-background size-6 rounded-full object-cover ring-2"
-                />
-              ))}
+          {(data.badgeText || data.avatars.length > 0) && (
+            <span className="border-border/70 bg-background/60 text-muted-foreground mb-6 inline-flex items-center gap-2 rounded-full border py-1 pr-3.5 pl-1.5 text-xs font-medium backdrop-blur">
+              {data.avatars.length > 0 && (
+                <span className="flex -space-x-2">
+                  {data.avatars.map((avatar, i) => (
+                    // Plain <img>: the URL is whatever an admin uploaded or
+                    // pasted, and next/image refuses hosts that aren't in
+                    // next.config's remotePatterns.
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      key={`${avatar.url}-${i}`}
+                      src={avatar.url}
+                      alt=""
+                      width={24}
+                      height={24}
+                      className="ring-background size-6 rounded-full object-cover ring-2"
+                    />
+                  ))}
+                </span>
+              )}
+              {data.badgeText}
             </span>
-            Trusted by 1,000+ learners
-          </span>
+          )}
 
           <h1 className="text-4xl leading-[1.05] font-bold sm:text-6xl">
-            Master tomorrow&apos;s{" "}
+            {data.titleLead}{" "}
             <span className="bg-gradient-to-r from-rose-600 to-pink-600 bg-clip-text text-transparent">
-              skills
+              {data.titleHighlight}
             </span>{" "}
-            today
+            {data.titleTail}
           </h1>
 
-          <p className="text-muted-foreground mx-auto mt-6 max-w-2xl text-lg text-pretty">
-            Learn from industry experts with live classes, hands-on projects and
-            verified certificates — and get the career support to land the job.
-          </p>
+          {data.subtitle && (
+            <p className="text-muted-foreground mx-auto mt-6 max-w-2xl text-lg text-pretty">
+              {data.subtitle}
+            </p>
+          )}
 
           {/* Search */}
           <CourseSearch
             variant="hero"
-            placeholder="What do you want to learn?"
+            placeholder={data.searchPlaceholder}
             className="mx-auto mt-8 max-w-xl text-left"
           />
 
           {/* Most-enrolled courses, straight from the catalog */}
           {popular.length > 0 && (
             <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
-              <span className="text-muted-foreground text-sm">Popular:</span>
+              {data.popularLabel && (
+                <span className="text-muted-foreground text-sm">{data.popularLabel}</span>
+              )}
               {popular.map((course) => (
                 <Link
                   key={course.id}
@@ -77,20 +90,19 @@ export async function Hero() {
           )}
 
           {/* Trust line */}
-          <div className="text-muted-foreground mt-10 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm">
-            <span className="flex items-center gap-1.5">
-              <Star className="size-4 fill-amber-400 text-amber-400" />
-              4.9/5 average rating
-            </span>
-            <span className="flex items-center gap-1.5">
-              <ShieldCheck className="text-emerald-500 size-4" />
-              Verified certificates
-            </span>
-            <span className="flex items-center gap-1.5">
-              <Trophy className="text-rose-500 size-4" />
-              900+ placements done
-            </span>
-          </div>
+          {data.trust.length > 0 && (
+            <div className="text-muted-foreground mt-10 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm">
+              {data.trust.map((item, i) => {
+                const Icon = iconFor(item.icon);
+                return (
+                  <span key={`${item.text}-${i}`} className="flex items-center gap-1.5">
+                    <Icon className={cn("size-4", toneFor(item.tone))} />
+                    {item.text}
+                  </span>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
     </section>

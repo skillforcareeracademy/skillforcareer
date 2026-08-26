@@ -18,11 +18,20 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
-import { CERTIFICATE_STATUSES, CERTIFICATE_STATUS_LABEL } from "@/lib/validations/certificate";
+import {
+  CERTIFICATE_FIELD_META,
+  CERTIFICATE_STATUSES,
+  CERTIFICATE_STATUS_LABEL,
+  CERTIFICATE_TYPES,
+  CERTIFICATE_TYPE_META,
+  type CertificateType,
+} from "@/lib/validations/certificate";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -75,6 +84,7 @@ interface Query {
   search?: string;
   courseId?: string;
   status?: string;
+  type?: string;
 }
 interface UserOpt {
   id: string;
@@ -120,18 +130,23 @@ export function CertificatesClient({
   const [issueOpen, setIssueOpen] = useState(false);
   const [newUser, setNewUser] = useState("");
   const [newCourse, setNewCourse] = useState("");
+  const [newType, setNewType] = useState<CertificateType>("COURSE_COMPLETION");
+  const [newDetails, setNewDetails] = useState<Record<string, string>>({});
   const [issuing, setIssuing] = useState(false);
   const [deleting, setDeleting] = useState<CertRow | null>(null);
   const [detail, setDetail] = useState<CertRow | null>(null);
 
   const totalPages = Math.max(1, Math.ceil(total / query.pageSize));
-  const hasFilters = Boolean(query.search || query.courseId || query.status);
+  const hasFilters = Boolean(
+    query.search || query.courseId || query.status || query.type,
+  );
 
   const setParams = useCallback(
     (next: Record<string, string | number | undefined>) => {
       const merged = {
         search: query.search,
         course: query.courseId,
+        type: query.type,
         status: query.status,
         page: query.page,
         ...next,
@@ -140,6 +155,7 @@ export function CertificatesClient({
       if (merged.search) p.set("search", String(merged.search));
       if (merged.course) p.set("course", String(merged.course));
       if (merged.status) p.set("status", String(merged.status));
+      if (merged.type) p.set("type", String(merged.type));
       if (merged.page && Number(merged.page) > 1) p.set("page", String(merged.page));
       const qs = p.toString();
       router.push(qs ? `${pathname}?${qs}` : pathname);
@@ -149,18 +165,35 @@ export function CertificatesClient({
 
   function clearFilters() {
     setSearch("");
-    setParams({ search: undefined, course: undefined, status: undefined, page: 1 });
+    setParams({
+      search: undefined,
+      course: undefined,
+      status: undefined,
+      type: undefined,
+      page: 1,
+    });
   }
 
   async function onIssue(e: FormEvent) {
     e.preventDefault();
     setIssuing(true);
     try {
-      await api.post("/api/certificates", { userId: newUser, courseId: newCourse });
+      // Only the fields this design prints are sent; the API stores exactly
+      // what it is given, so posting the rest would bury dead copy in the row.
+      const extras = Object.fromEntries(
+        CERTIFICATE_TYPE_META[newType].fields.map((f) => [f, newDetails[f] ?? ""]),
+      );
+      await api.post("/api/certificates", {
+        userId: newUser,
+        type: newType,
+        courseId: CERTIFICATE_TYPE_META[newType].needsCourse ? newCourse : "",
+        ...extras,
+      });
       toast.success("Certificate issued.");
       setIssueOpen(false);
       setNewUser("");
       setNewCourse("");
+      setNewDetails({});
       router.refresh();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Couldn't issue certificate.");
@@ -255,7 +288,9 @@ export function CertificatesClient({
           </Avatar>
           <div className="min-w-0">
             <p className="truncate font-medium">{c.studentName}</p>
-            <p className="text-muted-foreground truncate text-xs">{c.courseTitle}</p>
+            <p className="text-muted-foreground truncate text-xs">
+              {c.courseTitle ?? CERTIFICATE_TYPE_META[c.type as CertificateType]?.label}
+            </p>
           </div>
         </div>
       ),
@@ -292,7 +327,9 @@ export function CertificatesClient({
             </Avatar>
             <div className="min-w-0">
               <p className="truncate font-medium">{c.studentName}</p>
-              <p className="text-muted-foreground truncate text-xs">{c.courseTitle}</p>
+              <p className="text-muted-foreground truncate text-xs">
+                {c.courseTitle ?? CERTIFICATE_TYPE_META[c.type as CertificateType]?.label}
+              </p>
             </div>
           </button>
           {rowActions(c)}
@@ -305,7 +342,10 @@ export function CertificatesClient({
     );
   }
 
-  const canIssue = Boolean(newUser && newCourse);
+  // A course-completion award needs a course; the other three don't have one.
+  const canIssue = Boolean(
+    newUser && (!CERTIFICATE_TYPE_META[newType].needsCourse || newCourse),
+  );
 
   return (
     <div className="space-y-6">
@@ -366,6 +406,28 @@ export function CertificatesClient({
               />
             </form>
             <div className="flex gap-2">
+              <Select
+                value={query.type ?? ALL}
+                onValueChange={(v) => setParams({ type: !v || v === ALL ? undefined : v, page: 1 })}
+              >
+                <SelectTrigger className="flex-1 sm:w-44">
+                  <SelectValue>
+                    {(v) =>
+                      !v || v === ALL
+                        ? "All awards"
+                        : (CERTIFICATE_TYPE_META[v as CertificateType]?.label ?? String(v))
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>All awards</SelectItem>
+                  {CERTIFICATE_TYPES.map((t) => (
+                    <SelectItem key={t} value={t}>
+                      {CERTIFICATE_TYPE_META[t].label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Select
                 value={query.status ?? ALL}
                 onValueChange={(v) => setParams({ status: !v || v === ALL ? undefined : v, page: 1 })}
@@ -439,9 +501,40 @@ export function CertificatesClient({
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Issue certificate</DialogTitle>
-            <DialogDescription>Award a course-completion certificate to a learner.</DialogDescription>
+            <DialogDescription>
+              Pick the award — each one prints in its own design.
+            </DialogDescription>
           </DialogHeader>
           <form onSubmit={onIssue} className="space-y-4">
+            <div className="space-y-1.5">
+              <Label>Award</Label>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {CERTIFICATE_TYPES.map((t) => {
+                  const meta = CERTIFICATE_TYPE_META[t];
+                  const active = newType === t;
+                  return (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setNewType(t)}
+                      aria-pressed={active}
+                      className={cn(
+                        "rounded-lg border p-3 text-left transition-colors",
+                        active
+                          ? "border-primary/50 bg-primary/5"
+                          : "hover:bg-muted/50",
+                      )}
+                    >
+                      <p className="text-sm font-medium">{meta.label}</p>
+                      <p className="text-muted-foreground mt-0.5 text-xs leading-snug">
+                        {meta.description}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             <div className="space-y-1.5">
               <Label>Learner</Label>
               <Select value={newUser} onValueChange={(v) => setNewUser(v ?? "")}>
@@ -459,23 +552,69 @@ export function CertificatesClient({
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1.5">
-              <Label>Course</Label>
-              <Select value={newCourse} onValueChange={(v) => setNewCourse(v ?? "")}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Choose a course">
-                    {(v) => courses.find((c) => c.id === v)?.title ?? "Choose a course"}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {courses.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.title}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            {CERTIFICATE_TYPE_META[newType].needsCourse && (
+              <div className="space-y-1.5">
+                <Label>Course</Label>
+                <Select value={newCourse} onValueChange={(v) => setNewCourse(v ?? "")}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Choose a course">
+                      {(v) => courses.find((c) => c.id === v)?.title ?? "Choose a course"}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {courses.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Only what this design actually prints — driven by the type's own
+                field list, so a new award needs no new form code. */}
+            <div className="grid gap-3 sm:grid-cols-2">
+              {CERTIFICATE_TYPE_META[newType].fields.map((field) => {
+                const meta = CERTIFICATE_FIELD_META[field];
+                const id = `cert-${field}`;
+                const value = newDetails[field] ?? "";
+                const set = (v: string) =>
+                  setNewDetails((prev) => ({ ...prev, [field]: v }));
+                return (
+                  <div
+                    key={field}
+                    className={cn(
+                      "space-y-1.5",
+                      meta.type === "textarea" && "sm:col-span-2",
+                    )}
+                  >
+                    <Label htmlFor={id}>{meta.label}</Label>
+                    {meta.type === "textarea" ? (
+                      <Textarea
+                        id={id}
+                        rows={3}
+                        value={value}
+                        placeholder={meta.placeholder}
+                        onChange={(e) => set(e.target.value)}
+                      />
+                    ) : (
+                      <Input
+                        id={id}
+                        type={meta.type === "date" ? "date" : "text"}
+                        value={value}
+                        placeholder={meta.placeholder}
+                        onChange={(e) => set(e.target.value)}
+                      />
+                    )}
+                    {meta.hint && (
+                      <p className="text-muted-foreground text-xs">{meta.hint}</p>
+                    )}
+                  </div>
+                );
+              })}
             </div>
+
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setIssueOpen(false)}>
                 Cancel

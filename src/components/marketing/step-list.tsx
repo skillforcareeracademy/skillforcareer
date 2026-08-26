@@ -28,7 +28,8 @@ export function StepList({ steps, className }: { steps: Step[]; className?: stri
       {steps.map(({ title, body, icon: Icon }, i) => {
         const last = i === steps.length - 1;
         return (
-          <li key={title} className="group relative">
+          // Index keys: an admin can legitimately name two steps the same.
+          <li key={i} className="group relative">
             {!last && (
               <>
                 {/* Sideways rule into the next card. In the 2-up layout only the

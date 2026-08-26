@@ -7,6 +7,8 @@ import { toast } from "sonner";
 import {
   Loader2,
   Phone,
+  MessageCircle,
+  MessageSquareText,
   Mail,
   MapPin,
   BookOpen,
@@ -31,6 +33,8 @@ import {
   type LeadStage,
   type LeadSource,
 } from "@/lib/validations/lead";
+import { LeadContactActions } from "@/components/admin/leads/lead-contact-actions";
+import { LeadPaymentsPanel } from "@/components/admin/leads/lead-payments-panel";
 import {
   Sheet,
   SheetContent,
@@ -68,6 +72,19 @@ import {
   type LeadFormState,
 } from "@/components/admin/leads/lead-form";
 
+/** Reads as a sentence: "Priya called 98…", "Priya messaged … on WhatsApp". */
+const CONTACT_VERB: Record<string, string> = {
+  CALL: "called",
+  WHATSAPP: "messaged",
+  SMS: "texted",
+};
+const CONTACT_SUFFIX: Record<string, string> = { WHATSAPP: " on WhatsApp" };
+const CONTACT_ICON: Record<string, typeof Phone> = {
+  CALL: Phone,
+  WHATSAPP: MessageCircle,
+  SMS: MessageSquareText,
+};
+
 interface Assignee {
   id: string;
   name: string;
@@ -89,6 +106,14 @@ interface LeadDocument {
   size: number | null;
   createdAt: string;
 }
+interface ContactAttempt {
+  id: string;
+  channel: string;
+  target: string;
+  agentName: string;
+  agentAvatar: string | null;
+  createdAt: string;
+}
 interface Detail {
   id: string;
   leadNo: string | null;
@@ -96,6 +121,7 @@ interface Detail {
   name: string;
   email: string | null;
   phone: string;
+  whatsapp: string | null;
   courseId: string | null;
   courseTitle: string | null;
   courseInterest: string | null;
@@ -124,6 +150,7 @@ interface Detail {
   createdAt: string;
   documents: LeadDocument[];
   followUps: FollowUp[];
+  contacts: ContactAttempt[];
 }
 
 const MAX_DOC_BYTES = 25 * 1024 * 1024;
@@ -161,6 +188,7 @@ function toForm(d: Detail): LeadFormState {
     leadScore: d.leadScore != null ? String(d.leadScore) : "",
     name: d.name,
     phone: d.phone,
+    whatsapp: d.whatsapp ?? "",
     email: d.email ?? "",
     courseId: d.courseId ?? "",
     courseInterest: d.courseInterest ?? "",
@@ -436,6 +464,13 @@ function Body({
               </span>
             </SheetDescription>
           </div>
+          <div className="ml-auto shrink-0">
+            <LeadContactActions
+              lead={data}
+              size="icon"
+              onLogged={() => void load()}
+            />
+          </div>
         </div>
       </SheetHeader>
 
@@ -449,17 +484,25 @@ function Body({
           <TabsTrigger value="followups">
             Follow-ups ({data.followUps.length})
           </TabsTrigger>
+          <TabsTrigger value="outreach">
+            Outreach ({data.contacts.length})
+          </TabsTrigger>
+          <TabsTrigger value="payments">Payment</TabsTrigger>
         </TabsList>
 
         {/* ── Overview ─────────────────────────────────────────────────── */}
         <TabsContent value="overview" className="space-y-5 pt-4">
           <div className="grid gap-2 text-sm">
-            <a
-              href={`tel:${data.phone}`}
-              className="hover:text-primary flex items-center gap-2"
-            >
+            <span className="flex items-center gap-2">
               <Phone className="text-muted-foreground size-4" /> {data.phone}
-            </a>
+            </span>
+            {data.whatsapp && data.whatsapp !== data.phone && (
+              <span className="flex items-center gap-2">
+                <MessageCircle className="text-muted-foreground size-4" />
+                {data.whatsapp}
+                <span className="text-muted-foreground text-xs">WhatsApp</span>
+              </span>
+            )}
             {data.email && (
               <a
                 href={`mailto:${data.email}`}
@@ -727,6 +770,69 @@ function Body({
         </TabsContent>
 
         {/* ── Follow-ups ───────────────────────────────────────────────── */}
+        {/* ── Payment ──────────────────────────────────────────────────── */}
+        <TabsContent value="payments">
+          <LeadPaymentsPanel
+            leadId={data.id}
+            leadName={data.name}
+            leadPhone={data.phone}
+            leadWhatsapp={data.whatsapp}
+            courses={courses}
+            onChanged={() => {
+              void load();
+              router.refresh();
+            }}
+          />
+        </TabsContent>
+
+        {/* ── Outreach ─────────────────────────────────────────────────── */}
+        <TabsContent value="outreach" className="space-y-4 pt-4">
+          <div className="bg-muted/40 flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium">Reach out</p>
+              <p className="text-muted-foreground text-xs">
+                Every attempt is stamped with who made it.
+              </p>
+            </div>
+            <LeadContactActions
+              lead={data}
+              size="icon"
+              onLogged={() => void load()}
+            />
+          </div>
+
+          {data.contacts.length === 0 ? (
+            <p className="text-muted-foreground text-sm">
+              Nobody has called or messaged this lead yet.
+            </p>
+          ) : (
+            <ul className="divide-y rounded-xl border">
+              {data.contacts.map((c) => {
+                const Icon = CONTACT_ICON[c.channel] ?? Phone;
+                return (
+                  <li key={c.id} className="flex items-center gap-3 p-3">
+                    <span className="bg-muted grid size-8 shrink-0 place-items-center rounded-full">
+                      <Icon className="text-muted-foreground size-4" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm">
+                        <span className="font-medium">{c.agentName}</span>{" "}
+                        <span className="text-muted-foreground">
+                          {CONTACT_VERB[c.channel] ?? "contacted"} {c.target}
+                          {CONTACT_SUFFIX[c.channel] ?? ""}
+                        </span>
+                      </p>
+                      <p className="text-muted-foreground text-xs">
+                        {format(new Date(c.createdAt), "d MMM yyyy, h:mm a")}
+                      </p>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </TabsContent>
+
         <TabsContent value="followups" className="space-y-5 pt-4">
           <form onSubmit={addFollowUp}>
             <Label className="flex items-center gap-1.5">

@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { EnquiryForm } from "@/components/marketing/enquiry-form";
+import { getHomeSection } from "@/server/services/homepage-service";
 import { siteConfig } from "@/config/site";
 
 export const metadata: Metadata = {
@@ -55,7 +56,9 @@ function mapsHref(query: string): string {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 }
 
-export default function ContactPage() {
+export default async function ContactPage() {
+  const enquiry = await getHomeSection("enquiry");
+
   return (
     <>
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
@@ -119,7 +122,7 @@ export default function ContactPage() {
       </section>
 
       {/* ── Callback form (shared with the homepage) ─────────────────────── */}
-      <EnquiryForm />
+      {enquiry.enabled && <EnquiryForm data={enquiry.data} />}
 
       {/* ── Centres ──────────────────────────────────────────────────────── */}
       <section className="container-page py-16 sm:py-20">

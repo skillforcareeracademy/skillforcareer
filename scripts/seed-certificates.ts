@@ -69,7 +69,13 @@ async function main() {
       continue;
     }
     const exists = await prisma.certificate.findUnique({
-      where: { userId_courseId: { userId: admin.id, courseId: course.id } },
+      where: {
+        userId_courseId_type: {
+          userId: admin.id,
+          courseId: course.id,
+          type: "COURSE_COMPLETION",
+        },
+      },
       select: { id: true },
     });
     if (exists) {

@@ -3,6 +3,13 @@ import { prisma } from "@/lib/prisma";
 import { notify } from "./notification-service";
 import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
+import {
+  CERTIFICATE_TYPE_META,
+  parseCertificateDetails,
+  type CertificateDetails,
+  type CertificateType,
+  type IssueCertificateInput,
+} from "@/lib/validations/certificate";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -46,6 +53,7 @@ export interface CertificateListQuery {
   search?: string;
   courseId?: string;
   status?: string;
+  type?: string;
   /** Scope to certificates in one instructor's courses. */
   instructorId?: string;
 }
@@ -62,6 +70,7 @@ export async function listCertificatesAdmin(q: CertificateListQuery) {
     });
   }
   if (q.courseId) and.push({ courseId: q.courseId });
+  if (q.type) and.push({ type: q.type as Prisma.CertificateWhereInput["type"] });
   if (q.status) and.push({ status: q.status as Prisma.CertificateWhereInput["status"] });
   if (q.instructorId) and.push({ course: { instructorId: q.instructorId } });
   const where: Prisma.CertificateWhereInput = and.length ? { AND: and } : {};
@@ -87,11 +96,12 @@ export async function listCertificatesAdmin(q: CertificateListQuery) {
       serialNumber: c.serialNumber,
       verificationCode: c.verificationCode,
       status: c.status,
+      type: c.type,
       studentName: c.user.name,
       studentEmail: c.user.email,
       studentAvatar: c.user.avatarUrl,
       courseId: c.courseId,
-      courseTitle: c.course.title,
+      courseTitle: c.course?.title ?? null,
       issuedAt: c.issuedAt.toISOString(),
     })),
   };
@@ -120,8 +130,11 @@ export interface StudentCertificate {
   serialNumber: string;
   verificationCode: string;
   status: string;
-  courseTitle: string;
-  courseSlug: string;
+  type: CertificateType;
+  /** The award's own heading — what the learner sees on the card. */
+  heading: string;
+  courseTitle: string | null;
+  courseSlug: string | null;
   categoryName: string | null;
   studentName: string;
   issuedAt: string;
@@ -142,9 +155,11 @@ export async function listStudentCertificates(userId: string): Promise<StudentCe
     serialNumber: c.serialNumber,
     verificationCode: c.verificationCode,
     status: c.status,
-    courseTitle: c.course.title,
-    courseSlug: c.course.slug,
-    categoryName: c.course.category?.name ?? null,
+    type: c.type as CertificateType,
+    heading: CERTIFICATE_TYPE_META[c.type as CertificateType].heading,
+    courseTitle: c.course?.title ?? null,
+    courseSlug: c.course?.slug ?? null,
+    categoryName: c.course?.category?.name ?? null,
     studentName: c.user.name,
     issuedAt: c.issuedAt.toISOString(),
   }));
@@ -164,9 +179,11 @@ export async function getCertificateByCode(code: string) {
     serialNumber: c.serialNumber,
     verificationCode: c.verificationCode,
     status: c.status,
+    type: c.type as CertificateType,
     studentName: c.user.name,
-    courseTitle: c.course.title,
+    courseTitle: c.course?.title ?? null,
     issuedAt: c.issuedAt.toISOString(),
+    details: parseCertificateDetails(c.metadata),
   };
 }
 
@@ -184,23 +201,83 @@ export async function listCoursesForSelect() {
 
 // ── Writes ───────────────────────────────────────────────────────────────────
 
-export async function issueCertificate(userId: string, courseId: string): Promise<string> {
-  const [user, course, existing] = await Promise.all([
-    prisma.user.findUnique({ where: { id: userId }, select: { id: true, name: true } }),
-    prisma.course.findUnique({ where: { id: courseId }, select: { id: true, title: true } }),
-    prisma.certificate.findUnique({
-      where: { userId_courseId: { userId, courseId } },
-      select: { id: true },
+/**
+ * Award a certificate.
+ *
+ * The type decides both the printed design and what the form had to collect, so
+ * everything past the learner is validated against that type rather than
+ * assumed: a course-completion award insists on a course, an appreciation
+ * doesn't have one to insist on.
+ */
+export async function issueCertificate(input: IssueCertificateInput): Promise<string> {
+  const meta = CERTIFICATE_TYPE_META[input.type];
+  const courseId = input.courseId || null;
+  if (meta.needsCourse && !courseId) {
+    throw AppError.badRequest("Choose a course for this certificate type.");
+  }
+
+  const [user, course] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: input.userId },
+      select: {
+        id: true,
+        name: true,
+        internshipStartAt: true,
+        internshipEndAt: true,
+      },
     }),
+    courseId
+      ? prisma.course.findUnique({ where: { id: courseId }, select: { id: true, title: true } })
+      : Promise.resolve(null),
   ]);
   if (!user) throw AppError.badRequest("Learner not found.");
-  if (!course) throw AppError.badRequest("Course not found.");
-  if (existing) throw AppError.badRequest("This learner already has a certificate for this course.");
+  if (courseId && !course) throw AppError.badRequest("Course not found.");
 
-  const enrollment = await prisma.enrollment.findUnique({
-    where: { userId_courseId: { userId, courseId } },
+  // The unique key is (learner, course, type), so the same learner can hold a
+  // completion *and* an appreciation for one course — but not two of either.
+  const existing = await prisma.certificate.findFirst({
+    where: { userId: input.userId, courseId, type: input.type },
     select: { id: true },
   });
+  if (existing) {
+    throw AppError.badRequest(
+      `This learner already has a ${meta.label.toLowerCase()} certificate${
+        course ? ` for “${course.title}”` : ""
+      }.`,
+    );
+  }
+
+  // Only the fields this design prints are stored; the rest would be dead
+  // weight that a later edit could contradict.
+  const details: CertificateDetails = {
+    batchName: "",
+    programArea: "",
+    organisation: "",
+    startDate: "",
+    endDate: "",
+    period: "",
+    citation: "",
+  };
+  for (const field of meta.fields) details[field] = input[field] ?? "";
+
+  // An internship award left blank falls back to the dates on the learner's own
+  // record, so admissions type them once on the profile rather than again here.
+  // Once written they are a snapshot: editing the profile later must not quietly
+  // rewrite a certificate somebody has already been handed.
+  const day = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : "");
+  if (meta.fields.includes("startDate") && !details.startDate) {
+    details.startDate = day(user.internshipStartAt);
+  }
+  if (meta.fields.includes("endDate") && !details.endDate) {
+    details.endDate = day(user.internshipEndAt);
+  }
+
+  const enrollment = courseId
+    ? await prisma.enrollment.findUnique({
+        where: { userId_courseId: { userId: input.userId, courseId } },
+        select: { id: true },
+      })
+    : null;
 
   const year = new Date().getFullYear();
   const [serialNumber, verificationCode] = await Promise.all([
@@ -210,22 +287,25 @@ export async function issueCertificate(userId: string, courseId: string): Promis
 
   const cert = await prisma.certificate.create({
     data: {
-      userId,
+      userId: input.userId,
       courseId,
+      type: input.type,
       enrollmentId: enrollment?.id ?? null,
       serialNumber,
       verificationCode,
       status: "ISSUED",
-      metadata: { studentName: user.name, courseTitle: course.title },
+      metadata: { studentName: user.name, courseTitle: course?.title ?? null, ...details },
     },
-    select: { id: true, verificationCode: true },
+    select: { id: true },
   });
 
   await notify({
-    userIds: [userId],
+    userIds: [input.userId],
     type: "CERTIFICATE",
     title: "Certificate issued",
-    message: `Your certificate for “${course.title}” is ready to download.`,
+    message: course
+      ? `Your ${meta.heading.toLowerCase()} for “${course.title}” is ready to download.`
+      : `Your ${meta.heading.toLowerCase()} is ready to download.`,
     actionUrl: "/student/certificates",
   });
 

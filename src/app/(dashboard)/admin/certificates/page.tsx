@@ -28,6 +28,7 @@ export default async function CertificatesPage({
     search: str(sp.search),
     courseId: str(sp.course),
     status: str(sp.status),
+    type: str(sp.type),
   };
 
   const [{ certificates, total }, stats, users, courses] = await Promise.all([

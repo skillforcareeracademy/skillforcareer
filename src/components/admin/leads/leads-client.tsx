@@ -36,8 +36,10 @@ import {
   LEAD_QUALITIES,
   LEAD_QUALITY_LABELS,
   LEAD_SUB_STATUSES,
+  LEAD_CONTACT_CHANNEL_LABELS,
   type LeadStage,
   type LeadClassMode,
+  type LeadContactChannel,
   type LeadQuality,
 } from "@/lib/validations/lead";
 import { DataTable, type Column } from "@/components/shared/data-table";
@@ -84,6 +86,7 @@ import {
   SOURCE_LABEL,
   CLASS_MODE_LABEL,
 } from "@/components/admin/leads/lead-badges";
+import { LeadContactActions } from "@/components/admin/leads/lead-contact-actions";
 import { LeadDetailSheet } from "@/components/admin/leads/lead-detail-sheet";
 import { LeadImportDialog } from "@/components/admin/leads/lead-import-dialog";
 import { LeadDuplicatesDialog } from "@/components/admin/leads/lead-duplicates-dialog";
@@ -102,6 +105,8 @@ interface LeadRow {
   name: string;
   email: string | null;
   phone: string;
+  whatsapp: string | null;
+  lastContact: { channel: string; at: string; by: string } | null;
   course: string | null;
   source: string;
   stage: string;
@@ -391,6 +396,24 @@ export function LeadsClient({
       ),
     },
     {
+      key: "contact",
+      header: "Contact",
+      headerClassName: "w-28",
+      cell: (l) => (
+        <div className="space-y-0.5">
+          <LeadContactActions lead={l} onLogged={() => router.refresh()} />
+          {l.lastContact && (
+            <p className="text-muted-foreground pl-1.5 text-[11px] whitespace-nowrap">
+              {LEAD_CONTACT_CHANNEL_LABELS[
+                l.lastContact.channel as LeadContactChannel
+              ] ?? l.lastContact.channel}{" "}
+              {formatDistanceToNow(new Date(l.lastContact.at), { addSuffix: true })}
+            </p>
+          )}
+        </div>
+      ),
+    },
+    {
       key: "course",
       header: "Course",
       cell: (l) => <span className="text-sm">{l.course ?? dash}</span>,
@@ -501,8 +524,23 @@ export function LeadsClient({
               <PhoneIcon className="size-3" /> {l.phone}
             </p>
           </button>
-          {rowActions(l)}
+          <div className="flex shrink-0 items-center">
+            {/* On a phone these are the whole point of the screen — a
+                counsellor works the queue by tapping call, not by opening
+                sheets — so they sit in the card header, not behind a menu. */}
+            <LeadContactActions lead={l} onLogged={() => router.refresh()} />
+            {rowActions(l)}
+          </div>
         </div>
+        {l.lastContact && (
+          <p className="text-muted-foreground mt-1.5 text-xs">
+            {LEAD_CONTACT_CHANNEL_LABELS[
+              l.lastContact.channel as LeadContactChannel
+            ] ?? l.lastContact.channel}{" "}
+            by {l.lastContact.by}{" "}
+            {formatDistanceToNow(new Date(l.lastContact.at), { addSuffix: true })}
+          </p>
+        )}
         <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
           {STAGE_BADGE(l.stage)}
           {SUB_STATUS_BADGE(l.subStatus)}

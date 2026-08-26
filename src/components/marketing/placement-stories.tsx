@@ -11,67 +11,12 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-
-interface PlacementStory {
-  name: string;
-  company: string;
-  quote: string;
-  photo: string;
-}
-
-/**
- * Real placement stories sourced from the client's existing site
- * (skillforcareer.in). Photos are the learners' own headshots hosted there —
- * no stock imagery, no video placeholders.
- */
-const STORIES: PlacementStory[] = [
-  {
-    name: "Ashish Kumar Shrivastava",
-    company: "Omega Healthcare",
-    quote:
-      "The recruitment process was smooth, and the interview panel was supportive throughout.",
-    photo: "https://skillforcareer.in/wp-content/uploads/2026/07/nt1.png",
-  },
-  {
-    name: "Mayank Sharma",
-    company: "Optum",
-    quote:
-      "The interview process was well organized, and I'm grateful for this opportunity.",
-    photo: "https://skillforcareer.in/wp-content/uploads/2026/07/nt3.png",
-  },
-  {
-    name: "Vishal Kaushik",
-    company: "CorroHealth",
-    quote:
-      "I'm grateful for this opportunity — thank you Skill for Career for the guidance.",
-    photo: "https://skillforcareer.in/wp-content/uploads/2026/07/nt4.png",
-  },
-  {
-    name: "Harsh Sharma",
-    company: "Pacific",
-    quote: "Thank you Skill For Career for this opportunity and constant support.",
-    photo: "https://skillforcareer.in/wp-content/uploads/2026/07/nt5.png",
-  },
-  {
-    name: "Isha",
-    company: "R1 RCM",
-    quote:
-      "I got placed at R1 RCM. Truly thankful to the Skill for Career Academy team.",
-    photo: "https://skillforcareer.in/wp-content/uploads/2026/07/nt2.png",
-  },
-  {
-    name: "Tushar",
-    company: "Omega Healthcare",
-    quote:
-      "Happy to receive an offer from Omega Healthcare — a great opportunity to build my skills.",
-    photo: "https://skillforcareer.in/wp-content/uploads/2026/07/nt6.png",
-  },
-];
+import type { HomeData } from "@/lib/validations/homepage";
 
 /** Must match the `gap-6` on the scroll track (1.5rem). */
 const CARD_GAP_PX = 24;
 
-export function PlacementStories() {
+export function PlacementStories({ data }: { data: HomeData<"placementStories"> }) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [atStart, setAtStart] = useState(true);
   const [atEnd, setAtEnd] = useState(false);
@@ -104,18 +49,23 @@ export function PlacementStories() {
     el.scrollBy({ left: dir * (el.clientWidth + CARD_GAP_PX), behavior: "smooth" });
   }
 
+  // After the hooks, never before them — emptying the list in the admin hides
+  // the band rather than leaving a heading over blank space.
+  if (data.items.length === 0) return null;
+
   return (
     <section className="container-page py-16 sm:py-24">
       <div className="mb-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="max-w-2xl">
-          <span className="text-primary inline-flex items-center gap-1.5 rounded-full bg-rose-500/10 px-3 py-1 text-sm font-medium">
-            <BadgeCheck className="size-4" /> Placement stories
-          </span>
-          <h2 className="mt-4 text-3xl sm:text-4xl">Our learners, now placed</h2>
-          <p className="text-muted-foreground mt-3">
-            Real students, real offers — swipe through to see what changed after
-            training at SkillForCareer.
-          </p>
+          {data.badge && (
+            <span className="text-primary inline-flex items-center gap-1.5 rounded-full bg-rose-500/10 px-3 py-1 text-sm font-medium">
+              <BadgeCheck className="size-4" /> {data.badge}
+            </span>
+          )}
+          <h2 className="mt-4 text-3xl sm:text-4xl">{data.title}</h2>
+          {data.description && (
+            <p className="text-muted-foreground mt-3">{data.description}</p>
+          )}
         </div>
         {/* Shown on mobile too: touch swipe works, but the arrows make it
             discoverable that there is more than one card. */}
@@ -146,9 +96,9 @@ export function PlacementStories() {
         onScroll={updateArrows}
         className="flex snap-x snap-mandatory gap-6 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
-        {STORIES.map((s) => (
+        {data.items.map((story, i) => (
           <Card
-            key={s.name}
+            key={`${story.name}-${i}`}
             // Width is derived from the track so a whole number of cards fits
             // exactly — a fixed px width leaves a sliced card at the right edge.
             // For n across with a 1.5rem gap: (100% - (n-1)*1.5rem) / n.
@@ -157,32 +107,36 @@ export function PlacementStories() {
             <div className="bg-muted relative aspect-[4/5] overflow-hidden">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={s.photo}
-                alt={s.name}
+                src={story.photo}
+                alt={story.name}
                 loading="lazy"
                 className="size-full object-cover object-top"
               />
               <span className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/60 to-transparent" />
-              <span className="absolute bottom-3 left-3 inline-flex items-center gap-1 rounded-full bg-emerald-500 px-2.5 py-1 text-xs font-semibold text-white shadow-sm">
-                <BadgeCheck className="size-3.5" /> Placed
-              </span>
+              {data.placedLabel && (
+                <span className="absolute bottom-3 left-3 inline-flex items-center gap-1 rounded-full bg-emerald-500 px-2.5 py-1 text-xs font-semibold text-white shadow-sm">
+                  <BadgeCheck className="size-3.5" /> {data.placedLabel}
+                </span>
+              )}
             </div>
             <div className="flex flex-1 flex-col p-5">
               <div className="flex gap-0.5">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <Star key={i} className="size-4 fill-amber-400 text-amber-400" />
+                {Array.from({ length: 5 }).map((_, star) => (
+                  <Star key={star} className="size-4 fill-amber-400 text-amber-400" />
                 ))}
               </div>
               <Quote className="text-primary/30 mt-3 size-6" aria-hidden />
               <p className="text-foreground/90 mt-1 text-sm leading-relaxed">
-                &ldquo;{s.quote}&rdquo;
+                &ldquo;{story.quote}&rdquo;
               </p>
               <div className="mt-4 flex items-center gap-3 border-t pt-4">
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold">{s.name}</p>
-                  <p className="text-muted-foreground flex items-center gap-1 truncate text-xs">
-                    <Building2 className="size-3 shrink-0" /> Placed at {s.company}
-                  </p>
+                  <p className="truncate text-sm font-semibold">{story.name}</p>
+                  {story.company && (
+                    <p className="text-muted-foreground flex items-center gap-1 truncate text-xs">
+                      <Building2 className="size-3 shrink-0" /> Placed at {story.company}
+                    </p>
+                  )}
                 </div>
               </div>
             </div>

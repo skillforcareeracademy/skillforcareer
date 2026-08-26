@@ -15,6 +15,8 @@ import {
   LEAD_QUALITY_LABELS,
   LEAD_SUB_STATUSES,
   OPEN_LEAD_STAGES,
+  contactHref,
+  contactNumber,
   parseAmount,
 } from "@/lib/validations/lead";
 import type {
@@ -28,6 +30,7 @@ import type {
   LeadSource,
   LeadStage,
   LeadClassMode,
+  LeadContactChannel,
   LeadQuality,
 } from "@/lib/validations/lead";
 
@@ -101,6 +104,7 @@ function leadData(input: Partial<CreateLeadInput>) {
 
   if (input.name !== undefined) set("name", input.name.trim());
   if (input.phone !== undefined) set("phone", input.phone.trim());
+  if (input.whatsapp !== undefined) set("whatsapp", blank(input.whatsapp));
   if (input.email !== undefined) set("email", blank(input.email));
   if (input.leadDate !== undefined) set("leadDate", input.leadDate);
   if (input.courseId !== undefined) set("courseId", blank(input.courseId));
@@ -388,6 +392,18 @@ export async function listLeadsAdmin(q: LeadListQuery) {
         assignedTo: { select: { name: true } },
         course: { select: { title: true } },
         _count: { select: { followUps: true, documents: true } },
+        // Just the latest outreach: the row shows "called 2h ago", and pulling
+        // the whole history for every lead on the page would be a needless
+        // fan-out.
+        contacts: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: {
+            channel: true,
+            createdAt: true,
+            user: { select: { name: true } },
+          },
+        },
       },
     }),
   ]);
@@ -400,6 +416,14 @@ export async function listLeadsAdmin(q: LeadListQuery) {
       name: l.name,
       email: l.email,
       phone: l.phone,
+      whatsapp: l.whatsapp,
+      lastContact: l.contacts[0]
+        ? {
+            channel: l.contacts[0].channel,
+            at: l.contacts[0].createdAt.toISOString(),
+            by: l.contacts[0].user.name,
+          }
+        : null,
       course: l.course?.title ?? l.courseInterest,
       source: l.source,
       stage: l.stage,
@@ -461,6 +485,11 @@ export async function getLeadDetail(id: string) {
         include: { createdBy: { select: { name: true, avatarUrl: true } } },
       },
       documents: { orderBy: { createdAt: "desc" } },
+      contacts: {
+        orderBy: { createdAt: "desc" },
+        take: 30,
+        include: { user: { select: { name: true, avatarUrl: true } } },
+      },
     },
   });
   if (!l) throw AppError.notFound("Lead not found.");
@@ -472,6 +501,7 @@ export async function getLeadDetail(id: string) {
     name: l.name,
     email: l.email,
     phone: l.phone,
+    whatsapp: l.whatsapp,
     courseId: l.courseId,
     courseTitle: l.course?.title ?? null,
     courseInterest: l.courseInterest,
@@ -515,7 +545,43 @@ export async function getLeadDetail(id: string) {
       authorAvatar: f.createdBy.avatarUrl,
       createdAt: f.createdAt.toISOString(),
     })),
+    contacts: l.contacts.map((c) => ({
+      id: c.id,
+      channel: c.channel,
+      target: c.target,
+      agentName: c.user.name,
+      agentAvatar: c.user.avatarUrl,
+      createdAt: c.createdAt.toISOString(),
+    })),
   };
+}
+
+/**
+ * Record that a counsellor reached out, and hand back the link their device
+ * should open.
+ *
+ * The log is written first and the browser navigates afterwards: the platform
+ * never learns whether the call connected, so the attempt is the only thing it
+ * can honestly report, and losing it because a `tel:` handoff swallowed the
+ * request would defeat the point.
+ */
+export async function logLeadContact(
+  leadId: string,
+  userId: string,
+  channel: LeadContactChannel,
+): Promise<{ channel: LeadContactChannel; target: string; href: string }> {
+  const lead = await prisma.lead.findUnique({
+    where: { id: leadId },
+    select: { phone: true, whatsapp: true },
+  });
+  if (!lead) throw AppError.notFound("Lead not found.");
+
+  const target = contactNumber(lead, channel);
+  await prisma.leadContact.create({
+    data: { leadId, userId, channel, target },
+  });
+
+  return { channel, target, href: contactHref(target, channel) };
 }
 
 /** Staff/instructors a lead can be assigned to. */
@@ -555,6 +621,7 @@ const CSV_COLUMNS = [
   "Lead Score",
   "Name",
   "Number",
+  "WhatsApp",
   "Email",
   "Course",
   "Why this course",
@@ -605,6 +672,7 @@ export async function leadsForExport(q: LeadFilters) {
     l.leadScore ?? "",
     l.name,
     l.phone,
+    l.whatsapp ?? "",
     l.email ?? "",
     l.course?.title ?? l.courseInterest ?? "",
     l.whyThisCourse ?? "",
@@ -645,6 +713,7 @@ export function leadImportTemplate(): { headers: string[]; data: string[][] } {
         "Hot",
         "80",
         "Jitendra Kumar",
+        "9876543210",
         "9876543210",
         "jitendra@example.com",
         "Full Stack Development",
@@ -688,6 +757,7 @@ const IMPORT_ALIASES: Record<string, string[]> = {
     "contact number",
     "phone number",
   ],
+  whatsapp: ["whatsapp", "whatsapp number", "whats app", "wa number"],
   email: ["email", "email id", "email address"],
   course: ["course", "course interest", "interest", "course name"],
   whyThisCourse: ["why this course", "why course", "reason"],
@@ -872,6 +942,7 @@ export async function importLeads(
       leadNo: "", // allocated below, once we know how many survived
       name: name.slice(0, 80),
       phone: phone.slice(0, 20),
+      whatsapp: value(row, "whatsapp").replace(/\s+/g, "").slice(0, 20) || null,
       email: value(row, "email").slice(0, 120) || null,
       leadDate: parseDate(value(row, "leadDate")) ?? new Date(),
       source:

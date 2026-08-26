@@ -30,7 +30,6 @@ import {
 } from "@/components/ui/accordion";
 import { ButtonLink } from "@/components/shared/button-link";
 import { EmptyState } from "@/components/shared/empty-state";
-import { CtaBand } from "@/components/marketing/cta-band";
 import { StepList, type Step } from "@/components/marketing/step-list";
 import { siteConfig } from "@/config/site";
 import { cn } from "@/lib/utils";
@@ -398,7 +397,6 @@ export default async function LiveClassesPage() {
         </div>
       </section>
 
-      <CtaBand />
     </>
   );
 }

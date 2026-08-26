@@ -267,6 +267,36 @@ const optionalTime = z
 
 // ── Schemas ──────────────────────────────────────────────────────────────────
 
+/**
+ * The number a given channel should use. WhatsApp prefers the lead's WhatsApp
+ * number and falls back to the phone; calls and SMS always use the phone, since
+ * a WhatsApp-only number often isn't reachable any other way.
+ */
+export function contactNumber(
+  lead: { phone: string; whatsapp?: string | null },
+  channel: LeadContactChannel,
+): string {
+  if (channel === "WHATSAPP" && lead.whatsapp?.trim()) return lead.whatsapp.trim();
+  return lead.phone;
+}
+
+/**
+ * A `tel:` / `wa.me` / `sms:` target for the counsellor's device.
+ *
+ * wa.me needs a bare international number with no `+` or separators; an Indian
+ * ten-digit number typed without a country code would open a chat with the
+ * wrong person, so it gets 91 prefixed.
+ */
+export function contactHref(number: string, channel: LeadContactChannel): string {
+  const digits = number.replace(/\D/g, "");
+  if (channel === "WHATSAPP") {
+    const intl = digits.length === 10 ? `91${digits}` : digits;
+    return `https://wa.me/${intl}`;
+  }
+  const dialable = number.trim().startsWith("+") ? `+${digits}` : digits;
+  return channel === "SMS" ? `sms:${dialable}` : `tel:${dialable}`;
+}
+
 /** Public website enquiry form — deliberately short. */
 export const enquirySchema = z.object({
   name: z.string().trim().min(2, "Enter your name").max(80),
@@ -293,6 +323,8 @@ const leadFields = {
     .optional()
     .or(z.literal("")),
   phone: z.string().trim().min(6, "Enter a valid phone number").max(20),
+  /// Blank means "same as phone" — see `whatsappNumber()`.
+  whatsapp: optionalText(20),
 
   leadDate: optionalDate,
   courseId: optionalText(40),
@@ -375,6 +407,21 @@ export const leadDocumentSchema = z.object({
   size: z.coerce.number().int().nonnegative().optional(),
 });
 
+/** How a counsellor can reach a lead straight from the CRM. */
+export const LEAD_CONTACT_CHANNELS = ["CALL", "WHATSAPP", "SMS"] as const;
+export type LeadContactChannel = (typeof LEAD_CONTACT_CHANNELS)[number];
+
+export const LEAD_CONTACT_CHANNEL_LABELS: Record<LeadContactChannel, string> = {
+  CALL: "Call",
+  WHATSAPP: "WhatsApp",
+  SMS: "SMS",
+};
+
+/** Logged when a counsellor taps one of the contact icons. */
+export const leadContactSchema = z.object({
+  channel: z.enum(LEAD_CONTACT_CHANNELS),
+});
+
 export const LEAD_REMINDER_CHANNELS = ["EMAIL", "SMS"] as const;
 export type LeadReminderChannel = (typeof LEAD_REMINDER_CHANNELS)[number];
 
@@ -403,5 +450,6 @@ export type UpdateLeadInput = z.infer<typeof updateLeadSchema>;
 export type FollowUpInput = z.infer<typeof followUpSchema>;
 export type LeadDocumentInput = z.infer<typeof leadDocumentSchema>;
 export type LeadReminderInput = z.infer<typeof leadReminderSchema>;
+export type LeadContactInput = z.infer<typeof leadContactSchema>;
 export type ImportLeadsInput = z.infer<typeof importLeadsSchema>;
 export type RemoveDuplicatesInput = z.infer<typeof removeDuplicatesSchema>;

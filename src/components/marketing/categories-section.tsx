@@ -3,29 +3,32 @@ import { ArrowRight } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { listPublicCategories } from "@/server/services/category-service";
 import { CATEGORY_STYLES, DEFAULT_CATEGORY_STYLE } from "@/config/marketing";
+import type { HomeData } from "@/lib/validations/homepage";
 import { cn } from "@/lib/utils";
 
-export async function CategoriesSection() {
+export async function CategoriesSection({ data }: { data: HomeData<"categories"> }) {
   // Counts come from the catalogue, so the tiles can't advertise 128 courses in
   // a category that holds one.
-  const categories = await listPublicCategories();
+  const categories = (await listPublicCategories()).slice(0, data.limit);
   if (categories.length === 0) return null;
 
   return (
     <section id="categories" className="container-page py-16 sm:py-20">
       <div className="mb-10 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-3xl sm:text-4xl">Explore top categories</h2>
-          <p className="text-muted-foreground mt-2">
-            Choose a domain and start building job-ready skills.
-          </p>
+          <h2 className="text-3xl sm:text-4xl">{data.title}</h2>
+          {data.description && (
+            <p className="text-muted-foreground mt-2">{data.description}</p>
+          )}
         </div>
-        <Link
-          href="/courses"
-          className="text-primary inline-flex items-center gap-1 text-sm font-semibold hover:underline"
-        >
-          View all categories <ArrowRight className="size-4" />
-        </Link>
+        {data.linkLabel && data.linkHref && (
+          <Link
+            href={data.linkHref}
+            className="text-primary inline-flex items-center gap-1 text-sm font-semibold hover:underline"
+          >
+            {data.linkLabel} <ArrowRight className="size-4" />
+          </Link>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">

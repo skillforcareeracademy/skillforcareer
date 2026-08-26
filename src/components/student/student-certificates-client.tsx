@@ -100,8 +100,15 @@ function CertificateCard({ c }: { c: StudentCertificate }) {
 
         <p className="text-muted-foreground mt-5 text-xs">This certifies that</p>
         <p className="text-lg font-semibold">{c.studentName}</p>
-        <p className="text-muted-foreground mt-2 text-xs">has successfully completed</p>
-        <p className="leading-snug font-medium">{c.courseTitle}</p>
+        {c.courseTitle ? (
+          <>
+            <p className="text-muted-foreground mt-2 text-xs">has successfully completed</p>
+            <p className="leading-snug font-medium">{c.courseTitle}</p>
+          </>
+        ) : (
+          // An appreciation names no course, so the award itself is the subject.
+          <p className="text-muted-foreground mt-2 text-xs">{c.heading}</p>
+        )}
       </div>
 
       {/* Meta + actions */}

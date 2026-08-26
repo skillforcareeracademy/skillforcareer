@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState, type FormEvent } from "react";
+import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import {
   Search,
@@ -13,6 +14,7 @@ import {
   Plus,
   Pencil,
   UserCog,
+  IdCard,
   Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -268,7 +270,12 @@ export function UsersClient({
               </AvatarFallback>
             </Avatar>
             <div className="min-w-0">
-              <p className="truncate text-sm font-medium">{u.name}</p>
+              <Link
+                href={`/admin/users/${u.id}`}
+                className="hover:text-primary block truncate text-sm font-medium transition-colors"
+              >
+                {u.name}
+              </Link>
               <p className="text-muted-foreground truncate text-xs">{u.email}</p>
             </div>
           </div>
@@ -288,6 +295,18 @@ export function UsersClient({
           {u.status.charAt(0) + u.status.slice(1).toLowerCase()}
         </Badge>
       ),
+    },
+    {
+      key: "fees",
+      header: "Fees paid",
+      cell: (u) =>
+        u.paidTotal > 0 ? (
+          <span className="text-sm font-medium tabular-nums">
+            ₹{u.paidTotal.toLocaleString("en-IN")}
+          </span>
+        ) : (
+          <span className="text-muted-foreground text-xs">—</span>
+        ),
     },
     {
       key: "verified",
@@ -321,6 +340,12 @@ export function UsersClient({
             <MoreHorizontal className="size-4" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-52">
+            <DropdownMenuItem
+              nativeButton={false}
+              render={<Link href={`/admin/users/${u.id}`} />}
+            >
+              <IdCard className="size-4" /> View profile
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => openEdit(u)}>
               <Pencil className="size-4" /> Edit user
             </DropdownMenuItem>

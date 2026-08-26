@@ -3,6 +3,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
+import {
+  CERTIFICATE_TYPE_META,
+  type CertificateType,
+} from "@/lib/validations/certificate";
 import { toast } from "sonner";
 import { GraduationCap, Copy, Check, Ban, RotateCcw, Trash2, ExternalLink } from "lucide-react";
 import { api, ApiError } from "@/lib/api-client";
@@ -22,11 +26,12 @@ export interface CertRow {
   serialNumber: string;
   verificationCode: string;
   status: string;
+  type: string;
   studentName: string;
   studentEmail: string;
   studentAvatar: string | null;
   courseId: string | null;
-  courseTitle: string;
+  courseTitle: string | null;
   issuedAt: string;
 }
 
@@ -109,11 +114,16 @@ export function CertificateDetailSheet({
               <GraduationCap className="size-6" />
             </div>
             <p className="text-muted-foreground text-xs tracking-wide uppercase">
-              Certificate of Completion
+              {CERTIFICATE_TYPE_META[cert.type as CertificateType]?.heading ??
+                "Certificate"}
             </p>
             <p className="mt-2 text-lg font-semibold">{cert.studentName}</p>
-            <p className="text-muted-foreground text-sm">has successfully completed</p>
-            <p className="mt-1 font-medium">{cert.courseTitle}</p>
+            {cert.courseTitle && (
+              <>
+                <p className="text-muted-foreground text-sm">has successfully completed</p>
+                <p className="mt-1 font-medium">{cert.courseTitle}</p>
+              </>
+            )}
             <p className="text-muted-foreground mt-3 text-xs">
               Issued {format(new Date(cert.issuedAt), "d MMMM yyyy")}
             </p>
@@ -130,7 +140,13 @@ export function CertificateDetailSheet({
           {/* Details */}
           <dl className="space-y-2.5 text-sm">
             <Row label="Learner" value={`${cert.studentName} · ${cert.studentEmail}`} />
-            <Row label="Course" value={cert.courseTitle} />
+            <Row
+              label="Award"
+              value={
+                CERTIFICATE_TYPE_META[cert.type as CertificateType]?.label ?? cert.type
+              }
+            />
+            {cert.courseTitle && <Row label="Course" value={cert.courseTitle} />}
             <Row label="Serial" value={cert.serialNumber} mono />
             <Row label="Verification code" value={cert.verificationCode} mono />
           </dl>

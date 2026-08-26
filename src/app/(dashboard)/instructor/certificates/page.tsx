@@ -27,6 +27,7 @@ export default async function InstructorCertificatesPage({
     search: str(sp.search),
     courseId: str(sp.course),
     status: str(sp.status),
+    type: str(sp.type),
     instructorId: user.id,
   };
 

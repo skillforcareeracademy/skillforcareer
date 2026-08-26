@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { PhoneInput } from "@/components/shared/phone-input";
 import { siteConfig } from "@/config/site";
+import type { HomeData } from "@/lib/validations/homepage";
 
 const { contact } = siteConfig;
 const blank = {
@@ -28,7 +29,12 @@ const blank = {
   message: "",
 };
 
-export function EnquiryForm() {
+export function EnquiryForm({ data }: { data: HomeData<"enquiry"> }) {
+  // Blank falls back to the business's own details rather than hiding the line —
+  // an admin clearing the field means "use the default", not "remove it".
+  const phone = data.contactPhone || contact.phoneDisplay;
+  const email = data.contactEmail || contact.email;
+
   const [form, setForm] = useState(blank);
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
@@ -68,43 +74,41 @@ export function EnquiryForm() {
         <div className="mx-auto grid max-w-5xl items-center gap-10 lg:grid-cols-[1fr_380px] lg:gap-12">
           {/* Left: pitch */}
           <div className="max-w-lg">
-            <span className="text-primary inline-flex items-center gap-1.5 rounded-full bg-rose-500/10 px-3 py-1 text-sm font-medium">
-              <Sparkles className="size-4" /> Free career counselling
-            </span>
-            <h2 className="mt-4 text-3xl sm:text-4xl">
-              Talk to a course advisor
-            </h2>
-            <p className="text-muted-foreground mt-3 text-lg">
-              Not sure which program fits you? Share your details and our team
-              will call you back with a personalised learning plan — no
-              pressure, just guidance.
-            </p>
-            <ul className="mt-6 space-y-3">
-              {[
-                "1:1 guidance on the right course & batch",
-                "Fees, EMI options and scholarships explained",
-                "Career outcomes and placement support",
-              ].map((t) => (
-                <li key={t} className="flex items-start gap-2.5 text-sm">
-                  <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-emerald-500" />{" "}
-                  {t}
-                </li>
-              ))}
-            </ul>
-            <div className="text-muted-foreground mt-6 flex flex-wrap gap-x-6 gap-y-2 text-sm">
-              <a
-                href={`tel:${contact.phone}`}
-                className="hover:text-foreground flex items-center gap-2 transition-colors"
-              >
-                <PhoneCall className="size-4" /> {contact.phoneDisplay}
-              </a>
-              <a
-                href={`mailto:${contact.email}`}
-                className="hover:text-foreground flex items-center gap-2 transition-colors"
-              >
-                <Mail className="size-4" /> {contact.email}
-              </a>
-            </div>
+            {data.badge && (
+              <span className="text-primary inline-flex items-center gap-1.5 rounded-full bg-rose-500/10 px-3 py-1 text-sm font-medium">
+                <Sparkles className="size-4" /> {data.badge}
+              </span>
+            )}
+            <h2 className="mt-4 text-3xl sm:text-4xl">{data.title}</h2>
+            {data.description && (
+              <p className="text-muted-foreground mt-3 text-lg">{data.description}</p>
+            )}
+            {data.bullets.length > 0 && (
+              <ul className="mt-6 space-y-3">
+                {data.bullets.map((bullet, i) => (
+                  <li key={i} className="flex items-start gap-2.5 text-sm">
+                    <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-emerald-500" />{" "}
+                    {bullet.text}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {data.showContact && (
+              <div className="text-muted-foreground mt-6 flex flex-wrap gap-x-6 gap-y-2 text-sm">
+                <a
+                  href={`tel:${phone.replace(/[^+\d]/g, "")}`}
+                  className="hover:text-foreground flex items-center gap-2 transition-colors"
+                >
+                  <PhoneCall className="size-4" /> {phone}
+                </a>
+                <a
+                  href={`mailto:${email}`}
+                  className="hover:text-foreground flex items-center gap-2 transition-colors"
+                >
+                  <Mail className="size-4" /> {email}
+                </a>
+              </div>
+            )}
           </div>
 
           {/* Right: form — a titled card, so the heading sits in the header strip
@@ -116,11 +120,9 @@ export function EnquiryForm() {
               </span>
               <div className="min-w-0">
                 <h3 className="text-sm leading-tight font-semibold">
-                  Request a callback
+                  {data.formTitle}
                 </h3>
-                <p className="text-muted-foreground text-xs">
-                  Takes under a minute
-                </p>
+                <p className="text-muted-foreground text-xs">{data.formSubtitle}</p>
               </div>
             </div>
 
@@ -129,9 +131,9 @@ export function EnquiryForm() {
                 <span className="mb-3 flex size-12 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-500/15">
                   <CheckCircle2 className="size-6 text-emerald-600 dark:text-emerald-400" />
                 </span>
-                <h4 className="text-base font-semibold">Request received!</h4>
+                <h4 className="text-base font-semibold">{data.successTitle}</h4>
                 <p className="text-muted-foreground mt-1.5 max-w-xs text-sm">
-                  Thanks for reaching out. Our team will call you back shortly.
+                  {data.successBody}
                 </p>
                 <Button
                   variant="outline"
@@ -220,10 +222,10 @@ export function EnquiryForm() {
                   ) : (
                     <Send className="size-4" />
                   )}
-                  Request callback
+                  {data.submitLabel}
                 </Button>
                 <p className="text-muted-foreground text-center text-[11px] leading-snug">
-                  By submitting, you agree to be contacted about our programs.
+                  {data.consentNote}
                 </p>
               </form>
             )}

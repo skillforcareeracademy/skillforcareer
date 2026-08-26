@@ -17,6 +17,8 @@ export interface UserRow {
   role: string;
   roleLabel: string;
   emailVerified: boolean;
+  /** Settled fees, so the list answers "have they paid?" without a drill-down. */
+  paidTotal: number;
   createdAt: string;
 }
 
@@ -52,6 +54,12 @@ export async function listUsers(q: ListUsersQuery): Promise<UserListResult> {
     }),
   ]);
 
+  // "Has this student paid?" is the question the admissions team opens this
+  // list to answer, so the totals come with the page rather than one query per
+  // row. A single grouped read over just the ids on screen keeps it to one
+  // extra round-trip however long the page is.
+  const paid = await paidTotalsFor(rows.map((u) => u.id));
+
   return {
     total,
     users: rows.map((u) => ({
@@ -63,9 +71,21 @@ export async function listUsers(q: ListUsersQuery): Promise<UserListResult> {
       role: u.role.slug,
       roleLabel: u.role.name,
       emailVerified: Boolean(u.emailVerified),
+      paidTotal: paid.get(u.id) ?? 0,
       createdAt: u.createdAt.toISOString(),
     })),
   };
+}
+
+/** Total settled fees per user, for the ids given. */
+async function paidTotalsFor(userIds: string[]): Promise<Map<string, number>> {
+  if (userIds.length === 0) return new Map();
+  const rows = await prisma.payment.groupBy({
+    by: ["userId"],
+    where: { userId: { in: userIds }, status: "PAID" },
+    _sum: { netAmount: true },
+  });
+  return new Map(rows.map((r) => [r.userId, r._sum.netAmount?.toNumber() ?? 0]));
 }
 
 /** Create a new account from the admin console. Admin-created users are
@@ -119,6 +139,14 @@ export async function updateUserAdmin(
     const role = await prisma.role.findUnique({ where: { slug: input.roleSlug } });
     if (!role) throw AppError.badRequest("Unknown role.");
     data.roleId = role.id;
+  }
+  // "" means the admin cleared the field, which is a real edit — distinct from
+  // the key being absent, which means "don't touch it".
+  if (input.internshipStartAt !== undefined) {
+    data.internshipStartAt = input.internshipStartAt ? new Date(input.internshipStartAt) : null;
+  }
+  if (input.internshipEndAt !== undefined) {
+    data.internshipEndAt = input.internshipEndAt ? new Date(input.internshipEndAt) : null;
   }
   await prisma.user.update({ where: { id }, data });
 }

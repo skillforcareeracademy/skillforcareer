@@ -35,6 +35,7 @@ export const PERMISSIONS = {
   VIEW_ANALYTICS: "analytics:view",
   MANAGE_PAYMENTS: "payments:manage",
   MANAGE_SETTINGS: "settings:manage",
+  MANAGE_HOMEPAGE: "homepage:manage",
   VIEW_REPORTS: "reports:view",
   MANAGE_LEADS: "leads:manage",
 
@@ -73,6 +74,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     P.MANAGE_USERS,
     P.VIEW_ANALYTICS,
     P.MANAGE_PAYMENTS,
+    P.MANAGE_HOMEPAGE,
     P.VIEW_REPORTS,
     P.MANAGE_LEADS,
     P.MANAGE_CATEGORIES,

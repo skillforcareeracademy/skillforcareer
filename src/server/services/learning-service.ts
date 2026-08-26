@@ -107,7 +107,7 @@ async function recompute(userId: string, courseId: string, enrollmentId: string)
   let certificateIssued = false;
   if (isDone) {
     try {
-      await issueCertificate(userId, courseId);
+      await issueCertificate({ userId, courseId, type: "COURSE_COMPLETION" });
       certificateIssued = true;
     } catch {
       /* already has one — fine */

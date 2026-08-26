@@ -17,7 +17,7 @@ import { Card } from "@/components/ui/card";
 import { ButtonLink } from "@/components/shared/button-link";
 import { StatsBand } from "@/components/marketing/stats-band";
 import { PlacedStudents } from "@/components/marketing/placed-students";
-import { CtaBand } from "@/components/marketing/cta-band";
+import { getHomeSection } from "@/server/services/homepage-service";
 import { siteConfig } from "@/config/site";
 
 export const metadata: Metadata = {
@@ -68,7 +68,14 @@ const WHO_WE_SERVE = [
   "Companies training whole teams",
 ];
 
-export default function AboutPage() {
+export default async function AboutPage() {
+  // The same bands the homepage shows, from the same content — edited once,
+  // under Admin → Homepage.
+  const [stats, placed] = await Promise.all([
+    getHomeSection("stats"),
+    getHomeSection("placedStudents"),
+  ]);
+
   return (
     <>
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
@@ -106,7 +113,7 @@ export default function AboutPage() {
         </div>
       </section>
 
-      <StatsBand />
+      {stats.enabled && <StatsBand data={stats.data} />}
 
       {/* ── Story ────────────────────────────────────────────────────────── */}
       <section className="container-page py-16 sm:py-20">
@@ -190,7 +197,7 @@ export default function AboutPage() {
         </div>
       </section>
 
-      <PlacedStudents />
+      {placed.enabled && <PlacedStudents data={placed.data} />}
 
       {/* ── Where to find us ─────────────────────────────────────────────── */}
       <section className="container-page py-16 sm:py-20">
@@ -233,7 +240,6 @@ export default function AboutPage() {
         </p>
       </section>
 
-      <CtaBand />
     </>
   );
 }

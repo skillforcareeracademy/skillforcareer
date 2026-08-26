@@ -10,91 +10,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import type { HomeData } from "@/lib/validations/homepage";
 
-interface Reel {
-  key: string;
-  name: string;
-  tag: string;
-  poster: string;
-  video: string;
-  duration: string;
-  quote?: string;
-  rated?: boolean;
-}
+type Reel = HomeData<"learnerVideos">["items"][number];
 
-const V = "https://skillforcareer.in/wp-content/uploads";
-
-/**
- * Real learner reels sourced from the client's live site (skillforcareer.in).
- * Posters are captured frames bundled under /public; the heavy `.mp4` files
- * load only when a reel is opened.
- */
-const REELS: Reel[] = [
-  {
-    key: "arun",
-    name: "Arun",
-    tag: "SkillForCareer learner",
-    poster: "/images/learner-videos/arun.jpg",
-    video: `${V}/2026/04/Arun.mp4`,
-    duration: "0:15",
-    quote:
-      "Industry-focused training, real-world projects, and amazing guidance. Highly valuable for career development.",
-    rated: true,
-  },
-  {
-    key: "afshah",
-    name: "Afshah",
-    tag: "Medical Coding student",
-    poster: "/images/learner-videos/afshah.jpg",
-    video: `${V}/2026/04/afshah.mp4`,
-    duration: "0:46",
-    quote:
-      "Great learning experience with practical exposure and dedicated support. Truly helped me grow professionally.",
-    rated: true,
-  },
-  {
-    key: "student-story",
-    name: "Student story",
-    tag: "In their own words",
-    poster: "/images/learner-videos/student-story.jpg",
-    video: `${V}/2026/01/testimonials2-1.mp4`,
-    duration: "0:26",
-  },
-  {
-    key: "medical-coding",
-    name: "Medical Coding",
-    tag: "Course spotlight",
-    poster: "/images/learner-videos/medical-coding.jpg",
-    video: `${V}/2026/01/sfcv3-1.mp4`,
-    duration: "0:49",
-  },
-  {
-    key: "reel-1",
-    name: "Skill For Career",
-    tag: "Career reel",
-    poster: "/images/learner-videos/reel-1.jpg",
-    video: `${V}/2026/01/sfcv1-1.mp4`,
-    duration: "0:34",
-  },
-  {
-    key: "reel-2",
-    name: "Skill For Career",
-    tag: "Career reel",
-    poster: "/images/learner-videos/reel-2.jpg",
-    video: `${V}/2026/01/sfcv2-1.mp4`,
-    duration: "0:30",
-  },
-  {
-    key: "reel-3",
-    name: "Skill For Career",
-    tag: "Career reel",
-    poster: "/images/learner-videos/reel-3.jpg",
-    video: `${V}/2026/01/sfcv4-1.mp4`,
-    duration: "0:28",
-  },
-];
-
-export function LearnerVideos() {
+export function LearnerVideos({ data }: { data: HomeData<"learnerVideos"> }) {
   const [playing, setPlaying] = useState<Reel | null>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [atStart, setAtStart] = useState(true);
@@ -119,18 +39,23 @@ export function LearnerVideos() {
     el.scrollBy({ left: dir * el.clientWidth * 0.85, behavior: "smooth" });
   }
 
+  // After the hooks, never before them.
+  if (data.items.length === 0) return null;
+
   return (
     <section className="bg-muted/30 border-y">
       <div className="container-page py-16 sm:py-24">
         <div className="mb-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div className="max-w-2xl">
-            <span className="text-primary inline-flex items-center gap-1.5 rounded-full bg-rose-500/10 px-3 py-1 text-sm font-medium">
-              <PlayCircle className="size-4" /> Learner stories
-            </span>
-            <h2 className="mt-4 text-3xl sm:text-4xl">Hear it in their words</h2>
-            <p className="text-muted-foreground mt-3">
-              Real learners on camera — swipe through and tap any reel to watch.
-            </p>
+            {data.badge && (
+              <span className="text-primary inline-flex items-center gap-1.5 rounded-full bg-rose-500/10 px-3 py-1 text-sm font-medium">
+                <PlayCircle className="size-4" /> {data.badge}
+              </span>
+            )}
+            <h2 className="mt-4 text-3xl sm:text-4xl">{data.title}</h2>
+            {data.description && (
+              <p className="text-muted-foreground mt-3">{data.description}</p>
+            )}
           </div>
           {/* Desktop carousel controls */}
           <div className="hidden shrink-0 gap-2 sm:flex">
@@ -161,9 +86,9 @@ export function LearnerVideos() {
             onScroll={updateArrows}
             className="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           >
-            {REELS.map((r) => (
+            {data.items.map((r, i) => (
               <button
-                key={r.key}
+                key={`${r.name}-${i}`}
                 type="button"
                 onClick={() => setPlaying(r)}
                 className="group relative aspect-[9/16] w-[164px] shrink-0 snap-start overflow-hidden rounded-2xl bg-neutral-900 text-left shadow-sm ring-1 ring-black/5 transition-transform hover:-translate-y-1 focus-visible:ring-2 focus-visible:ring-rose-500 sm:w-[190px] lg:w-[210px]"
@@ -178,9 +103,11 @@ export function LearnerVideos() {
                 />
                 <span className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-black/25" />
 
-                <span className="absolute top-2.5 right-2.5 rounded-full bg-black/55 px-2 py-0.5 text-[11px] font-medium text-white tabular-nums backdrop-blur">
-                  {r.duration}
-                </span>
+                {r.duration && (
+                  <span className="absolute top-2.5 right-2.5 rounded-full bg-black/55 px-2 py-0.5 text-[11px] font-medium text-white tabular-nums backdrop-blur">
+                    {r.duration}
+                  </span>
+                )}
 
                 <span className="absolute top-1/2 left-1/2 flex size-12 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white/25 backdrop-blur-sm transition-transform group-hover:scale-110">
                   <Play className="size-5 translate-x-px fill-white text-white" />
@@ -189,9 +116,9 @@ export function LearnerVideos() {
                 <span className="absolute inset-x-0 bottom-0 p-3">
                   {r.rated && (
                     <span className="mb-1 flex gap-0.5">
-                      {Array.from({ length: 5 }).map((_, i) => (
+                      {Array.from({ length: 5 }).map((_, star) => (
                         <Star
-                          key={i}
+                          key={star}
                           className="size-3 fill-amber-400 text-amber-400"
                         />
                       ))}

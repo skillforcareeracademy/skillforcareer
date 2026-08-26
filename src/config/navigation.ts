@@ -18,6 +18,7 @@ import {
   Ticket,
   Activity,
   Presentation,
+  LayoutTemplate,
   KeyRound,
   School,
   type LucideIcon,
@@ -79,6 +80,7 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     label: "Management",
     items: [
+      { title: "Homepage", href: "/homepage", icon: LayoutTemplate, roles: STAFF },
       { title: "Users", href: "/users", icon: Users, roles: STAFF },
       { title: "Leads", href: "/leads", icon: Target, roles: STAFF },
       { title: "Schedule", href: "/schedule", icon: CalendarClock, roles: TEACHING },

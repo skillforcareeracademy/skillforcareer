@@ -40,6 +40,7 @@ export interface LeadFormState {
   leadScore: string;
   name: string;
   phone: string;
+  whatsapp: string;
   email: string;
   courseId: string;
   courseInterest: string;
@@ -77,6 +78,7 @@ export function blankLeadForm(): LeadFormState {
     leadScore: "",
     name: "",
     phone: "",
+    whatsapp: "",
     email: "",
     courseId: "",
     courseInterest: "",
@@ -111,6 +113,9 @@ export function leadFormPayload(form: LeadFormState): Record<string, unknown> {
     leadScore: text(form.leadScore),
     name: form.name.trim(),
     phone: form.phone.trim(),
+    // Sent as "" rather than dropped, so clearing the field on an existing lead
+    // actually unsets it instead of silently keeping the old number.
+    whatsapp: form.whatsapp.trim(),
     email: text(form.email),
     courseId: text(form.courseId),
     courseInterest: text(form.courseInterest),
@@ -284,6 +289,15 @@ export function LeadFormFields({
         <PhoneInput
           value={form.phone}
           onChange={(v) => onChange({ phone: v })}
+        />
+      </Field>
+      <Field
+        label="WhatsApp number"
+        hint="Leave blank if it's the same as the number above."
+      >
+        <PhoneInput
+          value={form.whatsapp}
+          onChange={(v) => onChange({ whatsapp: v })}
         />
       </Field>
 

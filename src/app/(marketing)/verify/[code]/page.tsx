@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { format } from "date-fns";
+import { certificateHeading } from "@/components/certificate/certificate-document";
 import { CheckCircle2, XCircle, Ban, GraduationCap } from "lucide-react";
 import { getCertificateByCode } from "@/server/services/certificate-service";
 import { VerifyForm } from "@/components/marketing/verify-form";
@@ -72,11 +73,15 @@ export default async function VerifyCodePage({
               <GraduationCap className="size-7" />
             </div>
             <p className="text-muted-foreground text-xs tracking-widest uppercase">
-              Certificate of Completion
+              {certificateHeading(cert.type)}
             </p>
             <p className="mt-3 text-2xl font-bold">{cert.studentName}</p>
-            <p className="text-muted-foreground mt-1 text-sm">has successfully completed</p>
-            <p className="mt-1 text-lg font-medium">{cert.courseTitle}</p>
+            {cert.courseTitle && (
+              <>
+                <p className="text-muted-foreground mt-1 text-sm">has successfully completed</p>
+                <p className="mt-1 text-lg font-medium">{cert.courseTitle}</p>
+              </>
+            )}
             <div className="text-muted-foreground mt-5 flex flex-wrap items-center justify-center gap-x-6 gap-y-1 text-xs">
               <span>
                 Serial <span className="font-mono">{cert.serialNumber}</span>

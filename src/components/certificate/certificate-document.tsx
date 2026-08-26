@@ -1,79 +1,117 @@
-import { format } from "date-fns";
-import { BadgeCheck, ShieldX } from "lucide-react";
+import QRCode from "qrcode";
 import { getBranding } from "@/server/services/branding-service";
+import { getSettings } from "@/server/services/settings-service";
+import { siteConfig } from "@/config/site";
+import { certificateFontVars } from "@/lib/certificate-fonts";
+import {
+  CERTIFICATE_TYPE_META,
+  parseCertificateDetails,
+  type CertificateType,
+} from "@/lib/validations/certificate";
+import { cn } from "@/lib/utils";
+import { ExcellenceCertificate } from "./templates/excellence";
+import { AppreciationCertificate } from "./templates/appreciation";
+import { InternshipCompletionCertificate } from "./templates/internship-completion";
+import { InternshipAppreciationCertificate } from "./templates/internship-appreciation";
+import type { CertificateChrome, CertificateRender } from "./templates/shared";
 
+export type { CertificateRender } from "./templates/shared";
+
+/**
+ * What a caller has to hand over. `details` and `type` are optional so the
+ * older two-field call sites (and anything reading a certificate issued before
+ * the four designs existed) keep working and fall back to the course award.
+ */
 export interface CertificateData {
   studentName: string;
-  courseTitle: string;
+  courseTitle: string | null;
   serialNumber: string;
   verificationCode: string;
   issuedAt: string;
   status: string;
+  type?: CertificateType;
+  details?: unknown;
 }
 
-/** A print-ready certificate. Rendered on /certificate/[code] and printed to PDF. */
-export async function CertificateDocument({ cert }: { cert: CertificateData }) {
-  const revoked = cert.status === "REVOKED";
-  // The real brand lockup from Admin → Settings → Branding, not a stand-in mark:
-  // this document is what a learner sends an employer.
-  const { logoUrl, siteName } = await getBranding();
+const TEMPLATES = {
+  COURSE_COMPLETION: ExcellenceCertificate,
+  INTERNSHIP_COMPLETION: InternshipCompletionCertificate,
+  APPRECIATION: AppreciationCertificate,
+  INTERNSHIP_APPRECIATION: InternshipAppreciationCertificate,
+} as const satisfies Record<CertificateType, unknown>;
+
+/** A verification QR that degrades to nothing rather than breaking the print. */
+async function verifyQrSvg(url: string): Promise<string> {
+  try {
+    return await QRCode.toString(url, {
+      type: "svg",
+      margin: 0,
+      errorCorrectionLevel: "M",
+      color: { dark: "#111111", light: "#00000000" },
+    });
+  } catch {
+    return "";
+  }
+}
+
+function origin(): string {
+  return (process.env.NEXT_PUBLIC_APP_URL ?? siteConfig.url).replace(/\/$/, "");
+}
+
+/**
+ * A print-ready certificate in whichever of the four designs it was issued in.
+ *
+ * Rendered on `/certificate/[code]`, printed to PDF from there, and reused for
+ * the homepage showcase. The design is chosen by the award's type — the
+ * document does not take a "template" argument, because which certificate this
+ * *is* isn't a presentation choice.
+ */
+export async function CertificateDocument({
+  cert,
+  className,
+}: {
+  cert: CertificateData;
+  className?: string;
+}) {
+  const type = cert.type ?? "COURSE_COMPLETION";
+  const verifyUrl = `${origin()}/verify/${cert.verificationCode}`;
+
+  const [{ logoUrl, siteName }, { settings }, qrSvg] = await Promise.all([
+    getBranding(),
+    getSettings(),
+    verifyQrSvg(verifyUrl),
+  ]);
+
+  const render: CertificateRender = {
+    type,
+    studentName: cert.studentName,
+    courseTitle: cert.courseTitle,
+    serialNumber: cert.serialNumber,
+    verificationCode: cert.verificationCode,
+    issuedAt: cert.issuedAt,
+    status: cert.status,
+    details: parseCertificateDetails(cert.details),
+  };
+
+  const chrome: CertificateChrome = {
+    logoUrl,
+    siteName,
+    qrSvg,
+    verifyUrl,
+    left: { name: settings.certLeftName, title: settings.certLeftTitle },
+    right: { name: settings.certRightName, title: settings.certRightTitle },
+  };
+
+  const Template = TEMPLATES[type];
+
   return (
-    <div
-      id="certificate"
-      className="relative mx-auto w-full max-w-3xl overflow-hidden rounded-2xl border-4 border-rose-500/30 bg-white p-8 text-center text-neutral-900 shadow-xl sm:p-14"
-      style={{ printColorAdjust: "exact", WebkitPrintColorAdjust: "exact" }}
-    >
-      {/* Decorative corners */}
-      <div className="pointer-events-none absolute -top-16 -right-16 size-40 rounded-full bg-rose-500/10" />
-      <div className="pointer-events-none absolute -bottom-16 -left-16 size-40 rounded-full bg-rose-500/10" />
-
-      <div className="relative">
-        <div className="flex items-center justify-center">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={logoUrl}
-            alt={siteName}
-            className="h-14 w-auto max-w-[15rem] object-contain sm:h-16"
-          />
-        </div>
-
-        <p className="mt-8 text-xs font-semibold tracking-[0.3em] text-rose-500 uppercase">
-          Certificate of Completion
-        </p>
-
-        <p className="mt-8 text-sm text-neutral-500">This is proudly presented to</p>
-        <h1 className="mt-2 font-serif text-4xl font-bold sm:text-5xl">{cert.studentName}</h1>
-
-        <p className="mt-6 text-sm text-neutral-500">for successfully completing</p>
-        <p className="mt-1 text-xl font-semibold">{cert.courseTitle}</p>
-
-        <div className="mx-auto mt-10 flex max-w-md items-end justify-between gap-6 text-left">
-          <div>
-            <p className="border-t border-neutral-300 pt-1 text-xs text-neutral-500">Date issued</p>
-            <p className="text-sm font-medium">{format(new Date(cert.issuedAt), "d MMMM yyyy")}</p>
-          </div>
-          <div className="text-center">
-            {revoked ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-neutral-200 px-2.5 py-1 text-xs font-semibold text-neutral-600">
-                <ShieldX className="size-3.5" /> Revoked
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-                <BadgeCheck className="size-3.5" /> Verified
-              </span>
-            )}
-          </div>
-          <div className="text-right">
-            <p className="border-t border-neutral-300 pt-1 text-xs text-neutral-500">Serial</p>
-            <p className="font-mono text-sm font-medium">{cert.serialNumber}</p>
-          </div>
-        </div>
-
-        <p className="mt-8 text-[11px] text-neutral-400">
-          Verify this certificate at skillforcareer.com/verify · Code{" "}
-          <span className="font-mono">{cert.verificationCode}</span>
-        </p>
-      </div>
+    <div className={cn(certificateFontVars, className)}>
+      <Template cert={render} chrome={chrome} />
     </div>
   );
+}
+
+/** The award's own heading — for page titles and list rows. */
+export function certificateHeading(type: CertificateType | undefined): string {
+  return CERTIFICATE_TYPE_META[type ?? "COURSE_COMPLETION"].heading;
 }

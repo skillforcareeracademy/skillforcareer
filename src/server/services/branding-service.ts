@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_BRANDING, type Branding } from "@/lib/branding";
+import { clearMemo, readMemo, writeMemo } from "./memo";
 
 function pick(stored: Record<string, unknown>, key: keyof Branding): string {
   const value = stored[key];
@@ -15,13 +16,17 @@ function pick(stored: Record<string, unknown>, key: keyof Branding): string {
  * logo. Re-reading it per request cost a full database round-trip on every page
  * (~180ms, since the database is not in the app's region), so it is held in
  * process for a short window and dropped explicitly on save.
+ *
+ * The store is shared across bundles (see `./memo`) — with a module-level
+ * variable the settings route cleared its own copy and the pages kept serving
+ * the old logo until the TTL ran out.
  */
+const MEMO_KEY = "branding";
 const TTL_MS = 60_000;
-let memo: { value: Branding; expires: number } | null = null;
 
 /** Drop the memo so an Admin > Settings > Branding save shows up immediately. */
 export function invalidateBranding(): void {
-  memo = null;
+  clearMemo(MEMO_KEY);
 }
 
 /**
@@ -33,7 +38,8 @@ export function invalidateBranding(): void {
  * failure falls back to the bundled defaults.
  */
 export const getBranding = cache(async (): Promise<Branding> => {
-  if (memo && memo.expires > Date.now()) return memo.value;
+  const cached = readMemo<Branding>(MEMO_KEY);
+  if (cached) return cached;
   try {
     const row = await prisma.setting.findUnique({ where: { id: "global" } });
     const stored = (row?.data ?? {}) as Record<string, unknown>;
@@ -42,7 +48,7 @@ export const getBranding = cache(async (): Promise<Branding> => {
       faviconUrl: pick(stored, "faviconUrl"),
       siteName: pick(stored, "siteName"),
     };
-    memo = { value, expires: Date.now() + TTL_MS };
+    writeMemo(MEMO_KEY, value, TTL_MS);
     return value;
   } catch {
     return DEFAULT_BRANDING; // not memoised — retry on the next request

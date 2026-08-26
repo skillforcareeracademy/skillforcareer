@@ -15,16 +15,33 @@ const roleSlugEnum = z.enum([
   ROLES.STUDENT,
 ]);
 
+/** "" clears the date; omitted leaves it alone. */
+const optionalDay = z
+  .string()
+  .trim()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD")
+  .or(z.literal(""))
+  .optional();
+
 export const updateUserAdminSchema = z
   .object({
     name: z.string().trim().min(2, "Name is too short.").max(120).optional(),
     email: z.string().trim().toLowerCase().email("Enter a valid email.").optional(),
     roleSlug: roleSlugEnum.optional(),
     status: z.enum(USER_STATUSES).optional(),
+    internshipStartAt: optionalDay,
+    internshipEndAt: optionalDay,
   })
-  .refine((d) => d.name || d.email || d.roleSlug || d.status, {
-    message: "Provide at least one field to update.",
-  });
+  .refine(
+    (d) =>
+      d.name ||
+      d.email ||
+      d.roleSlug ||
+      d.status ||
+      d.internshipStartAt !== undefined ||
+      d.internshipEndAt !== undefined,
+    { message: "Provide at least one field to update." },
+  );
 
 export type UpdateUserAdminInput = z.infer<typeof updateUserAdminSchema>;
 

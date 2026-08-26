@@ -53,6 +53,14 @@ export const settingsSchema = z.object({
   notifyOnPayment: z.boolean(),
   notifyOnNewUser: z.boolean(),
 
+  // ── Certificates ─────────────────────────────────────────────────────────
+  // Who signs the awards. The same two people sign every design, so this lives
+  // once here rather than being retyped on each certificate.
+  certLeftName: z.string().trim().max(80),
+  certLeftTitle: z.string().trim().max(60),
+  certRightName: z.string().trim().max(80),
+  certRightTitle: z.string().trim().max(60),
+
   // ── Social links ─────────────────────────────────────────────────────────
   socialWebsite: optionalUrl,
   socialLinkedin: optionalUrl,
@@ -94,6 +102,12 @@ export const DEFAULT_SETTINGS: Settings = {
   notifyOnEnrollment: true,
   notifyOnPayment: true,
   notifyOnNewUser: false,
+
+  // The client's own signatories, from the certificates they already issue.
+  certLeftName: "Sahil Bhatia",
+  certLeftTitle: "Director",
+  certRightName: "Amisha Chauhan",
+  certRightTitle: "Program Manager",
 
   socialWebsite: "",
   socialLinkedin: "",

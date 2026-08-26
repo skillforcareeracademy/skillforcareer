@@ -38,6 +38,7 @@ import { RecommendedCourses } from "@/components/marketing/recommended-courses";
 import { ProcessSection } from "@/components/marketing/process-section";
 import { FaqSection } from "@/components/marketing/faq-section";
 import { LearnerVideos } from "@/components/marketing/learner-videos";
+import { getHomeSection } from "@/server/services/homepage-service";
 
 export const dynamic = "force-dynamic";
 
@@ -87,10 +88,15 @@ export default async function CourseDetailPage({
   if (!c) notFound();
 
   const user = await getSessionUser();
-  const [enrolled, reviews, recommended] = await Promise.all([
+  const [enrolled, reviews, recommended, process, videos, faq] = await Promise.all([
     user ? isEnrolled(user.id, c.id) : Promise.resolve(false),
     listCourseReviews(c.id),
     listRecommendedCourses(c.id, c.category.slug),
+    // Shared with the homepage: one edit updates both. All three resolve from
+    // the same cached read, so this costs no extra round-trip.
+    getHomeSection("process"),
+    getHomeSection("learnerVideos"),
+    getHomeSection("faq"),
   ]);
 
   const isFree = c.pricingType === "FREE";
@@ -401,9 +407,11 @@ export default async function CourseDetailPage({
       {/* Everything below the fold is the same story the homepage tells — how
           the programme runs, what past learners say, and the questions people
           ask right before they pay. */}
-      <ProcessSection className="bg-muted/30 border-y" />
-      <LearnerVideos />
-      <FaqSection className="border-t" />
+      {process.enabled && (
+        <ProcessSection data={process.data} className="bg-muted/30 border-y" />
+      )}
+      {videos.enabled && <LearnerVideos data={videos.data} />}
+      {faq.enabled && <FaqSection data={faq.data} className="border-t" />}
       <RecommendedCourses courses={recommended} />
     </div>
   );

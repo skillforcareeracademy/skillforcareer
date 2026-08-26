@@ -216,6 +216,16 @@ enum CertificateStatus {
   REVOKED
 }
 
+/// The four awards the academy hands out. Each has its own printed design; the
+/// per-design copy (internship dates, the reason for an appreciation, and so on)
+/// lives in `Certificate.metadata`, validated by `lib/validations/certificate`.
+enum CertificateType {
+  COURSE_COMPLETION
+  INTERNSHIP_COMPLETION
+  APPRECIATION
+  INTERNSHIP_APPRECIATION
+}
+
 enum MeetingStatus {
   SCHEDULED
   LIVE
@@ -293,6 +303,13 @@ model User {
   // Per-user settings (notification toggles, etc.) — JSON blob, merged with defaults in code.
   preferences Json?
 
+  /// The internship this learner served at the academy. Kept on the learner
+  /// rather than on the certificate so admissions can answer "is their
+  /// internship over yet?" before any award is printed — and so the internship
+  /// certificate can fill its own dates in from here.
+  internshipStartAt DateTime?
+  internshipEndAt   DateTime?
+
   lastLoginAt DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -327,6 +344,8 @@ model User {
   leadsAssigned      Lead[]                 @relation("LeadAssignee")
   leadFollowUps      LeadFollowUp[]         @relation("LeadFollowUpAuthor")
   leadDocuments      LeadDocument[]         @relation("LeadDocumentUploader")
+  leadContacts       LeadContact[]          @relation("LeadContactAgent")
+  leadsConvertedFrom Lead[]                 @relation("LeadConvertedStudent")
   webinarsHosted     Webinar[]              @relation("WebinarHost")
   webinarsAttended   WebinarRegistration[]  @relation("WebinarAttendee")
   assignmentsSet     AssignmentStudent[]    @relation("AssignmentAssignee")
@@ -1008,6 +1027,15 @@ model Payment {
   paidAt            DateTime?
   lastRemindedAt    DateTime?
 
+  /// Set when a counsellor collected this against a CRM lead, so admissions can
+  /// trace a learner's first payment back to the enquiry that produced it.
+  leadId String?
+  /// Unguessable token behind a shareable "pay now" URL. Present only on
+  /// payments raised as a link; the page it opens needs no login, so the token
+  /// is the only credential and it is scoped to this one payment.
+  linkToken     String?   @unique
+  linkExpiresAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1016,6 +1044,7 @@ model Payment {
   enrollment   Enrollment?     @relation(fields: [enrollmentId], references: [id], onUpdate: NoAction)
   coupon       Coupon?         @relation(fields: [couponId], references: [id], onUpdate: NoAction)
   account      PaymentAccount? @relation(fields: [accountId], references: [id], onUpdate: NoAction)
+  lead         Lead?           @relation("LeadPayments", fields: [leadId], references: [id], onUpdate: NoAction)
   installments Installment[]
   refunds      Refund[]
 
@@ -1024,6 +1053,7 @@ model Payment {
   @@index([enrollmentId])
   @@index([couponId])
   @@index([accountId])
+  @@index([leadId])
   @@index([status])
 }
 
@@ -1163,25 +1193,34 @@ model Referral {
 // ══════════════════════════════════════════════════════════════════════════════
 
 model Certificate {
-  id               String            @id @default(cuid())
-  userId           String
-  courseId         String
+  id     String @id @default(cuid())
+  userId String
+  /// Optional since not every award is about a course — an appreciation
+  /// certificate recognises the learner, not a syllabus.
+  courseId         String?
   enrollmentId     String?           @unique
+  type             CertificateType   @default(COURSE_COMPLETION)
   serialNumber     String            @unique
   verificationCode String            @unique
   status           CertificateStatus @default(ISSUED)
   fileUrl          String?
-  metadata         Json?
-  issuedAt         DateTime          @default(now())
+  /// Per-design copy — batch name, internship dates, the citation. Shape is in
+  /// `certificateDetailsSchema`.
+  metadata Json?
+  issuedAt DateTime @default(now())
 
   createdAt DateTime @default(now())
 
   user       User        @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  course     Course      @relation(fields: [courseId], references: [id], onUpdate: NoAction)
+  course     Course?     @relation(fields: [courseId], references: [id], onUpdate: NoAction)
   enrollment Enrollment? @relation(fields: [enrollmentId], references: [id], onUpdate: NoAction)
 
-  @@unique([userId, courseId])
+  /// One award of each kind per learner per course. A learner can hold a course
+  /// completion *and* an appreciation for the same course, which the old
+  /// two-column key forbade.
+  @@unique([userId, courseId, type])
   @@index([courseId])
+  @@index([type])
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1334,6 +1373,26 @@ model Setting {
   updatedAt   DateTime @updatedAt
 }
 
+/// One editable band of the public homepage (hero, stats, testimonials, …).
+///
+/// The section's content lives in `data` as JSON rather than in columns or a
+/// child table: the shape differs per section, most sections carry a repeatable
+/// list, and the homepage is the busiest page on the site — one `findMany` has
+/// to return everything it needs. `key` is the code-side identifier from
+/// `src/lib/validations/homepage.ts`, which owns the schema and the defaults,
+/// so a section that has never been edited still renders without a row here.
+model HomeSection {
+  key         String   @id
+  enabled     Boolean  @default(true)
+  order       Int      @default(0)
+  data        Json
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([order])
+}
+
 /// Transactional outbox for the signed domain-event stream consumed by the
 /// separate CRM product (see src/lib/events.ts). Rows are written in the same
 /// transaction as the domain change, then delivered asynchronously.
@@ -1398,6 +1457,13 @@ enum LeadStage {
   INVALID_LEAD
 }
 
+/// How a counsellor reached out to a lead from the CRM.
+enum LeadContactChannel {
+  CALL
+  WHATSAPP
+  SMS
+}
+
 /// Counsellor's read on how likely this lead is to convert.
 enum LeadQuality {
   HOT
@@ -1444,6 +1510,10 @@ model Lead {
   name  String
   email String?
   phone String
+  /// WhatsApp number when it differs from `phone`. Counsellors are routinely
+  /// given a second number for messaging, and pinging the wrong one loses the
+  /// lead — blank means "same as phone".
+  whatsapp String?
 
   /// Picked from the course dropdown. `courseInterest` keeps the free text for
   /// website enquiries and imports that name a course we don't have a row for.
@@ -1489,6 +1559,12 @@ model Lead {
   /// Stamped by the email/SMS reminder so a sweep can't nag the same lead twice.
   lastRemindedAt DateTime?
 
+  /// The learner account this lead became, set the first time a payment is
+  /// collected. Keeps the CRM row and the student record joined up so the
+  /// admissions team can answer "did this enquiry ever enrol?".
+  convertedUserId String?
+  convertedAt     DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1496,6 +1572,10 @@ model Lead {
   assignedTo User?          @relation("LeadAssignee", fields: [assignedToId], references: [id], onUpdate: NoAction)
   followUps  LeadFollowUp[]
   documents  LeadDocument[]
+  contacts   LeadContact[]
+  payments   Payment[]      @relation("LeadPayments")
+
+  convertedUser User? @relation("LeadConvertedStudent", fields: [convertedUserId], references: [id], onUpdate: NoAction)
 
   @@index([stage])
   @@index([quality])
@@ -1505,6 +1585,7 @@ model Lead {
   @@index([leadDate])
   @@index([visitDate])
   @@index([followUpDate])
+  @@index([convertedUserId])
   @@index([createdAt])
 }
 
@@ -1527,6 +1608,32 @@ model LeadFollowUp {
 
   @@index([leadId])
   @@index([createdById])
+}
+
+/// One outreach attempt made from the CRM — who reached out, how, and when.
+///
+/// Written the moment a counsellor taps call / WhatsApp / SMS on a lead, before
+/// the device handler takes over. The platform can't observe whether the call
+/// connected, so this records the *attempt*: enough to see who is working their
+/// queue and which leads have gone untouched.
+model LeadContact {
+  id      String             @id @default(cuid())
+  leadId  String
+  userId  String
+  channel LeadContactChannel
+  /// The number as dialled or messaged. Stored rather than joined because the
+  /// lead's numbers can be edited afterwards and the history must not drift.
+  target  String
+
+  createdAt DateTime @default(now())
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user User @relation("LeadContactAgent", fields: [userId], references: [id], onUpdate: NoAction)
+
+  @@index([leadId])
+  @@index([userId])
+  @@index([channel])
+  @@index([createdAt])
 }
 
 /**

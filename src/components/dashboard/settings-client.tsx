@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import {
   AtSign,
+  Award,
   Bell,
   Camera,
   Globe,
@@ -190,6 +191,9 @@ export function SettingsClient({ data }: { data: SettingsWithMeta }) {
           </TabsTrigger>
           <TabsTrigger value="notifications" className={TAB_TRIGGER}>
             <Bell /> Notifications
+          </TabsTrigger>
+          <TabsTrigger value="certificates" className={TAB_TRIGGER}>
+            <Award /> Certificates
           </TabsTrigger>
           <TabsTrigger value="social" className={TAB_TRIGGER}>
             <Share2 /> Social
@@ -404,6 +408,52 @@ export function SettingsClient({ data }: { data: SettingsWithMeta }) {
                 checked={form.maintenanceMode}
                 onChange={(v) => set("maintenanceMode", v)}
               />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── Certificates ────────────────────────────────────────────────── */}
+        <TabsContent value="certificates" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Who signs the certificates</CardTitle>
+              <CardDescription>
+                The same two signatories appear on all four designs, so they are
+                set once here rather than retyped on every award.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-4 sm:grid-cols-2">
+              <Field label="Left signatory" htmlFor="cert-left-name">
+                <Input
+                  id="cert-left-name"
+                  value={form.certLeftName}
+                  onChange={(e) => set("certLeftName", e.target.value)}
+                />
+              </Field>
+              <Field label="Their role" htmlFor="cert-left-title">
+                <Input
+                  id="cert-left-title"
+                  value={form.certLeftTitle}
+                  onChange={(e) => set("certLeftTitle", e.target.value)}
+                />
+              </Field>
+              <Field label="Right signatory" htmlFor="cert-right-name">
+                <Input
+                  id="cert-right-name"
+                  value={form.certRightName}
+                  onChange={(e) => set("certRightName", e.target.value)}
+                />
+              </Field>
+              <Field label="Their role" htmlFor="cert-right-title">
+                <Input
+                  id="cert-right-title"
+                  value={form.certRightTitle}
+                  onChange={(e) => set("certRightTitle", e.target.value)}
+                />
+              </Field>
+              <p className="text-muted-foreground text-xs sm:col-span-2">
+                The logo on every certificate comes from Branding, above.
+              </p>
             </CardContent>
           </Card>
         </TabsContent>

@@ -1,33 +1,6 @@
-import Image from "next/image";
+import type { HomeData } from "@/lib/validations/homepage";
 
-interface PlacedStudent {
-  name: string;
-  course: string;
-  photo: string;
-}
-
-/**
- * Learners shown in the "900+ Students Got Placed" marquee, mirroring the
- * client's existing site (skillforcareer.in). Photos are the learners' own —
- * pulled from the live site and served locally from /public/images/students.
- */
-const ROW_ONE: PlacedStudent[] = [
-  { name: "Himani", course: "Data Analyst", photo: "/images/students/student-11.png" },
-  { name: "Sneha Yadav", course: "Web Development", photo: "/images/students/student-14.png" },
-  { name: "Anjali Rajput", course: "Digital Marketing", photo: "/images/students/student-15.png" },
-  { name: "Ajeet", course: "Retail & Sales", photo: "/images/students/student-16.png" },
-  { name: "Priya Singh", course: "Full Stack Developer", photo: "/images/students/student-19.png" },
-  { name: "Anu Chauhan", course: "Social Media Management", photo: "/images/students/student-20.png" },
-  { name: "Bhumika Gandhi", course: "Digital Marketing", photo: "/images/students/student-6.png" },
-];
-
-const ROW_TWO: PlacedStudent[] = [
-  { name: "Neha Sharma", course: "Full Stack Developer", photo: "/images/students/student-1.png" },
-  { name: "Raunak Bhatia", course: "Web Development", photo: "/images/students/student-4.png" },
-  { name: "Ritika Verma", course: "Data Analyst", photo: "/images/students/student-5.png" },
-  { name: "Bhumika Gandhi", course: "Digital Marketing", photo: "/images/students/student-6.png" },
-  { name: "Sneha Yadav", course: "Web Development", photo: "/images/students/student-14.png" },
-];
+type PlacedStudent = HomeData<"placedStudents">["items"][number];
 
 /**
  * The animation translates the track by -50%, so the two halves must be
@@ -38,6 +11,7 @@ const ROW_TWO: PlacedStudent[] = [
 const CARDS_PER_HALF = 24;
 
 function buildTrack(students: PlacedStudent[]): PlacedStudent[] {
+  if (students.length === 0) return []; // the loop below would never terminate
   const half: PlacedStudent[] = [];
   while (half.length < CARDS_PER_HALF) half.push(...students);
   return [...half, ...half];
@@ -47,11 +21,13 @@ function StudentCard({ student }: { student: PlacedStudent }) {
   return (
     <div className="mr-5 h-[160px] w-[130px] shrink-0 overflow-hidden rounded-xl bg-white text-center shadow-[0_4px_12px_rgba(0,0,0,0.15)] sm:h-[185px] sm:w-[150px]">
       {/* Eager: the cards move by CSS transform, and the lazy-load observer
-          misses them — cards scrolled in blank. Only 10 distinct files back
-          the whole marquee, so the browser serves the repeats from cache. */}
-      <Image
+          misses them — cards scrolled in blank. Only a handful of distinct
+          files back the whole marquee, so the browser serves the repeats from
+          cache. Plain <img> because the photo is whatever an admin uploaded. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
         src={student.photo}
-        alt={`${student.name}, ${student.course} learner at SkillForCareer`}
+        alt={`${student.name}, ${student.course} learner`}
         width={150}
         height={139}
         loading="eager"
@@ -86,21 +62,33 @@ function MarqueeRow({
   );
 }
 
-export function PlacedStudents() {
+export function PlacedStudents({ data }: { data: HomeData<"placedStudents"> }) {
+  const students = data.items;
+  if (students.length === 0) return null;
+
+  // Two rows travelling opposite ways. The list is halved rather than asking
+  // the admin to maintain two — and a single learner still fills both rows,
+  // because each is padded out to the width of the screen anyway.
+  const split = Math.ceil(students.length / 2);
+  const rowOne = students.slice(0, split);
+  const rowTwo = students.length > 1 ? students.slice(split) : students;
+
   return (
     <section className="bg-[#f3f7fd] py-14 sm:py-16 dark:bg-neutral-900">
       <div className="container-page mb-10 text-center sm:mb-12">
-        <p className="text-foreground text-lg sm:text-xl">Skill For Career</p>
+        {data.eyebrow && (
+          <p className="text-foreground text-lg sm:text-xl">{data.eyebrow}</p>
+        )}
         <h2 className="mt-4 text-3xl font-bold sm:text-5xl">
-          900+{" "}
+          {data.titleLead}{" "}
           <span className="relative inline-block">
-            <span className="relative z-10">Students</span>
+            <span className="relative z-10">{data.titleHighlight}</span>
             <span
               aria-hidden
               className="bg-primary/25 absolute inset-x-0 bottom-0.5 z-0 h-2 rounded-full"
             />
           </span>{" "}
-          Got Placed
+          {data.titleTail}
         </h2>
       </div>
 
@@ -108,10 +96,10 @@ export function PlacedStudents() {
           of the screen, not stop at the page container's gutters. */}
       <div
         className="overflow-hidden [mask-image:linear-gradient(to_right,transparent,black_5%,black_95%,transparent)]"
-        aria-label="Learners placed after training at SkillForCareer"
+        aria-label="Learners placed after training"
       >
-        <MarqueeRow students={ROW_ONE} />
-        <MarqueeRow students={ROW_TWO} reverse />
+        <MarqueeRow students={rowOne} />
+        <MarqueeRow students={rowTwo} reverse />
       </div>
     </section>
   );

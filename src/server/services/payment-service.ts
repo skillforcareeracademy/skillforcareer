@@ -15,7 +15,8 @@ import type { RecordPaymentInput, RefundInput } from "@/lib/validations/payment"
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-async function uniqueInvoice(year: number): Promise<string> {
+/** Shared with the lead-payment flow, which raises its own invoices. */
+export async function uniqueInvoice(year: number): Promise<string> {
   for (let i = 0; i < 50; i += 1) {
     const n = randomBytes(3).readUIntBE(0, 3) % 1_000_000;
     const invoice = `INV-${year}-${String(n).padStart(6, "0")}`;
@@ -435,7 +436,11 @@ export async function createCourseOrder(
  * (count === 1) runs the enrolment + counter + coupon + notifications, so the
  * webhook and the client callback can both call this safely.
  */
-async function fulfillPaidCheckout(
+/**
+ * Shared with the lead-payment flow: a payment link's success callback lands
+ * here too, so a link and an in-app checkout enrol the learner identically.
+ */
+export async function fulfillPaidCheckout(
   paymentId: string,
   providerPaymentId?: string,
 ): Promise<{ slug: string | null; alreadyPaid: boolean }> {
@@ -447,6 +452,7 @@ async function fulfillPaidCheckout(
       courseId: true,
       couponId: true,
       accountId: true,
+      leadId: true,
       invoiceNumber: true,
       netAmount: true,
       course: { select: { slug: true, title: true } },
@@ -491,6 +497,16 @@ async function fulfillPaidCheckout(
   }
   if (payment.couponId) {
     await prisma.coupon.update({ where: { id: payment.couponId }, data: { usedCount: { increment: 1 } } });
+  }
+
+  // A payment raised against a CRM lead closes it out. Done here rather than in
+  // the browser callback so the webhook — the authoritative path, and the only
+  // one that runs when the payer closes the tab — moves the lead too.
+  if (payment.leadId) {
+    await prisma.lead.updateMany({
+      where: { id: payment.leadId, stage: { not: "CONVERTED" } },
+      data: { stage: "CONVERTED", status: "CONVERTED", subStatus: "Admission Done" },
+    });
   }
 
   const amount = `₹${num(payment.netAmount).toLocaleString("en-IN")}`;
