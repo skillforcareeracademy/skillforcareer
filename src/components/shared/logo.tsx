@@ -24,9 +24,11 @@ export function Logo({ href = "/", showText = false, className }: LogoProps) {
        intrinsic dimensions aren't known at build time and it may be served
        from /api/files after an upload.
 
-       It also ships with a baked-in white background (no alpha) and its inner
-       swoosh is white too — keying the white out would punch a hole through
-       the mark, so on dark surfaces it sits on a light chip instead. */
+       The bundled mark now carries a real alpha channel — the white paper it
+       was exported on has been flood-filled away from the edges, so it sits on
+       whatever is behind it. No light chip on dark surfaces any more: that only
+       ever existed to hide the white rectangle, and it read as a white box
+       around the logo. */
   }
   const image = (
     // eslint-disable-next-line @next/next/no-img-element
@@ -35,7 +37,7 @@ export function Logo({ href = "/", showText = false, className }: LogoProps) {
       alt={siteName}
       // cn() merges through tailwind-merge, so a caller passing `h-14` wins.
       className={cn(
-        "h-[42px] w-auto max-w-[220px] object-contain dark:rounded-md dark:bg-white dark:p-1",
+        "h-[42px] w-auto max-w-[220px] object-contain",
         className,
       )}
     />
