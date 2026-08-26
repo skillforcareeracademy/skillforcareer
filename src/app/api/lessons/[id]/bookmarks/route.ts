@@ -10,13 +10,13 @@ export const dynamic = "force-dynamic";
 export const GET = withRoute(async (_req, { params }) => {
   const user = await requireApiUser();
   const id = String((await params).id);
-  return ok(await listBookmarks(user.id, id));
+  return ok(await listBookmarks(user.id, { kind: "lesson", id }));
 });
 
 export const POST = withRoute(async (req, { params }) => {
   const user = await requireApiUser();
   const id = String((await params).id);
   const input = bookmarkSchema.parse(await req.json().catch(() => ({})));
-  const bmId = await addBookmark(user.id, id, input);
+  const bmId = await addBookmark(user.id, { kind: "lesson", id }, input);
   return created({ id: bmId, message: "Bookmark added." });
 });

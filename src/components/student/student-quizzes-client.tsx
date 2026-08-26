@@ -5,6 +5,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { ButtonLink } from "@/components/shared/button-link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { QuizBookmarkToggle } from "./quiz-bookmark-toggle";
 
 export function StudentQuizzesClient({ quizzes }: { quizzes: StudentQuiz[] }) {
   const stats = {
@@ -59,19 +60,22 @@ export function StudentQuizzesClient({ quizzes }: { quizzes: StudentQuiz[] }) {
                       <h3 className="font-semibold">{q.title}</h3>
                       <p className="text-muted-foreground truncate text-xs">{q.courseTitle}</p>
                     </div>
-                    {q.bestPercent != null && (
-                      <Badge
-                        variant="secondary"
-                        className={
-                          q.passed
-                            ? "gap-1 bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
-                            : "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300"
-                        }
-                      >
-                        {q.passed && <CheckCircle2 className="size-3" />}
-                        {q.bestPercent}%
-                      </Badge>
-                    )}
+                    <div className="flex shrink-0 items-center gap-1">
+                      {q.bestPercent != null && (
+                        <Badge
+                          variant="secondary"
+                          className={
+                            q.passed
+                              ? "gap-1 bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
+                              : "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300"
+                          }
+                        >
+                          {q.passed && <CheckCircle2 className="size-3" />}
+                          {q.bestPercent}%
+                        </Badge>
+                      )}
+                      <QuizBookmarkToggle quizId={q.id} bookmarked={q.bookmarked} />
+                    </div>
                   </div>
 
                   <div className="text-muted-foreground mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">

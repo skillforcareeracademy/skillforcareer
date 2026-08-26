@@ -11,6 +11,9 @@ export const noteSchema = z.object({
   timestampSeconds: z.coerce.number().int().min(0).max(360000).default(0),
 });
 
+/** Editing an existing note only ever changes its words. */
+export const updateNoteSchema = noteSchema.pick({ content: true });
+
 export const bookmarkSchema = z.object({
   timestampSeconds: z.coerce.number().int().min(0).max(360000).default(0),
   label: z.string().trim().max(120).optional().or(z.literal("")),
@@ -18,4 +21,5 @@ export const bookmarkSchema = z.object({
 
 export type ProgressInput = z.infer<typeof progressSchema>;
 export type NoteInput = z.infer<typeof noteSchema>;
+export type UpdateNoteInput = z.infer<typeof updateNoteSchema>;
 export type BookmarkInput = z.infer<typeof bookmarkSchema>;

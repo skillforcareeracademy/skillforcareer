@@ -164,11 +164,45 @@ export async function updateLessonProgress(userId: string, lessonId: string, inp
   return null;
 }
 
-// ── Notes ────────────────────────────────────────────────────────────────────
+// ── Notes and bookmarks ──────────────────────────────────────────────────────
 
-export async function listNotes(userId: string, lessonId: string) {
+/**
+ * What a note or bookmark is attached to. A learner writes them against a
+ * lesson while watching, or against a quiz while revising, and both land in the
+ * same two tables — so everything below takes the target rather than a lesson
+ * id, and `student/notes` can list the two side by side.
+ */
+export type SavedTarget = { kind: "lesson"; id: string } | { kind: "quiz"; id: string };
+
+export function savedTarget(kind: string, id: string): SavedTarget {
+  if (kind !== "lesson" && kind !== "quiz") throw AppError.badRequest("Unknown target.");
+  return { kind, id };
+}
+
+/** The `where` fragment for one target, and the `data` fragment for a create. */
+function targetWhere(target: SavedTarget) {
+  return target.kind === "lesson" ? { lessonId: target.id } : { quizId: target.id };
+}
+
+/**
+ * Refuse to write against something that isn't there. Worth the round trip:
+ * `relationMode = "prisma"` means the database enforces no foreign key, so a
+ * bad id would otherwise be stored happily and only surface as an orphan row
+ * on the notes page.
+ */
+async function assertTargetExists(target: SavedTarget): Promise<void> {
+  const found =
+    target.kind === "lesson"
+      ? await prisma.lesson.findUnique({ where: { id: target.id }, select: { id: true } })
+      : await prisma.quiz.findUnique({ where: { id: target.id }, select: { id: true } });
+  if (!found) {
+    throw AppError.notFound(target.kind === "lesson" ? "Lesson not found." : "Quiz not found.");
+  }
+}
+
+export async function listNotes(userId: string, target: SavedTarget) {
   const notes = await prisma.note.findMany({
-    where: { userId, lessonId },
+    where: { userId, ...targetWhere(target) },
     orderBy: { timestampSeconds: "asc" },
   });
   return notes.map((n) => ({
@@ -179,14 +213,31 @@ export async function listNotes(userId: string, lessonId: string) {
   }));
 }
 
-export async function addNote(userId: string, lessonId: string, input: NoteInput): Promise<string> {
-  const lesson = await prisma.lesson.findUnique({ where: { id: lessonId }, select: { id: true } });
-  if (!lesson) throw AppError.notFound("Lesson not found.");
+export async function addNote(
+  userId: string,
+  target: SavedTarget,
+  input: NoteInput,
+): Promise<string> {
+  await assertTargetExists(target);
   const n = await prisma.note.create({
-    data: { userId, lessonId, content: input.content, timestampSeconds: input.timestampSeconds },
+    data: {
+      userId,
+      ...targetWhere(target),
+      content: input.content,
+      timestampSeconds: input.timestampSeconds,
+    },
     select: { id: true },
   });
   return n.id;
+}
+
+export async function updateNote(
+  userId: string,
+  noteId: string,
+  content: string,
+): Promise<void> {
+  const res = await prisma.note.updateMany({ where: { id: noteId, userId }, data: { content } });
+  if (res.count === 0) throw AppError.notFound("Note not found.");
 }
 
 export async function deleteNote(userId: string, noteId: string): Promise<void> {
@@ -194,11 +245,9 @@ export async function deleteNote(userId: string, noteId: string): Promise<void> 
   if (res.count === 0) throw AppError.notFound("Note not found.");
 }
 
-// ── Bookmarks ────────────────────────────────────────────────────────────────
-
-export async function listBookmarks(userId: string, lessonId: string) {
+export async function listBookmarks(userId: string, target: SavedTarget) {
   const bms = await prisma.bookmark.findMany({
-    where: { userId, lessonId },
+    where: { userId, ...targetWhere(target) },
     orderBy: { timestampSeconds: "asc" },
   });
   return bms.map((b) => ({
@@ -211,13 +260,17 @@ export async function listBookmarks(userId: string, lessonId: string) {
 
 export async function addBookmark(
   userId: string,
-  lessonId: string,
+  target: SavedTarget,
   input: BookmarkInput,
 ): Promise<string> {
-  const lesson = await prisma.lesson.findUnique({ where: { id: lessonId }, select: { id: true } });
-  if (!lesson) throw AppError.notFound("Lesson not found.");
+  await assertTargetExists(target);
   const b = await prisma.bookmark.create({
-    data: { userId, lessonId, timestampSeconds: input.timestampSeconds, label: input.label || null },
+    data: {
+      userId,
+      ...targetWhere(target),
+      timestampSeconds: input.timestampSeconds,
+      label: input.label || null,
+    },
     select: { id: true },
   });
   return b.id;
@@ -226,4 +279,163 @@ export async function addBookmark(
 export async function deleteBookmark(userId: string, bookmarkId: string): Promise<void> {
   const res = await prisma.bookmark.deleteMany({ where: { id: bookmarkId, userId } });
   if (res.count === 0) throw AppError.notFound("Bookmark not found.");
+}
+
+/**
+ * Save or unsave a whole quiz in one call — the quiz list and the quiz page
+ * both show a single toggle, and a quiz-level bookmark has no timestamp to
+ * distinguish two of them, so a second tap should remove rather than duplicate.
+ */
+export async function toggleQuizBookmark(
+  userId: string,
+  quizId: string,
+): Promise<{ saved: boolean }> {
+  const existing = await prisma.bookmark.findFirst({
+    where: { userId, quizId },
+    select: { id: true },
+  });
+  if (existing) {
+    await prisma.bookmark.delete({ where: { id: existing.id } });
+    return { saved: false };
+  }
+  await assertTargetExists({ kind: "quiz", id: quizId });
+  await prisma.bookmark.create({ data: { userId, quizId } });
+  return { saved: true };
+}
+
+// ── Everything a learner has saved ───────────────────────────────────────────
+
+export interface SavedItem {
+  id: string;
+  kind: "note" | "bookmark";
+  /** The note's text, or the bookmark's label — blank for an unlabelled one. */
+  text: string;
+  timestampSeconds: number;
+  createdAt: string;
+  source: {
+    type: "lesson" | "quiz";
+    /** Lesson or quiz title. */
+    title: string;
+    courseTitle: string | null;
+    /** Where "Open" goes; null when the course is gone or unpublished. */
+    href: string | null;
+  };
+}
+
+/**
+ * Every note and bookmark this learner holds, newest first, with enough context
+ * to show where each came from and to jump back to it.
+ *
+ * Deliberately six flat queries rather than nested `include`s: `relationMode =
+ * "prisma"` turns each level of nesting into its own round trip, and this
+ * database is a region away — so the ids are collected and resolved in batches
+ * and stitched together here.
+ */
+export async function getSavedItems(userId: string): Promise<SavedItem[]> {
+  const [notes, bookmarks] = await Promise.all([
+    prisma.note.findMany({ where: { userId }, orderBy: { createdAt: "desc" } }),
+    prisma.bookmark.findMany({ where: { userId }, orderBy: { createdAt: "desc" } }),
+  ]);
+  if (notes.length === 0 && bookmarks.length === 0) return [];
+
+  const lessonIds = unique([...notes, ...bookmarks].map((r) => r.lessonId));
+  const quizIds = unique([...notes, ...bookmarks].map((r) => r.quizId));
+
+  const [lessons, quizzes] = await Promise.all([
+    lessonIds.length
+      ? prisma.lesson.findMany({
+          where: { id: { in: lessonIds } },
+          select: { id: true, title: true, chapterId: true },
+        })
+      : [],
+    quizIds.length
+      ? prisma.quiz.findMany({
+          where: { id: { in: quizIds } },
+          select: { id: true, title: true, courseId: true },
+        })
+      : [],
+  ]);
+
+  const chapterIds = unique(lessons.map((l) => l.chapterId));
+  const chapters = chapterIds.length
+    ? await prisma.chapter.findMany({
+        where: { id: { in: chapterIds } },
+        select: { id: true, courseId: true },
+      })
+    : [];
+
+  const courseIds = unique([
+    ...chapters.map((c) => c.courseId),
+    ...quizzes.map((q) => q.courseId),
+  ]);
+  const courses = courseIds.length
+    ? await prisma.course.findMany({
+        where: { id: { in: courseIds } },
+        select: { id: true, title: true, slug: true },
+      })
+    : [];
+
+  const courseById = new Map(courses.map((c) => [c.id, c]));
+  const courseOfChapter = new Map(chapters.map((c) => [c.id, c.courseId]));
+  const lessonById = new Map(lessons.map((l) => [l.id, l]));
+  const quizById = new Map(quizzes.map((q) => [q.id, q]));
+
+  function sourceFor(row: { lessonId: string | null; quizId: string | null }) {
+    if (row.lessonId) {
+      const lesson = lessonById.get(row.lessonId);
+      if (!lesson) return null;
+      const course = courseById.get(courseOfChapter.get(lesson.chapterId) ?? "");
+      return {
+        type: "lesson" as const,
+        title: lesson.title,
+        courseTitle: course?.title ?? null,
+        href: course ? `/student/learn/${course.slug}?lesson=${lesson.id}` : null,
+      };
+    }
+    if (row.quizId) {
+      const quiz = quizById.get(row.quizId);
+      if (!quiz) return null;
+      return {
+        type: "quiz" as const,
+        title: quiz.title,
+        courseTitle: (quiz.courseId ? courseById.get(quiz.courseId)?.title : null) ?? null,
+        href: `/student/quizzes/${quiz.id}`,
+      };
+    }
+    return null;
+  }
+
+  const items: SavedItem[] = [];
+  for (const n of notes) {
+    const source = sourceFor(n);
+    // A lesson or quiz deleted since is dropped rather than shown as an
+    // orphan — nothing enforces the reference at the database level.
+    if (!source) continue;
+    items.push({
+      id: n.id,
+      kind: "note",
+      text: n.content,
+      timestampSeconds: n.timestampSeconds,
+      createdAt: n.createdAt.toISOString(),
+      source,
+    });
+  }
+  for (const b of bookmarks) {
+    const source = sourceFor(b);
+    if (!source) continue;
+    items.push({
+      id: b.id,
+      kind: "bookmark",
+      text: b.label ?? "",
+      timestampSeconds: b.timestampSeconds,
+      createdAt: b.createdAt.toISOString(),
+      source,
+    });
+  }
+
+  return items.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+function unique(ids: (string | null)[]): string[] {
+  return [...new Set(ids.filter((id): id is string => Boolean(id)))];
 }

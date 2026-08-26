@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { QuizNotesBar } from "./quiz-notes-bar";
 import { cn } from "@/lib/utils";
 
 interface Option {
@@ -43,6 +44,7 @@ interface QuizData {
   maxAttempts: number;
   attemptsUsed: number;
   canAttempt: boolean;
+  bookmarked: boolean;
   totalPoints: number;
   questions: Question[];
 }
@@ -110,6 +112,11 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
         <Button nativeButton={false} render={<Link href="/student/quizzes" />}>
           <ArrowLeft className="size-4" /> Back to quizzes
         </Button>
+        <QuizNotesBar
+          quizId={quiz.id}
+          bookmarked={quiz.bookmarked}
+          className="mx-auto max-w-md text-left"
+        />
       </div>
     );
   }
@@ -205,6 +212,8 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
           </div>
         </Card>
 
+        <QuizNotesBar quizId={quiz.id} bookmarked={quiz.bookmarked} />
+
         {result.showAnswers && (
           <div className="space-y-3">
             <h2 className="text-lg font-semibold">Review</h2>
@@ -292,6 +301,8 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
           </div>
         )}
       </div>
+
+      <QuizNotesBar quizId={quiz.id} bookmarked={quiz.bookmarked} />
 
       {quiz.questions.map((q, i) => {
         const a = answers[q.id];

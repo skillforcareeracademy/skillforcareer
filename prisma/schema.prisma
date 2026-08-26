@@ -674,37 +674,47 @@ model LessonProgress {
   @@index([enrollmentId])
 }
 
+/// A learner's own note. It hangs off whatever they were working through —
+/// exactly one of `lessonId` or `quizId` is set.
 model Note {
-  id               String @id @default(cuid())
+  id               String  @id @default(cuid())
   userId           String
-  lessonId         String
-  timestampSeconds Int    @default(0)
-  content          String @db.Text
+  lessonId         String?
+  quizId           String?
+  timestampSeconds Int     @default(0)
+  content          String  @db.Text
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  lesson Lesson? @relation(fields: [lessonId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  quiz   Quiz?   @relation(fields: [quizId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([userId])
   @@index([lessonId])
+  @@index([quizId])
 }
 
+/// A place a learner wants to come back to — a moment in a lesson, or a whole
+/// quiz saved for revision. Exactly one of `lessonId` or `quizId` is set.
 model Bookmark {
   id               String  @id @default(cuid())
   userId           String
-  lessonId         String
+  lessonId         String?
+  quizId           String?
   timestampSeconds Int     @default(0)
   label            String?
 
   createdAt DateTime @default(now())
 
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  lesson Lesson? @relation(fields: [lessonId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  quiz   Quiz?   @relation(fields: [quizId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([userId])
   @@index([lessonId])
+  @@index([quizId])
 }
 
 model Review {
@@ -903,6 +913,8 @@ model Quiz {
   questions Question[]
   attempts  QuizAttempt[]
   batches   QuizBatch[]
+  notes     Note[]
+  bookmarks Bookmark[]
 
   @@index([courseId])
   @@index([createdById])
@@ -1029,7 +1041,7 @@ model Payment {
 
   /// Set when a counsellor collected this against a CRM lead, so admissions can
   /// trace a learner's first payment back to the enquiry that produced it.
-  leadId String?
+  leadId        String?
   /// Unguessable token behind a shareable "pay now" URL. Present only on
   /// payments raised as a link; the page it opens needs no login, so the token
   /// is the only credential and it is scoped to this one payment.
@@ -1193,8 +1205,8 @@ model Referral {
 // ══════════════════════════════════════════════════════════════════════════════
 
 model Certificate {
-  id     String @id @default(cuid())
-  userId String
+  id               String            @id @default(cuid())
+  userId           String
   /// Optional since not every award is about a course — an appreciation
   /// certificate recognises the learner, not a syllabus.
   courseId         String?
@@ -1206,8 +1218,8 @@ model Certificate {
   fileUrl          String?
   /// Per-design copy — batch name, internship dates, the citation. Shape is in
   /// `certificateDetailsSchema`.
-  metadata Json?
-  issuedAt DateTime @default(now())
+  metadata         Json?
+  issuedAt         DateTime          @default(now())
 
   createdAt DateTime @default(now())
 
@@ -1507,9 +1519,9 @@ model Lead {
   /// back-dated lead was received before the row existed.
   leadDate DateTime @default(now())
 
-  name  String
-  email String?
-  phone String
+  name     String
+  email    String?
+  phone    String
   /// WhatsApp number when it differs from `phone`. Counsellors are routinely
   /// given a second number for messaging, and pinging the wrong one loses the
   /// lead — blank means "same as phone".

@@ -17,6 +17,8 @@ export interface StudentQuiz {
   attemptsUsed: number;
   bestPercent: number | null;
   passed: boolean;
+  /** Saved for later from the list or the quiz itself. */
+  bookmarked: boolean;
 }
 
 export async function listStudentQuizzes(userId: string): Promise<StudentQuiz[]> {
@@ -48,6 +50,17 @@ export async function listStudentQuizzes(userId: string): Promise<StudentQuiz[]>
     },
   });
 
+  // One flat read for the saved set rather than a relation on each quiz —
+  // `relationMode = "prisma"` would make that a round trip per row.
+  const saved = new Set(
+    (
+      await prisma.bookmark.findMany({
+        where: { userId, quizId: { in: quizzes.map((z) => z.id) } },
+        select: { quizId: true },
+      })
+    ).map((b) => b.quizId),
+  );
+
   return quizzes.map((z) => {
     const totalPoints = z.questions.reduce((s, q) => s + q.points, 0);
     const percents = z.attempts
@@ -66,6 +79,7 @@ export async function listStudentQuizzes(userId: string): Promise<StudentQuiz[]>
       attemptsUsed: z.attempts.length,
       bestPercent: best,
       passed: best != null && best >= z.passingScore,
+      bookmarked: saved.has(z.id),
     };
   });
 }
@@ -90,7 +104,10 @@ export async function getQuizForAttempt(userId: string, quizId: string) {
   });
   if (!enrolled) return null;
 
-  const attemptsUsed = await prisma.quizAttempt.count({ where: { quizId, studentId: userId } });
+  const [attemptsUsed, bookmark] = await Promise.all([
+    prisma.quizAttempt.count({ where: { quizId, studentId: userId } }),
+    prisma.bookmark.findFirst({ where: { userId, quizId }, select: { id: true } }),
+  ]);
 
   return {
     id: quiz.id,
@@ -102,6 +119,7 @@ export async function getQuizForAttempt(userId: string, quizId: string) {
     maxAttempts: quiz.maxAttempts,
     attemptsUsed,
     canAttempt: attemptsUsed < quiz.maxAttempts,
+    bookmarked: bookmark != null,
     totalPoints: quiz.questions.reduce((s, q) => s + q.points, 0),
     questions: quiz.questions.map((q) => ({
       id: q.id,

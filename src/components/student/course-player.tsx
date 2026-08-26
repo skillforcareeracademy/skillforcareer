@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -90,7 +91,17 @@ export function CoursePlayer({
   const videoRef = useRef<HTMLVideoElement>(null);
   const lastSave = useRef(0);
 
-  const [currentId, setCurrentId] = useState(player.resumeLessonId ?? allLessons[0]?.id ?? "");
+  // `?lesson=` wins over the resume point, so a note or bookmark opened from
+  // Student → Notes lands on the lesson it was written against. An id that is
+  // no longer in the course falls back to the normal resume behaviour.
+  const requestedId = useSearchParams().get("lesson");
+  const startId =
+    (requestedId && allLessons.some((l) => l.id === requestedId) ? requestedId : null) ??
+    player.resumeLessonId ??
+    allLessons[0]?.id ??
+    "";
+
+  const [currentId, setCurrentId] = useState(startId);
   const [completed, setCompleted] = useState<Set<string>>(
     () => new Set(allLessons.filter((l) => l.completed).map((l) => l.id)),
   );
