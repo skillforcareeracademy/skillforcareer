@@ -38,9 +38,14 @@ function ColumnLinks({ column }: { column: FooterColumn }) {
  * page, so they collapse into accordion sections there; from the tablet
  * breakpoint up they are plain columns again. The lists are rendered once and
  * re-used by both layouts rather than duplicated into hidden markup.
+ *
+ * How many columns there are is up to the admin (Admin → Homepage → Footer),
+ * so the surrounding grid widens to match — see `GRID_COLS` in the footer.
  */
 export function FooterLinkColumns({ columns }: { columns: FooterColumn[] }) {
   const isMobile = useIsMobile();
+
+  if (columns.length === 0) return null;
 
   if (isMobile) {
     return (
@@ -63,12 +68,19 @@ export function FooterLinkColumns({ columns }: { columns: FooterColumn[] }) {
     );
   }
 
+  // Below `lg` the footer is a two-column grid, so an odd number of link
+  // columns leaves the last one alone on its row — let it take the full width
+  // rather than sit beside a hole.
+  const orphanLast = columns.length % 2 === 1;
+
   return (
     <>
       {columns.map((col, i) => (
         <div
           key={col.title}
-          className={i === columns.length - 1 ? "col-span-2 lg:col-span-1" : undefined}
+          className={
+            orphanLast && i === columns.length - 1 ? "col-span-2 lg:col-span-1" : undefined
+          }
         >
           <h3 className="text-sm font-semibold">{col.title}</h3>
           <div className="mt-4">

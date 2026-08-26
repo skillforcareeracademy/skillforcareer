@@ -4,6 +4,7 @@ import { clearMemo, readMemo, writeMemo } from "./memo";
 import {
   HOME_SECTIONS,
   HOME_SECTION_KEYS,
+  isAlwaysOn,
   parseHomeData,
   type HomeData,
   type HomeSectionKey,
@@ -59,7 +60,9 @@ function build(rows: StoredRow[]): HomeSection[] {
     const row = stored.get(key);
     return {
       key,
-      enabled: row?.enabled ?? true,
+      // The header and footer are editable but never hideable, whatever an old
+      // row or a hand-rolled API call says.
+      enabled: isAlwaysOn(key) ? true : (row?.enabled ?? true),
       // Shipped position doubles as the fallback order, so a section that has
       // never been saved sits where the design put it rather than at the top.
       order: row?.order ?? shipped,
@@ -112,7 +115,7 @@ export async function updateHomeSection(
   const data = input.data
     ? parseHomeData(key, { ...current.data, ...input.data })
     : current.data;
-  const enabled = input.enabled ?? current.enabled;
+  const enabled = isAlwaysOn(key) ? true : (input.enabled ?? current.enabled);
 
   await prisma.homeSection.upsert({
     where: { key },

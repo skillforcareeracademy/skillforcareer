@@ -18,7 +18,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { PageHeader } from "@/components/shared/page-header";
-import { HOME_SECTIONS, isGlobalSection } from "@/lib/validations/homepage";
+import {
+  GLOBAL_SECTION_KEYS,
+  HOME_SECTIONS,
+  isAlwaysOn,
+  isGlobalSection,
+} from "@/lib/validations/homepage";
 import { cn } from "@/lib/utils";
 import { IconGlyph } from "./icon-glyph";
 import { SectionEditor } from "./section-editor";
@@ -41,10 +46,15 @@ export function HomepageClient({ initial }: { initial: EditableSection[] }) {
     setSections(initial);
   }
 
-  // The closing banner runs on every public page, so it can't be slotted into
-  // the homepage's running order — it gets its own group below.
+  // The header, closing banner and footer run on every public page, so they
+  // can't be slotted into the homepage's running order — they get their own
+  // group below, listed top-to-bottom as a visitor meets them.
   const inPage = sections.filter((s) => !isGlobalSection(s.key));
-  const everywhere = sections.filter((s) => isGlobalSection(s.key));
+  const everywhere = sections
+    .filter((s) => isGlobalSection(s.key))
+    .sort(
+      (a, b) => GLOBAL_SECTION_KEYS.indexOf(a.key) - GLOBAL_SECTION_KEYS.indexOf(b.key),
+    );
 
   async function toggleVisible(section: EditableSection, enabled: boolean) {
     setSections((prev) =>
@@ -160,12 +170,17 @@ export function HomepageClient({ initial }: { initial: EditableSection[] }) {
           </div>
 
           <div className="ml-auto flex shrink-0 items-center gap-2">
-            <Switch
-              checked={section.enabled}
-              onCheckedChange={(v) => toggleVisible(section, v)}
-              disabled={busy === section.key}
-              aria-label={`${section.enabled ? "Hide" : "Show"} ${spec.label}`}
-            />
+            {/* No switch for the header and footer: a public site without
+                either has no navigation and no contact details, and the way
+                back is through this page. */}
+            {!isAlwaysOn(section.key) && (
+              <Switch
+                checked={section.enabled}
+                onCheckedChange={(v) => toggleVisible(section, v)}
+                disabled={busy === section.key}
+                aria-label={`${section.enabled ? "Hide" : "Show"} ${spec.label}`}
+              />
+            )}
             <Button
               variant={open ? "secondary" : "outline"}
               size="sm"
@@ -186,7 +201,7 @@ export function HomepageClient({ initial }: { initial: EditableSection[] }) {
     <div className="space-y-6">
       <PageHeader
         title="Homepage"
-        description="Every band of the public landing page — reorder it, switch parts off, and edit every word."
+        description="The public site's content — the landing page band by band, plus the header and footer every page carries. Reorder it, switch parts off, and edit every word."
         actions={
           <Button
             variant="outline"

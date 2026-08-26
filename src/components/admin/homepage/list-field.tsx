@@ -4,7 +4,7 @@ import { useState } from "react";
 import { ChevronDown, ChevronUp, GripVertical, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import type { Field, ListField } from "@/lib/validations/homepage";
+import { isListField, type Field, type ListField } from "@/lib/validations/homepage";
 import { cn } from "@/lib/utils";
 import { FieldControl } from "./field-control";
 import { IconGlyph } from "./icon-glyph";
@@ -12,13 +12,15 @@ import { IconGlyph } from "./icon-glyph";
 type Item = Record<string, unknown>;
 
 /** A new row with every sub-field at a sensible starting value. */
-function blankItem(fields: Field[]): Item {
+function blankItem(fields: (Field | ListField)[]): Item {
   const item: Item = {};
   for (const field of fields) {
-    if (field.type === "switch") item[field.name] = false;
+    if (isListField(field)) item[field.name] = [];
+    else if (field.type === "switch") item[field.name] = false;
     else if (field.type === "number") item[field.name] = 1;
     else if (field.type === "icon") item[field.name] = "Sparkles";
     else if (field.type === "tint" || field.type === "tone") item[field.name] = "rose";
+    else if (field.type === "select") item[field.name] = field.options?.[0]?.value ?? "";
     else item[field.name] = "";
   }
   return item;
@@ -175,18 +177,27 @@ export function ListFieldEditor({
 
               {expanded && (
                 <div className="grid gap-4 border-t p-4 sm:grid-cols-2">
-                  {spec.fields.map((field) => (
-                    <div
-                      key={field.name}
-                      className={cn(field.wide && "sm:col-span-2")}
-                    >
-                      <FieldControl
-                        field={field}
-                        value={item[field.name]}
-                        onChange={(next) => setField(index, field.name, next)}
-                      />
-                    </div>
-                  ))}
+                  {spec.fields.map((field) =>
+                    // A row can itself hold a list — a footer column holds its
+                    // links — so the editor draws itself again one level down.
+                    isListField(field) ? (
+                      <div key={field.name} className="bg-muted/30 rounded-lg p-3 sm:col-span-2">
+                        <ListFieldEditor
+                          spec={field}
+                          value={item[field.name]}
+                          onChange={(next) => setField(index, field.name, next)}
+                        />
+                      </div>
+                    ) : (
+                      <div key={field.name} className={cn(field.wide && "sm:col-span-2")}>
+                        <FieldControl
+                          field={field}
+                          value={item[field.name]}
+                          onChange={(next) => setField(index, field.name, next)}
+                        />
+                      </div>
+                    ),
+                  )}
                 </div>
               )}
             </div>

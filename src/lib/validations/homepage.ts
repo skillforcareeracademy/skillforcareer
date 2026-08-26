@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { ICON_NAMES, TINT_NAMES, TONE_NAMES } from "@/config/icons";
+import { SOCIAL_NAMES, SOCIAL_OPTIONS } from "@/config/social";
+import { siteConfig } from "@/config/site";
 import { CERTIFICATE_TYPES, CERTIFICATE_TYPE_META } from "./certificate";
 
 /**
@@ -51,7 +53,13 @@ export interface ListField {
   itemLabel: string;
   /** Which sub-field titles a collapsed row. */
   titleKey: string;
-  fields: Field[];
+  /**
+   * A row's own fields. A list may hold another list — the footer's link
+   * columns are a list of columns, each holding a list of links — so the editor
+   * recurses. One level of nesting is all any section needs; deeper would stop
+   * being legible in the form.
+   */
+  fields: (Field | ListField)[];
   max: number;
   hint?: string;
 }
@@ -77,6 +85,14 @@ const tint = z.enum(TINT_NAMES as [string, ...string[]]).catch("rose" as never);
 const tone = z.enum(TONE_NAMES as [string, ...string[]]).catch("rose" as never);
 const count = (max: number, fallback: number) =>
   z.coerce.number().int().min(1).max(max).catch(fallback);
+const social = z.enum(SOCIAL_NAMES as [string, ...string[]]).catch("instagram" as never);
+
+/** A navigation entry — used by the header, the footer columns and the legal row. */
+const linkItem = z.object({ label: text(40), href: link(200) });
+const linkFields: Field[] = [
+  { name: "label", label: "Text", type: "text" },
+  { name: "href", label: "Links to", type: "text", placeholder: "/courses" },
+];
 
 // ── Section: hero ────────────────────────────────────────────────────────────
 
@@ -982,6 +998,239 @@ const ctaDefaults: z.infer<typeof ctaSchema> = {
   secondaryHref: "/contact",
 };
 
+// ── Section: header (site-wide) ──────────────────────────────────────────────
+
+const headerSchema = z.object({
+  navLinks: z.array(linkItem).max(8).default([]),
+  showSearch: z.boolean().default(true),
+  showThemeToggle: z.boolean().default(true),
+  signInLabel: text(30),
+  signInHref: link(200),
+  ctaLabel: text(30),
+  ctaHref: link(200),
+});
+
+const headerFields: AnyField[] = [
+  {
+    name: "navLinks",
+    label: "Navigation links",
+    type: "list",
+    itemLabel: "link",
+    titleKey: "label",
+    max: 8,
+    hint: "Shown across the top on desktop, and in the menu on a phone.",
+    fields: linkFields,
+  },
+  {
+    name: "showSearch",
+    label: "Show the course search box",
+    type: "switch",
+    hint: "Searches the live catalogue.",
+  },
+  {
+    name: "showThemeToggle",
+    label: "Show the light/dark switch",
+    type: "switch",
+  },
+  {
+    name: "signInLabel",
+    label: "Sign-in button text",
+    type: "text",
+    hint: "Leave blank to drop the button. Signed-in visitors see their profile menu instead.",
+  },
+  { name: "signInHref", label: "Sign-in button links to", type: "text" },
+  {
+    name: "ctaLabel",
+    label: "Main button text",
+    type: "text",
+    hint: "Leave blank to drop the button.",
+  },
+  { name: "ctaHref", label: "Main button links to", type: "text" },
+];
+
+const headerDefaults: z.infer<typeof headerSchema> = {
+  navLinks: [
+    { label: "Courses", href: "/courses" },
+    { label: "Categories", href: "/#categories" },
+    { label: "Live Classes", href: "/live-classes" },
+    { label: "For Business", href: "/for-business" },
+  ],
+  showSearch: true,
+  showThemeToggle: true,
+  signInLabel: "Sign in",
+  signInHref: "/login",
+  ctaLabel: "Get started",
+  ctaHref: "/register",
+};
+
+// ── Section: footer (site-wide) ──────────────────────────────────────────────
+
+const footerSchema = z.object({
+  about: text(300),
+  offices: z
+    .array(z.object({ label: text(60), line1: text(120), line2: text(120) }))
+    .max(4)
+    .default([]),
+  columns: z
+    .array(z.object({ title: text(40), links: z.array(linkItem).max(8).default([]) }))
+    .max(4)
+    .default([]),
+  contactTitle: text(40),
+  phoneDisplay: text(30),
+  phone: text(30),
+  email: text(120),
+  hours: text(60),
+  socials: z.array(z.object({ platform: social, href: link(200) })).max(8).default([]),
+  copyright: text(160),
+  legalLinks: z.array(linkItem).max(5).default([]),
+});
+
+const footerFields: AnyField[] = [
+  {
+    name: "about",
+    label: "Blurb under the logo",
+    type: "textarea",
+    wide: true,
+    hint: "The logo itself is set in Settings → Branding.",
+  },
+  {
+    name: "offices",
+    label: "Addresses",
+    type: "list",
+    itemLabel: "address",
+    titleKey: "label",
+    max: 4,
+    fields: [
+      { name: "label", label: "Name", type: "text", placeholder: "Faridabad" },
+      { name: "line1", label: "Address line 1", type: "text", wide: true },
+      { name: "line2", label: "Address line 2", type: "text", wide: true },
+    ],
+  },
+  {
+    name: "columns",
+    label: "Link columns",
+    type: "list",
+    itemLabel: "column",
+    titleKey: "title",
+    max: 4,
+    hint: "The middle of the footer. Each column becomes a heading with its links under it.",
+    fields: [
+      { name: "title", label: "Column heading", type: "text", wide: true },
+      {
+        name: "links",
+        label: "Links in this column",
+        type: "list",
+        itemLabel: "link",
+        titleKey: "label",
+        max: 8,
+        fields: linkFields,
+      },
+    ],
+  },
+  { name: "contactTitle", label: "Contact heading", type: "text" },
+  { name: "hours", label: "Opening hours", type: "text" },
+  {
+    name: "phoneDisplay",
+    label: "Phone number, as shown",
+    type: "text",
+    placeholder: "+91 92204 03922",
+  },
+  {
+    name: "phone",
+    label: "Phone number, as dialled",
+    type: "text",
+    hint: "What tapping it calls — no spaces.",
+    placeholder: "+919220403922",
+  },
+  { name: "email", label: "Email address", type: "text", wide: true },
+  {
+    name: "socials",
+    label: "Social links",
+    type: "list",
+    itemLabel: "social link",
+    titleKey: "href",
+    max: 8,
+    hint: "Pick the network and paste your page's address.",
+    fields: [
+      { name: "platform", label: "Network", type: "select", options: SOCIAL_OPTIONS },
+      { name: "href", label: "Address", type: "text" },
+    ],
+  },
+  {
+    name: "copyright",
+    label: "Copyright line",
+    type: "text",
+    wide: true,
+    hint: "Write {year} where the current year should go.",
+  },
+  {
+    name: "legalLinks",
+    label: "Bottom links",
+    type: "list",
+    itemLabel: "link",
+    titleKey: "label",
+    max: 5,
+    hint: "The small print beside the copyright.",
+    fields: linkFields,
+  },
+];
+
+const footerDefaults: z.infer<typeof footerSchema> = {
+  about: siteConfig.description,
+  offices: siteConfig.contact.offices.map((o) => ({
+    label: o.label,
+    line1: o.line1,
+    line2: o.line2,
+  })),
+  columns: [
+    {
+      title: "Categories",
+      links: [
+        { label: "Data Science", href: "/courses?category=data-science" },
+        { label: "AI & Machine Learning", href: "/courses?category=ai-ml" },
+        { label: "Management & MBA", href: "/courses?category=management" },
+        { label: "Software Development", href: "/courses?category=software-development" },
+      ],
+    },
+    {
+      title: "Company",
+      links: [
+        { label: "About us", href: "/about" },
+        { label: "Careers", href: "/careers" },
+        { label: "For Business", href: "/for-business" },
+        { label: "Contact", href: "/contact" },
+      ],
+    },
+    {
+      title: "Resources",
+      links: [
+        { label: "Live classes", href: "/live-classes" },
+        { label: "Webinars", href: "/webinars" },
+        { label: "Browse courses", href: "/courses" },
+        { label: "Verify certificate", href: "/verify" },
+      ],
+    },
+  ],
+  contactTitle: "Get in touch",
+  phoneDisplay: siteConfig.contact.phoneDisplay,
+  phone: siteConfig.contact.phone,
+  email: siteConfig.contact.email,
+  hours: siteConfig.contact.hours,
+  socials: [
+    { platform: "instagram", href: siteConfig.contact.social.instagram },
+    { platform: "youtube", href: siteConfig.contact.social.youtube },
+    { platform: "facebook", href: siteConfig.contact.social.facebook },
+    { platform: "linkedin", href: siteConfig.contact.social.linkedin },
+    { platform: "x", href: siteConfig.contact.social.x },
+  ],
+  copyright: `© {year} ${siteConfig.name}. All rights reserved.`,
+  legalLinks: [
+    { label: "Privacy", href: "/privacy" },
+    { label: "Terms", href: "/terms" },
+    { label: "Cookies", href: "/cookies" },
+  ],
+};
+
 // ── The registry ─────────────────────────────────────────────────────────────
 
 /**
@@ -1102,6 +1351,25 @@ export const HOME_SECTIONS = {
     fields: ctaFields,
     defaults: ctaDefaults,
   },
+  // Appended rather than slotted in at the top: the shipped position doubles as
+  // the fallback `order`, and inserting here would collide with the orders
+  // already stored for the bands above.
+  header: {
+    label: "Header",
+    description: "The bar at the top of every public page — menu, search and buttons.",
+    icon: "Compass",
+    schema: headerSchema,
+    fields: headerFields,
+    defaults: headerDefaults,
+  },
+  footer: {
+    label: "Footer",
+    description: "The foot of every public page — link columns, addresses, contact and socials.",
+    icon: "Building2",
+    schema: footerSchema,
+    fields: footerFields,
+    defaults: footerDefaults,
+  },
 } as const;
 
 export type HomeSectionKey = keyof typeof HOME_SECTIONS;
@@ -1122,10 +1390,22 @@ export function isHomeSectionKey(value: string): value is HomeSectionKey {
  * they are still homepage furniture — but reordering them means nothing, and
  * switching one off hides it site-wide.
  */
-export const GLOBAL_SECTION_KEYS: HomeSectionKey[] = ["cta"];
+export const GLOBAL_SECTION_KEYS: HomeSectionKey[] = ["header", "cta", "footer"];
 
 export function isGlobalSection(key: HomeSectionKey): boolean {
   return GLOBAL_SECTION_KEYS.includes(key);
+}
+
+/**
+ * Sections that may be edited but not switched off. A site with no header has
+ * no navigation and no way back to the homepage, and one with no footer loses
+ * its address, phone number and legal links — neither is a state an admin can
+ * usefully choose, and both are a long way from Admin → Homepage to undo.
+ */
+export const ALWAYS_ON_KEYS: HomeSectionKey[] = ["header", "footer"];
+
+export function isAlwaysOn(key: HomeSectionKey): boolean {
+  return ALWAYS_ON_KEYS.includes(key);
 }
 
 /**
