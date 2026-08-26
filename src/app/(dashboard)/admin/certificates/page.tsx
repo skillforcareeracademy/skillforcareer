@@ -6,6 +6,8 @@ import {
   certificateStats,
   listUsersForSelect,
   listCoursesForSelect,
+  listBatchesForSelect,
+  listInstructorsForSelect,
 } from "@/server/services/certificate-service";
 import { CertificatesClient } from "@/components/admin/certificates/certificates-client";
 
@@ -31,12 +33,15 @@ export default async function CertificatesPage({
     type: str(sp.type),
   };
 
-  const [{ certificates, total }, stats, users, courses] = await Promise.all([
-    listCertificatesAdmin(query),
-    certificateStats(),
-    listUsersForSelect(),
-    listCoursesForSelect(),
-  ]);
+  const [{ certificates, total }, stats, users, courses, batches, instructors] =
+    await Promise.all([
+      listCertificatesAdmin(query),
+      certificateStats(),
+      listUsersForSelect(),
+      listCoursesForSelect(),
+      listBatchesForSelect(),
+      listInstructorsForSelect(),
+    ]);
 
   return (
     <CertificatesClient
@@ -46,6 +51,8 @@ export default async function CertificatesPage({
       stats={stats}
       users={users}
       courses={courses}
+      batches={batches}
+      instructors={instructors}
     />
   );
 }

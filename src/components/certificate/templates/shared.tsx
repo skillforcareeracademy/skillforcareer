@@ -21,8 +21,15 @@ export interface CertificateChrome {
   /** Inline SVG for the verification QR, already sized to fill its box. */
   qrSvg: string;
   verifyUrl: string;
-  left: { name: string; title: string };
-  right: { name: string; title: string };
+  left: Signatory;
+  right: Signatory;
+}
+
+export interface Signatory {
+  name: string;
+  title: string;
+  /** A scan of the real signature; blank means write the name in a hand. */
+  signatureUrl: string;
 }
 
 export interface TemplateProps {
@@ -85,16 +92,15 @@ export function CertificateSheet({
  * beneath, and repeating the name in both places just looked like a bug.
  */
 export function Signature({
-  name,
-  title,
+  signatory,
   tone = "dark",
   script = true,
 }: {
-  name: string;
-  title: string;
+  signatory: Signatory;
   tone?: "dark" | "light" | "navy";
   script?: boolean;
 }) {
+  const { name, title, signatureUrl } = signatory;
   const line =
     tone === "light" ? "bg-white/60" : tone === "navy" ? "bg-[#2c3e70]/40" : "bg-neutral-500";
   const text = tone === "light" ? "text-white" : "text-neutral-800";
@@ -102,15 +108,26 @@ export function Signature({
 
   return (
     <div className="text-center">
-      {script && (
-        <p
-          className={cn(
-            "mb-[0.5cqw] font-[family-name:var(--font-cert-script)] text-[3.4cqw] leading-none whitespace-nowrap",
-            text,
-          )}
-        >
-          {name}
-        </p>
+      {signatureUrl ? (
+        // The real signature, wherever one has been uploaded — every design
+        // uses it, including the sample on the homepage.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={signatureUrl}
+          alt=""
+          className="mx-auto mb-[0.4cqw] h-[4cqw] w-auto max-w-[16cqw] object-contain object-bottom"
+        />
+      ) : (
+        script && (
+          <p
+            className={cn(
+              "mb-[0.5cqw] font-[family-name:var(--font-cert-script)] text-[3.4cqw] leading-none whitespace-nowrap",
+              text,
+            )}
+          >
+            {name}
+          </p>
+        )
       )}
       <div className={cn("mx-auto h-px w-[17cqw]", line)} />
       <p

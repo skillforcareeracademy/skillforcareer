@@ -98,8 +98,16 @@ export async function CertificateDocument({
     siteName,
     qrSvg,
     verifyUrl,
-    left: { name: settings.certLeftName, title: settings.certLeftTitle },
-    right: { name: settings.certRightName, title: settings.certRightTitle },
+    left: {
+      name: settings.certLeftName,
+      title: settings.certLeftTitle,
+      signatureUrl: settings.certLeftSignatureUrl,
+    },
+    right: {
+      name: settings.certRightName,
+      title: settings.certRightTitle,
+      signatureUrl: settings.certRightSignatureUrl,
+    },
   };
 
   const Template = TEMPLATES[type];

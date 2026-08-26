@@ -125,8 +125,8 @@ export function InternshipAppreciationCertificate({ cert, chrome }: TemplateProp
         {/* Above the bottom wash, not on it — dark ink on a deep blue wash is
             the one thing a printed certificate cannot afford. */}
         <div className="mt-auto mb-[12cqw] flex w-full items-end justify-center gap-[14cqw]">
-          <Signature name={chrome.left.name} title={chrome.left.title} script={false} />
-          <Signature name={chrome.right.name} title={chrome.right.title} script={false} />
+          <Signature signatory={chrome.left} script={false} />
+          <Signature signatory={chrome.right} script={false} />
         </div>
       </div>
 

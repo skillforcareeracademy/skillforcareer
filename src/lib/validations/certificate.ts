@@ -35,12 +35,16 @@ export interface CertificateTypeMeta {
 
 export type CertificateFieldName =
   | "batchName"
+  | "courseStartDate"
+  | "courseEndDate"
+  | "instructorName"
   | "programArea"
   | "organisation"
   | "startDate"
   | "endDate"
   | "period"
-  | "citation";
+  | "citation"
+  | "internalNote";
 
 export const CERTIFICATE_TYPE_META: Record<CertificateType, CertificateTypeMeta> = {
   COURSE_COMPLETION: {
@@ -48,41 +52,76 @@ export const CERTIFICATE_TYPE_META: Record<CertificateType, CertificateTypeMeta>
     heading: "Certificate of Excellence",
     description: "The classic award — course, batch and date, with a scannable verification code.",
     needsCourse: true,
-    fields: ["batchName"],
+    fields: [
+      "batchName",
+      "courseStartDate",
+      "courseEndDate",
+      "instructorName",
+      "internalNote",
+    ],
   },
   INTERNSHIP_COMPLETION: {
     label: "Internship completion",
     heading: "Certificate of Completion",
     description: "For a finished internship — names the work area and the dates served.",
     needsCourse: false,
-    fields: ["programArea", "organisation", "startDate", "endDate", "citation"],
+    fields: [
+      "programArea",
+      "organisation",
+      "startDate",
+      "endDate",
+      "citation",
+      "internalNote",
+    ],
   },
   APPRECIATION: {
     label: "Learner appreciation",
     heading: "Certificate of Appreciation",
     description: "Recognises the learner rather than a syllabus. No course required.",
     needsCourse: false,
-    fields: ["citation"],
+    fields: ["citation", "internalNote"],
   },
   INTERNSHIP_APPRECIATION: {
     label: "Internship appreciation",
     heading: "Certificate of Internship",
     description: "A period award — “for outstanding performance in the month of…”.",
     needsCourse: false,
-    fields: ["period", "organisation", "citation"],
+    fields: ["period", "organisation", "citation", "internalNote"],
   },
 };
 
 /** Label and placeholder for each extra field, so the form needs no per-type code. */
 export const CERTIFICATE_FIELD_META: Record<
   CertificateFieldName,
-  { label: string; placeholder: string; type: "text" | "textarea" | "date"; hint?: string }
+  {
+    label: string;
+    placeholder: string;
+    type: "text" | "textarea" | "date" | "batch" | "instructor";
+    hint?: string;
+    /** Recorded for the academy, never printed on the certificate. */
+    internal?: boolean;
+  }
 > = {
   batchName: {
     label: "Batch",
     placeholder: "Web Development Batch 1",
-    type: "text",
-    hint: "Printed under the course. Leave blank to hide the line.",
+    type: "batch",
+    hint: "Pick a batch, or type one that isn't on the list. Printed under the course.",
+  },
+  courseStartDate: { label: "Course start date", placeholder: "", type: "date" },
+  courseEndDate: { label: "Course completion date", placeholder: "", type: "date" },
+  instructorName: {
+    label: "Instructor",
+    placeholder: "Choose or type a name",
+    type: "instructor",
+    hint: "Printed as the trainer. Fills in from the batch where it has one.",
+  },
+  internalNote: {
+    label: "Internal note",
+    placeholder: "Only the academy sees this…",
+    type: "textarea",
+    internal: true,
+    hint: "Kept on the record for your team. Never printed on the certificate.",
   },
   programArea: {
     label: "Work area",
@@ -122,6 +161,10 @@ const isoDay = z
 /** The per-design copy stored on `Certificate.metadata`. */
 export const certificateDetailsSchema = z.object({
   batchName: text(120),
+  courseStartDate: isoDay,
+  courseEndDate: isoDay,
+  instructorName: text(120),
+  internalNote: text(1200),
   programArea: text(120),
   organisation: text(120),
   startDate: isoDay,
@@ -163,6 +206,10 @@ export function parseCertificateDetails(stored: unknown): CertificateDetails {
     ? parsed.data
     : {
         batchName: "",
+        courseStartDate: "",
+        courseEndDate: "",
+        instructorName: "",
+        internalNote: "",
         programArea: "",
         organisation: "",
         startDate: "",

@@ -58,8 +58,11 @@ export const settingsSchema = z.object({
   // once here rather than being retyped on each certificate.
   certLeftName: z.string().trim().max(80),
   certLeftTitle: z.string().trim().max(60),
+  /// A scan of the real signature. Blank falls back to the name in a hand.
+  certLeftSignatureUrl: z.string().trim().max(500),
   certRightName: z.string().trim().max(80),
   certRightTitle: z.string().trim().max(60),
+  certRightSignatureUrl: z.string().trim().max(500),
 
   // ── Social links ─────────────────────────────────────────────────────────
   socialWebsite: optionalUrl,
@@ -106,8 +109,10 @@ export const DEFAULT_SETTINGS: Settings = {
   // The client's own signatories, from the certificates they already issue.
   certLeftName: "Sahil Bhatia",
   certLeftTitle: "Director",
+  certLeftSignatureUrl: "",
   certRightName: "Amisha Chauhan",
   certRightTitle: "Program Manager",
+  certRightSignatureUrl: "",
 
   socialWebsite: "",
   socialLinkedin: "",

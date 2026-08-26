@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { notify } from "./notification-service";
 import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
+import { ROLES } from "@/config/roles";
 import {
   CERTIFICATE_TYPE_META,
   parseCertificateDetails,
@@ -102,6 +103,7 @@ export async function listCertificatesAdmin(q: CertificateListQuery) {
       studentAvatar: c.user.avatarUrl,
       courseId: c.courseId,
       courseTitle: c.course?.title ?? null,
+      internalNote: parseCertificateDetails(c.metadata).internalNote || null,
       issuedAt: c.issuedAt.toISOString(),
     })),
   };
@@ -197,6 +199,44 @@ export async function listUsersForSelect() {
 
 export async function listCoursesForSelect() {
   return prisma.course.findMany({ select: { id: true, title: true }, orderBy: { title: "asc" } });
+}
+
+export interface BatchOption {
+  name: string;
+  courseId: string;
+  instructorName: string | null;
+}
+
+/**
+ * Batches the issue form offers, each carrying the course it belongs to and who
+ * teaches it — so picking a batch can narrow the list and fill the trainer in.
+ */
+export async function listBatchesForSelect(): Promise<BatchOption[]> {
+  const rows = await prisma.batch.findMany({
+    orderBy: [{ startDate: "desc" }, { name: "asc" }],
+    take: 300,
+    select: {
+      name: true,
+      courseId: true,
+      instructor: { select: { name: true } },
+    },
+  });
+  return rows.map((b) => ({
+    name: b.name,
+    courseId: b.courseId,
+    instructorName: b.instructor?.name ?? null,
+  }));
+}
+
+/** Names offered for "Instructor" — free text is still allowed alongside. */
+export async function listInstructorsForSelect(): Promise<string[]> {
+  const rows = await prisma.user.findMany({
+    where: { role: { slug: { in: [ROLES.INSTRUCTOR, ROLES.ADMIN, ROLES.SUPER_ADMIN] } } },
+    select: { name: true },
+    orderBy: { name: "asc" },
+    take: 300,
+  });
+  return rows.map((r) => r.name);
 }
 
 // ── Writes ───────────────────────────────────────────────────────────────────

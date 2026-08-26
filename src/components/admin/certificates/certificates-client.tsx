@@ -71,6 +71,7 @@ import {
   CertificateDetailSheet,
   type CertRow,
 } from "@/components/admin/certificates/certificate-detail-sheet";
+import type { BatchOption } from "@/server/services/certificate-service";
 
 interface Stats {
   total: number;
@@ -97,6 +98,8 @@ interface CourseOpt {
 }
 
 const ALL = "all";
+const DATALIST_BATCHES = "cert-batch-options";
+const DATALIST_INSTRUCTORS = "cert-instructor-options";
 
 function initials(name: string): string {
   return name.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase();
@@ -109,6 +112,8 @@ export function CertificatesClient({
   stats,
   users,
   courses,
+  batches = [],
+  instructors = [],
   canManage = true,
   title = "Certificates",
   description = "Issue, verify and manage course completion certificates.",
@@ -119,6 +124,8 @@ export function CertificatesClient({
   stats: Stats;
   users: UserOpt[];
   courses: CourseOpt[];
+  batches?: BatchOption[];
+  instructors?: string[];
   /** Instructors get a read-only view (no issue/revoke/delete). */
   canManage?: boolean;
   title?: string;
@@ -340,6 +347,28 @@ export function CertificatesClient({
         </div>
       </div>
     );
+  }
+
+  // Batches for the course in hand, so the dropdown offers the ones that could
+  // actually apply; with no course chosen yet, offer them all.
+  const batchesForCourse = newCourse
+    ? batches.filter((b) => b.courseId === newCourse)
+    : batches;
+
+  /**
+   * Choosing a known batch fills the trainer in — it is the one person the
+   * batch already knows. Typing a batch that isn't on the list leaves whatever
+   * instructor was set alone.
+   */
+  function pickBatch(name: string) {
+    setNewDetails((prev) => {
+      const match = batches.find((b) => b.name === name);
+      return {
+        ...prev,
+        batchName: name,
+        ...(match?.instructorName ? { instructorName: match.instructorName } : {}),
+      };
+    });
   }
 
   // A course-completion award needs a course; the other three don't have one.
@@ -599,12 +628,24 @@ export function CertificatesClient({
                         onChange={(e) => set(e.target.value)}
                       />
                     ) : (
+                      // A native datalist rather than a Select: the client asked
+                      // to pick from the list *or* type one that isn't on it, and
+                      // that is exactly what a datalist-backed input does.
                       <Input
                         id={id}
                         type={meta.type === "date" ? "date" : "text"}
+                        list={
+                          meta.type === "batch"
+                            ? DATALIST_BATCHES
+                            : meta.type === "instructor"
+                              ? DATALIST_INSTRUCTORS
+                              : undefined
+                        }
                         value={value}
                         placeholder={meta.placeholder}
-                        onChange={(e) => set(e.target.value)}
+                        onChange={(e) =>
+                          meta.type === "batch" ? pickBatch(e.target.value) : set(e.target.value)
+                        }
                       />
                     )}
                     {meta.hint && (
@@ -614,6 +655,17 @@ export function CertificatesClient({
                 );
               })}
             </div>
+
+            <datalist id={DATALIST_BATCHES}>
+              {batchesForCourse.map((b) => (
+                <option key={b.name} value={b.name} />
+              ))}
+            </datalist>
+            <datalist id={DATALIST_INSTRUCTORS}>
+              {instructors.map((name) => (
+                <option key={name} value={name} />
+              ))}
+            </datalist>
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setIssueOpen(false)}>

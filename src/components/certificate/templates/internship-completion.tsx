@@ -168,8 +168,8 @@ export function InternshipCompletionCertificate({ cert, chrome }: TemplateProps)
         </div>
 
         <div className="flex items-end justify-between gap-[6cqw] pt-[2cqw]">
-          <Signature name={chrome.left.name} title={chrome.left.title} script={false} />
-          <Signature name={chrome.right.name} title={chrome.right.title} script={false} />
+          <Signature signatory={chrome.left} script={false} />
+          <Signature signatory={chrome.right} script={false} />
         </div>
       </div>
 

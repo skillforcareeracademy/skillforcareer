@@ -8,7 +8,7 @@ import {
   type CertificateType,
 } from "@/lib/validations/certificate";
 import { toast } from "sonner";
-import { GraduationCap, Copy, Check, Ban, RotateCcw, Trash2, ExternalLink } from "lucide-react";
+import { GraduationCap, Copy, Check, Ban, RotateCcw, Trash2, ExternalLink, Lock } from "lucide-react";
 import { api, ApiError } from "@/lib/api-client";
 import {
   Sheet,
@@ -33,6 +33,8 @@ export interface CertRow {
   courseId: string | null;
   courseTitle: string | null;
   issuedAt: string;
+  /** Staff-only; never printed. */
+  internalNote: string | null;
 }
 
 export function CertificateDetailSheet({
@@ -151,11 +153,28 @@ export function CertificateDetailSheet({
             <Row label="Verification code" value={cert.verificationCode} mono />
           </dl>
 
+          {cert.internalNote && (
+            <div className="bg-muted/40 space-y-1 rounded-xl border p-3">
+              <p className="flex items-center gap-1.5 text-xs font-medium">
+                <Lock className="size-3.5" /> Internal note
+              </p>
+              {/* Recorded for the academy only — it is never printed on the
+                  certificate and never reaches the learner. */}
+              <p className="text-muted-foreground text-sm whitespace-pre-line">
+                {cert.internalNote}
+              </p>
+            </div>
+          )}
+
           {/* Verify link */}
           <div className="rounded-xl border p-3">
             <p className="mb-2 text-sm font-medium">Public verification</p>
             <div className="flex items-center gap-2">
-              <code className="bg-muted flex-1 truncate rounded-md px-2.5 py-1.5 text-xs">{verifyUrl}</code>
+              {/* `min-w-0`, or the flex item refuses to shrink below the URL and
+                  `truncate` never gets a chance to act. */}
+              <code className="bg-muted min-w-0 flex-1 truncate rounded-md px-2.5 py-1.5 text-xs">
+                {verifyUrl}
+              </code>
               <Button type="button" variant="outline" size="sm" onClick={copyLink}>
                 {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
               </Button>

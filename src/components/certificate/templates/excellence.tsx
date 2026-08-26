@@ -17,6 +17,12 @@ import {
 export function ExcellenceCertificate({ cert, chrome }: TemplateProps) {
   const revoked = cert.status === "REVOKED";
 
+  // When the academy has recorded when the course ran, the certificate says so —
+  // an employer reading it wants the dates, not just the day it was printed.
+  const from = longDate(cert.details.courseStartDate);
+  const to = longDate(cert.details.courseEndDate);
+  const courseRun = from && to ? `Course held ${from} – ${to}` : from ? `Course began ${from}` : "";
+
   return (
     <CertificateSheet className="bg-white text-neutral-900">
       {/* The double frame: a heavy magenta edge with a fine navy keyline inside. */}
@@ -59,22 +65,27 @@ export function ExcellenceCertificate({ cert, chrome }: TemplateProps) {
           {cert.details.batchName && (
             <p className="mt-[0.8cqw] text-[1.5cqw] text-neutral-500 italic">
               Batch: {cert.details.batchName}
+              {cert.details.instructorName ? ` · Trainer: ${cert.details.instructorName}` : ""}
             </p>
           )}
 
-          <p className="mt-[1.6cqw] text-[1.4cqw] text-neutral-600">
+          {courseRun && (
+            <p className="mt-[0.5cqw] text-[1.35cqw] text-neutral-500">{courseRun}</p>
+          )}
+
+          <p className="mt-[1.4cqw] text-[1.4cqw] text-neutral-600">
             Awarded on {longDate(cert.issuedAt)}
           </p>
         </div>
 
         <div className="relative flex items-end justify-between">
-          <Signature name={chrome.left.name} title={chrome.left.title} />
+          <Signature signatory={chrome.left} />
           {/* Centred on the foot, between the two signatures, exactly as on the
               academy's existing certificate. */}
           <p className="absolute inset-x-0 bottom-0 text-center text-[1.3cqw] font-bold">
             Certificate Code: {cert.verificationCode}
           </p>
-          <Signature name={chrome.right.name} title={chrome.right.title} />
+          <Signature signatory={chrome.right} />
         </div>
       </div>
 

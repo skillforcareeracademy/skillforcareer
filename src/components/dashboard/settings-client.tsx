@@ -437,6 +437,17 @@ export function SettingsClient({ data }: { data: SettingsWithMeta }) {
                   onChange={(e) => set("certLeftTitle", e.target.value)}
                 />
               </Field>
+              <Field
+                label="Signature image"
+                hint="A scan or PNG of the real signature, ideally on a transparent background. Leave it out and the name is written in a hand instead."
+              >
+                <ImageUpload
+                  value={form.certLeftSignatureUrl}
+                  onChange={(url) => set("certLeftSignatureUrl", url)}
+                  label="signature"
+                  previewClassName="h-12 w-28"
+                />
+              </Field>
               <Field label="Right signatory" htmlFor="cert-right-name">
                 <Input
                   id="cert-right-name"
@@ -451,8 +462,18 @@ export function SettingsClient({ data }: { data: SettingsWithMeta }) {
                   onChange={(e) => set("certRightTitle", e.target.value)}
                 />
               </Field>
+              <Field label="Signature image" hint="Same again for the second signatory.">
+                <ImageUpload
+                  value={form.certRightSignatureUrl}
+                  onChange={(url) => set("certRightSignatureUrl", url)}
+                  label="signature"
+                  previewClassName="h-12 w-28"
+                />
+              </Field>
               <p className="text-muted-foreground text-xs sm:col-span-2">
-                The logo on every certificate comes from Branding, above.
+                These sign every certificate the academy issues — the learners&apos;
+                real ones and the sample on the homepage alike. The logo comes
+                from Branding, above.
               </p>
             </CardContent>
           </Card>
