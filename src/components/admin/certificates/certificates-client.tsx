@@ -45,6 +45,7 @@ import {
 } from "@/components/ui/select";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -102,7 +103,12 @@ const DATALIST_BATCHES = "cert-batch-options";
 const DATALIST_INSTRUCTORS = "cert-instructor-options";
 
 function initials(name: string): string {
-  return name.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase();
+  return name
+    .split(" ")
+    .map((p) => p[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
 }
 
 export function CertificatesClient({
@@ -163,7 +169,8 @@ export function CertificatesClient({
       if (merged.course) p.set("course", String(merged.course));
       if (merged.status) p.set("status", String(merged.status));
       if (merged.type) p.set("type", String(merged.type));
-      if (merged.page && Number(merged.page) > 1) p.set("page", String(merged.page));
+      if (merged.page && Number(merged.page) > 1)
+        p.set("page", String(merged.page));
       const qs = p.toString();
       router.push(qs ? `${pathname}?${qs}` : pathname);
     },
@@ -188,7 +195,10 @@ export function CertificatesClient({
       // Only the fields this design prints are sent; the API stores exactly
       // what it is given, so posting the rest would bury dead copy in the row.
       const extras = Object.fromEntries(
-        CERTIFICATE_TYPE_META[newType].fields.map((f) => [f, newDetails[f] ?? ""]),
+        CERTIFICATE_TYPE_META[newType].fields.map((f) => [
+          f,
+          newDetails[f] ?? "",
+        ]),
       );
       await api.post("/api/certificates", {
         userId: newUser,
@@ -203,7 +213,9 @@ export function CertificatesClient({
       setNewDetails({});
       router.refresh();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Couldn't issue certificate.");
+      toast.error(
+        err instanceof ApiError ? err.message : "Couldn't issue certificate.",
+      );
     } finally {
       setIssuing(false);
     }
@@ -232,19 +244,45 @@ export function CertificatesClient({
   }
 
   const statCards = [
-    { label: "Certificates", value: stats.total, icon: Award, tone: "text-rose-500" },
-    { label: "Active", value: stats.active, icon: BadgeCheck, tone: "text-emerald-500" },
-    { label: "Revoked", value: stats.revoked, icon: Ban, tone: "text-amber-500" },
-    { label: "Recipients", value: stats.recipients, icon: Users, tone: "text-violet-500" },
+    {
+      label: "Certificates",
+      value: stats.total,
+      icon: Award,
+      tone: "text-rose-500",
+    },
+    {
+      label: "Active",
+      value: stats.active,
+      icon: BadgeCheck,
+      tone: "text-emerald-500",
+    },
+    {
+      label: "Revoked",
+      value: stats.revoked,
+      icon: Ban,
+      tone: "text-amber-500",
+    },
+    {
+      label: "Recipients",
+      value: stats.recipients,
+      icon: Users,
+      tone: "text-violet-500",
+    },
   ];
 
   function statusBadge(c: CertRow) {
     return c.status === "REVOKED" ? (
-      <Badge variant="secondary" className="bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300">
+      <Badge
+        variant="secondary"
+        className="bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300"
+      >
         Revoked
       </Badge>
     ) : (
-      <Badge variant="secondary" className="bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
+      <Badge
+        variant="secondary"
+        className="bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
+      >
         Issued
       </Badge>
     );
@@ -253,7 +291,10 @@ export function CertificatesClient({
   function rowActions(c: CertRow) {
     return (
       <DropdownMenu>
-        <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" />} aria-label="Actions">
+        <DropdownMenuTrigger
+          render={<Button variant="ghost" size="icon-sm" />}
+          aria-label="Actions"
+        >
           <MoreHorizontal className="size-4" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
@@ -290,13 +331,18 @@ export function CertificatesClient({
       cell: (c) => (
         <div className="flex min-w-0 items-center gap-3">
           <Avatar className="size-8 shrink-0">
-            {c.studentAvatar && <AvatarImage src={c.studentAvatar} alt={c.studentName} />}
-            <AvatarFallback className="text-xs">{initials(c.studentName)}</AvatarFallback>
+            {c.studentAvatar && (
+              <AvatarImage src={c.studentAvatar} alt={c.studentName} />
+            )}
+            <AvatarFallback className="text-xs">
+              {initials(c.studentName)}
+            </AvatarFallback>
           </Avatar>
           <div className="min-w-0">
             <p className="truncate font-medium">{c.studentName}</p>
             <p className="text-muted-foreground truncate text-xs">
-              {c.courseTitle ?? CERTIFICATE_TYPE_META[c.type as CertificateType]?.label}
+              {c.courseTitle ??
+                CERTIFICATE_TYPE_META[c.type as CertificateType]?.label}
             </p>
           </div>
         </div>
@@ -312,7 +358,9 @@ export function CertificatesClient({
       key: "issued",
       header: "Issued",
       cell: (c) => (
-        <span className="text-sm whitespace-nowrap">{format(new Date(c.issuedAt), "d MMM yyyy")}</span>
+        <span className="text-sm whitespace-nowrap">
+          {format(new Date(c.issuedAt), "d MMM yyyy")}
+        </span>
       ),
     },
     {
@@ -327,22 +375,33 @@ export function CertificatesClient({
     return (
       <div className="rounded-xl border p-4">
         <div className="flex items-start justify-between gap-2">
-          <button type="button" onClick={() => setDetail(c)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+          <button
+            type="button"
+            onClick={() => setDetail(c)}
+            className="flex min-w-0 flex-1 items-center gap-3 text-left"
+          >
             <Avatar className="size-9 shrink-0">
-              {c.studentAvatar && <AvatarImage src={c.studentAvatar} alt={c.studentName} />}
-              <AvatarFallback className="text-xs">{initials(c.studentName)}</AvatarFallback>
+              {c.studentAvatar && (
+                <AvatarImage src={c.studentAvatar} alt={c.studentName} />
+              )}
+              <AvatarFallback className="text-xs">
+                {initials(c.studentName)}
+              </AvatarFallback>
             </Avatar>
             <div className="min-w-0">
               <p className="truncate font-medium">{c.studentName}</p>
               <p className="text-muted-foreground truncate text-xs">
-                {c.courseTitle ?? CERTIFICATE_TYPE_META[c.type as CertificateType]?.label}
+                {c.courseTitle ??
+                  CERTIFICATE_TYPE_META[c.type as CertificateType]?.label}
               </p>
             </div>
           </button>
           {rowActions(c)}
         </div>
         <div className="mt-2 flex items-center justify-between gap-2">
-          <span className="text-muted-foreground font-mono text-xs">{c.serialNumber}</span>
+          <span className="text-muted-foreground font-mono text-xs">
+            {c.serialNumber}
+          </span>
           {statusBadge(c)}
         </div>
       </div>
@@ -366,7 +425,9 @@ export function CertificatesClient({
       return {
         ...prev,
         batchName: name,
-        ...(match?.instructorName ? { instructorName: match.instructorName } : {}),
+        ...(match?.instructorName
+          ? { instructorName: match.instructorName }
+          : {}),
       };
     });
   }
@@ -399,10 +460,12 @@ export function CertificatesClient({
                 <s.icon className={`size-5 ${s.tone}`} />
               </div>
               <div className="min-w-0">
-                <p className="text-2xl font-semibold leading-none tabular-nums">
+                <p className="text-2xl leading-none font-semibold tabular-nums">
                   {s.value.toLocaleString("en-IN")}
                 </p>
-                <p className="text-muted-foreground mt-1 truncate text-xs">{s.label}</p>
+                <p className="text-muted-foreground mt-1 truncate text-xs">
+                  {s.label}
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -415,9 +478,13 @@ export function CertificatesClient({
         rowKey={(c) => c.id}
         renderCard={renderCard}
         emptyIcon={Award}
-        emptyTitle={hasFilters ? "No matching certificates" : "No certificates yet"}
+        emptyTitle={
+          hasFilters ? "No matching certificates" : "No certificates yet"
+        }
         emptyDescription={
-          hasFilters ? "Try adjusting your search or filters." : "Issue your first certificate to get started."
+          hasFilters
+            ? "Try adjusting your search or filters."
+            : "Issue your first certificate to get started."
         }
         toolbar={
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -437,14 +504,17 @@ export function CertificatesClient({
             <div className="flex gap-2">
               <Select
                 value={query.type ?? ALL}
-                onValueChange={(v) => setParams({ type: !v || v === ALL ? undefined : v, page: 1 })}
+                onValueChange={(v) =>
+                  setParams({ type: !v || v === ALL ? undefined : v, page: 1 })
+                }
               >
                 <SelectTrigger className="flex-1 sm:w-44">
                   <SelectValue>
                     {(v) =>
                       !v || v === ALL
                         ? "All awards"
-                        : (CERTIFICATE_TYPE_META[v as CertificateType]?.label ?? String(v))
+                        : (CERTIFICATE_TYPE_META[v as CertificateType]?.label ??
+                          String(v))
                     }
                   </SelectValue>
                 </SelectTrigger>
@@ -459,11 +529,20 @@ export function CertificatesClient({
               </Select>
               <Select
                 value={query.status ?? ALL}
-                onValueChange={(v) => setParams({ status: !v || v === ALL ? undefined : v, page: 1 })}
+                onValueChange={(v) =>
+                  setParams({
+                    status: !v || v === ALL ? undefined : v,
+                    page: 1,
+                  })
+                }
               >
                 <SelectTrigger className="flex-1 sm:w-36">
                   <SelectValue>
-                    {(v) => (!v || v === ALL ? "All statuses" : CERTIFICATE_STATUS_LABEL[String(v)])}
+                    {(v) =>
+                      !v || v === ALL
+                        ? "All statuses"
+                        : CERTIFICATE_STATUS_LABEL[String(v)]
+                    }
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
@@ -477,7 +556,12 @@ export function CertificatesClient({
               </Select>
               <Select
                 value={query.courseId ?? ALL}
-                onValueChange={(v) => setParams({ course: !v || v === ALL ? undefined : v, page: 1 })}
+                onValueChange={(v) =>
+                  setParams({
+                    course: !v || v === ALL ? undefined : v,
+                    page: 1,
+                  })
+                }
               >
                 <SelectTrigger className="flex-1 sm:w-48">
                   <SelectValue>
@@ -498,7 +582,12 @@ export function CertificatesClient({
                 </SelectContent>
               </Select>
               {hasFilters && (
-                <Button variant="ghost" size="sm" onClick={clearFilters} className="text-muted-foreground">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearFilters}
+                  className="text-muted-foreground"
+                >
                   <X className="size-4" /> Clear
                 </Button>
               )}
@@ -511,13 +600,23 @@ export function CertificatesClient({
               {total} {total === 1 ? "certificate" : "certificates"}
             </p>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" disabled={query.page <= 1} onClick={() => setParams({ page: query.page - 1 })}>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={query.page <= 1}
+                onClick={() => setParams({ page: query.page - 1 })}
+              >
                 Previous
               </Button>
               <span className="text-muted-foreground text-sm">
                 Page {query.page} of {totalPages}
               </span>
-              <Button variant="outline" size="sm" disabled={query.page >= totalPages} onClick={() => setParams({ page: query.page + 1 })}>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={query.page >= totalPages}
+                onClick={() => setParams({ page: query.page + 1 })}
+              >
                 Next
               </Button>
             </div>
@@ -534,141 +633,169 @@ export function CertificatesClient({
               Pick the award — each one prints in its own design.
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={onIssue} className="space-y-4">
-            <div className="space-y-1.5">
-              <Label>Award</Label>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {CERTIFICATE_TYPES.map((t) => {
-                  const meta = CERTIFICATE_TYPE_META[t];
-                  const active = newType === t;
-                  return (
-                    <button
-                      key={t}
-                      type="button"
-                      onClick={() => setNewType(t)}
-                      aria-pressed={active}
-                      className={cn(
-                        "rounded-lg border p-3 text-left transition-colors",
-                        active
-                          ? "border-primary/50 bg-primary/5"
-                          : "hover:bg-muted/50",
-                      )}
-                    >
-                      <p className="text-sm font-medium">{meta.label}</p>
-                      <p className="text-muted-foreground mt-0.5 text-xs leading-snug">
-                        {meta.description}
-                      </p>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label>Learner</Label>
-              <Select value={newUser} onValueChange={(v) => setNewUser(v ?? "")}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Choose a learner">
-                    {(v) => users.find((u) => u.id === v)?.name ?? "Choose a learner"}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {users.map((u) => (
-                    <SelectItem key={u.id} value={u.id}>
-                      {u.name} · {u.email}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            {CERTIFICATE_TYPE_META[newType].needsCourse && (
+          {/* The award picker plus every field its design needs is a long form —
+              taller than a laptop viewport once "Course certificate" is chosen.
+              The fields scroll; the heading and the Issue button stay put. */}
+          <form
+            onSubmit={onIssue}
+            className="flex min-h-0 flex-1 flex-col gap-4"
+          >
+            <DialogBody className="space-y-4">
               <div className="space-y-1.5">
-                <Label>Course</Label>
-                <Select value={newCourse} onValueChange={(v) => setNewCourse(v ?? "")}>
+                <Label>Award</Label>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {CERTIFICATE_TYPES.map((t) => {
+                    const meta = CERTIFICATE_TYPE_META[t];
+                    const active = newType === t;
+                    return (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => setNewType(t)}
+                        aria-pressed={active}
+                        className={cn(
+                          "rounded-lg border p-3 text-left transition-colors",
+                          active
+                            ? "border-primary/50 bg-primary/5"
+                            : "hover:bg-muted/50",
+                        )}
+                      >
+                        <p className="text-sm font-medium">{meta.label}</p>
+                        <p className="text-muted-foreground mt-0.5 text-xs leading-snug">
+                          {meta.description}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Learner</Label>
+                <Select
+                  value={newUser}
+                  onValueChange={(v) => setNewUser(v ?? "")}
+                >
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Choose a course">
-                      {(v) => courses.find((c) => c.id === v)?.title ?? "Choose a course"}
+                    <SelectValue placeholder="Choose a learner">
+                      {(v) =>
+                        users.find((u) => u.id === v)?.name ??
+                        "Choose a learner"
+                      }
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    {courses.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.title}
+                    {users.map((u) => (
+                      <SelectItem key={u.id} value={u.id}>
+                        {u.name} · {u.email}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
-            )}
-
-            {/* Only what this design actually prints — driven by the type's own
-                field list, so a new award needs no new form code. */}
-            <div className="grid gap-3 sm:grid-cols-2">
-              {CERTIFICATE_TYPE_META[newType].fields.map((field) => {
-                const meta = CERTIFICATE_FIELD_META[field];
-                const id = `cert-${field}`;
-                const value = newDetails[field] ?? "";
-                const set = (v: string) =>
-                  setNewDetails((prev) => ({ ...prev, [field]: v }));
-                return (
-                  <div
-                    key={field}
-                    className={cn(
-                      "space-y-1.5",
-                      meta.type === "textarea" && "sm:col-span-2",
-                    )}
+              {CERTIFICATE_TYPE_META[newType].needsCourse && (
+                <div className="space-y-1.5">
+                  <Label>Course</Label>
+                  <Select
+                    value={newCourse}
+                    onValueChange={(v) => setNewCourse(v ?? "")}
                   >
-                    <Label htmlFor={id}>{meta.label}</Label>
-                    {meta.type === "textarea" ? (
-                      <Textarea
-                        id={id}
-                        rows={3}
-                        value={value}
-                        placeholder={meta.placeholder}
-                        onChange={(e) => set(e.target.value)}
-                      />
-                    ) : (
-                      // A native datalist rather than a Select: the client asked
-                      // to pick from the list *or* type one that isn't on it, and
-                      // that is exactly what a datalist-backed input does.
-                      <Input
-                        id={id}
-                        type={meta.type === "date" ? "date" : "text"}
-                        list={
-                          meta.type === "batch"
-                            ? DATALIST_BATCHES
-                            : meta.type === "instructor"
-                              ? DATALIST_INSTRUCTORS
-                              : undefined
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Choose a course">
+                        {(v) =>
+                          courses.find((c) => c.id === v)?.title ??
+                          "Choose a course"
                         }
-                        value={value}
-                        placeholder={meta.placeholder}
-                        onChange={(e) =>
-                          meta.type === "batch" ? pickBatch(e.target.value) : set(e.target.value)
-                        }
-                      />
-                    )}
-                    {meta.hint && (
-                      <p className="text-muted-foreground text-xs">{meta.hint}</p>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {courses.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.title}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
 
-            <datalist id={DATALIST_BATCHES}>
-              {batchesForCourse.map((b) => (
-                <option key={b.name} value={b.name} />
-              ))}
-            </datalist>
-            <datalist id={DATALIST_INSTRUCTORS}>
-              {instructors.map((name) => (
-                <option key={name} value={name} />
-              ))}
-            </datalist>
+              {/* Only what this design actually prints — driven by the type's own
+                field list, so a new award needs no new form code. */}
+              <div className="grid gap-3 sm:grid-cols-2">
+                {CERTIFICATE_TYPE_META[newType].fields.map((field) => {
+                  const meta = CERTIFICATE_FIELD_META[field];
+                  const id = `cert-${field}`;
+                  const value = newDetails[field] ?? "";
+                  const set = (v: string) =>
+                    setNewDetails((prev) => ({ ...prev, [field]: v }));
+                  return (
+                    <div
+                      key={field}
+                      className={cn(
+                        "space-y-1.5",
+                        meta.type === "textarea" && "sm:col-span-2",
+                      )}
+                    >
+                      <Label htmlFor={id}>{meta.label}</Label>
+                      {meta.type === "textarea" ? (
+                        <Textarea
+                          id={id}
+                          rows={3}
+                          value={value}
+                          placeholder={meta.placeholder}
+                          onChange={(e) => set(e.target.value)}
+                        />
+                      ) : (
+                        // A native datalist rather than a Select: the client asked
+                        // to pick from the list *or* type one that isn't on it, and
+                        // that is exactly what a datalist-backed input does.
+                        <Input
+                          id={id}
+                          type={meta.type === "date" ? "date" : "text"}
+                          list={
+                            meta.type === "batch"
+                              ? DATALIST_BATCHES
+                              : meta.type === "instructor"
+                                ? DATALIST_INSTRUCTORS
+                                : undefined
+                          }
+                          value={value}
+                          placeholder={meta.placeholder}
+                          onChange={(e) =>
+                            meta.type === "batch"
+                              ? pickBatch(e.target.value)
+                              : set(e.target.value)
+                          }
+                        />
+                      )}
+                      {meta.hint && (
+                        <p className="text-muted-foreground text-xs">
+                          {meta.hint}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <datalist id={DATALIST_BATCHES}>
+                {batchesForCourse.map((b) => (
+                  <option key={b.name} value={b.name} />
+                ))}
+              </datalist>
+              <datalist id={DATALIST_INSTRUCTORS}>
+                {instructors.map((name) => (
+                  <option key={name} value={name} />
+                ))}
+              </datalist>
+            </DialogBody>
 
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setIssueOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIssueOpen(false)}
+              >
                 Cancel
               </Button>
               <Button type="submit" disabled={!canIssue || issuing}>
@@ -680,19 +807,30 @@ export function CertificatesClient({
         </DialogContent>
       </Dialog>
 
-      <CertificateDetailSheet cert={detail} onOpenChange={(o) => !o && setDetail(null)} canManage={canManage} />
+      <CertificateDetailSheet
+        cert={detail}
+        onOpenChange={(o) => !o && setDetail(null)}
+        canManage={canManage}
+      />
 
-      <AlertDialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>
+      <AlertDialog
+        open={!!deleting}
+        onOpenChange={(o) => !o && setDeleting(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete this certificate?</AlertDialogTitle>
             <AlertDialogDescription>
-              This permanently removes the certificate for {deleting?.studentName}. This can&apos;t be undone.
+              This permanently removes the certificate for{" "}
+              {deleting?.studentName}. This can&apos;t be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete} className="bg-destructive hover:bg-destructive/90 text-white">
+            <AlertDialogAction
+              onClick={confirmDelete}
+              className="bg-destructive hover:bg-destructive/90 text-white"
+            >
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>

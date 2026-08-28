@@ -26,13 +26,24 @@ export function FieldControl({
   field,
   value,
   onChange,
+  maxLength,
 }: {
   field: Field;
   value: unknown;
   onChange: (value: unknown) => void;
+  /**
+   * The ceiling the section's schema puts on this string, passed down from the
+   * editor. Enforcing it in the box is the point: the server used to accept an
+   * over-long value and quietly store the shipped default instead, so the only
+   * safe design is one where the admin cannot type past the limit.
+   */
+  maxLength?: number | null;
 }) {
   const id = useId();
   const asText = typeof value === "string" ? value : "";
+  // Only worth showing once the box is nearly full — a counter on every field
+  // would be noise across a fourteen-section form.
+  const nearLimit = maxLength != null && asText.length >= maxLength * 0.8;
 
   if (field.type === "switch") {
     return (
@@ -60,6 +71,7 @@ export function FieldControl({
           id={id}
           rows={3}
           value={asText}
+          maxLength={maxLength ?? undefined}
           placeholder={field.placeholder}
           onChange={(e) => onChange(e.target.value)}
         />
@@ -69,6 +81,7 @@ export function FieldControl({
         <Input
           id={id}
           value={asText}
+          maxLength={maxLength ?? undefined}
           placeholder={field.placeholder}
           onChange={(e) => onChange(e.target.value)}
         />
@@ -202,7 +215,18 @@ export function FieldControl({
         </Select>
       )}
 
-      {field.hint && <p className="text-muted-foreground text-xs">{field.hint}</p>}
+      <div className="flex items-start justify-between gap-3">
+        {field.hint ? (
+          <p className="text-muted-foreground text-xs">{field.hint}</p>
+        ) : (
+          <span />
+        )}
+        {nearLimit && (
+          <span className="text-muted-foreground shrink-0 text-xs tabular-nums">
+            {asText.length} / {maxLength}
+          </span>
+        )}
+      </div>
     </div>
   );
 }

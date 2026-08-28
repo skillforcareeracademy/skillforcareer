@@ -86,19 +86,25 @@ export function CertificateSheet({
 /**
  * A signature block.
  *
- * `script` decides whether a written hand appears above the rule. The academy's
- * course award carries one (their existing certificate has real signatures over
- * the printed names); the ribboned designs are ruled lines with the name
- * beneath, and repeating the name in both places just looked like a bug.
+ * Every design shows a mark above the rule: the uploaded scan where Settings →
+ * Certificates has one, and the signatory's name in a hand where it doesn't.
+ * The ribboned awards used to leave the rule bare on the grounds that the
+ * printed name below already said who signed — but a certificate with nothing
+ * over the line reads as unsigned, which is what the client reported ("no signs
+ * coming on other certificates"). A cursive mark above a printed name is what a
+ * signed certificate actually looks like.
+ *
+ * `bracketRole` is all that varies now: the academy's own ribboned designs put
+ * the role in brackets, the course award doesn't.
  */
 export function Signature({
   signatory,
   tone = "dark",
-  script = true,
+  bracketRole = false,
 }: {
   signatory: Signatory;
   tone?: "dark" | "light" | "navy";
-  script?: boolean;
+  bracketRole?: boolean;
 }) {
   const { name, title, signatureUrl } = signatory;
   const line =
@@ -118,16 +124,14 @@ export function Signature({
           className="mx-auto mb-[0.4cqw] h-[4cqw] w-auto max-w-[16cqw] object-contain object-bottom"
         />
       ) : (
-        script && (
-          <p
-            className={cn(
-              "mb-[0.5cqw] font-[family-name:var(--font-cert-script)] text-[3.4cqw] leading-none whitespace-nowrap",
-              text,
-            )}
-          >
-            {name}
-          </p>
-        )
+        <p
+          className={cn(
+            "mb-[0.5cqw] font-[family-name:var(--font-cert-script)] text-[3.4cqw] leading-none whitespace-nowrap",
+            text,
+          )}
+        >
+          {name}
+        </p>
       )}
       <div className={cn("mx-auto h-px w-[17cqw]", line)} />
       <p
@@ -141,7 +145,7 @@ export function Signature({
       {/* The academy's own designs bracket the role on the ribboned awards and
           leave it bare under a written signature. */}
       <p className={cn("text-[1cqw] tracking-[0.08em] uppercase", sub)}>
-        {script ? title : `(${title})`}
+        {bracketRole ? `(${title})` : title}
       </p>
     </div>
   );

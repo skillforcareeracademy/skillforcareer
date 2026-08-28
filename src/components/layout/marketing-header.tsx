@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { ButtonLink } from "@/components/shared/button-link";
 import { CourseSearch } from "@/components/shared/course-search";
 import { Logo } from "@/components/shared/logo";
@@ -6,7 +5,9 @@ import { ThemeToggle } from "@/components/shared/theme-toggle";
 import { UserMenu } from "@/components/dashboard/user-menu";
 import { getSessionUser } from "@/lib/auth/api-guard";
 import { getHomeSection } from "@/server/services/homepage-service";
+import { getHeaderMenus } from "@/server/services/header-menu-service";
 import { cn } from "@/lib/utils";
+import { HeaderNav, type HeaderLink } from "./header-nav";
 import { MobileNav } from "./mobile-nav";
 
 /**
@@ -18,9 +19,14 @@ import { MobileNav } from "./mobile-nav";
  * reshape the top of the site without a deploy.
  */
 export async function MarketingHeader() {
-  // Both are per-request cached, so this costs nothing the page wasn't already
-  // paying — the layout and footer share the same homepage read.
-  const [user, section] = await Promise.all([getSessionUser(), getHomeSection("header")]);
+  // All three are per-request cached, so this costs nothing the page wasn't
+  // already paying — the layout and footer share the same homepage read, and the
+  // dropdown lists are memoised across requests.
+  const [user, section, menus] = await Promise.all([
+    getSessionUser(),
+    getHomeSection("header"),
+    getHeaderMenus(),
+  ]);
   const {
     navLinks,
     showSearch,
@@ -32,28 +38,18 @@ export async function MarketingHeader() {
   } = section.data;
 
   // A half-filled row in the editor shouldn't render as a link to nowhere.
-  const links = navLinks.filter((l) => l.label.trim() && l.href.trim());
+  const links: HeaderLink[] = navLinks.filter((l) => l.label.trim() && l.href.trim());
 
   return (
     <header className="border-border/60 bg-background/80 sticky top-0 z-40 border-b backdrop-blur-xl">
       <div className="container-page flex h-16 items-center gap-4">
         {links.length > 0 && (
-          <MobileNav links={links} showSearch={showSearch} />
+          <MobileNav links={links} menus={menus} showSearch={showSearch} />
         )}
 
         <Logo />
 
-        <nav className="hidden items-center gap-0.5 lg:flex">
-          {links.map((item) => (
-            <Link
-              key={`${item.label}-${item.href}`}
-              href={item.href}
-              className="text-foreground/70 hover:text-foreground hover:bg-muted inline-flex items-center gap-1 rounded-md px-3 py-2 text-sm font-medium transition-colors"
-            >
-              {item.label}
-            </Link>
-          ))}
-        </nav>
+        <HeaderNav links={links} menus={menus} />
 
         {/* Search */}
         {showSearch && (

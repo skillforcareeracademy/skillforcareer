@@ -1,11 +1,13 @@
 import { cache } from "react";
 import { prisma } from "@/lib/prisma";
+import { AppError } from "@/lib/api/errors";
 import { clearMemo, readMemo, writeMemo } from "./memo";
 import {
   HOME_SECTIONS,
   HOME_SECTION_KEYS,
   isAlwaysOn,
   parseHomeData,
+  validateHomeData,
   type HomeData,
   type HomeSectionKey,
 } from "@/lib/validations/homepage";
@@ -110,11 +112,29 @@ export async function updateHomeSection(
   updatedById: string,
 ): Promise<HomeSection> {
   const current = await getHomeSection(key);
+
   // Validate against the section's own schema before it reaches the database,
   // so a stale editor tab can't write a shape the marketing page can't render.
-  const data = input.data
-    ? parseHomeData(key, { ...current.data, ...input.data })
-    : current.data;
+  //
+  // Strictly, and this matters: the lenient read-path parse used to run here
+  // too, and it answers "unreadable" with the *shipped defaults*. A single
+  // over-long line therefore threw away every other edit in the section and
+  // reported success — which is exactly how a fully rewritten footer came back
+  // as the original copy. A save now either stores what was typed or says which
+  // field it could not store.
+  let data = current.data;
+  if (input.data) {
+    const result = validateHomeData(key, { ...current.data, ...input.data });
+    if (!result.success) {
+      const [first] = result.issues;
+      throw AppError.badRequest(
+        `Couldn't save ${HOME_SECTIONS[key].label}: ${first.label} — ${first.message.toLowerCase()}.`,
+        { issues: result.issues },
+      );
+    }
+    data = result.data;
+  }
+
   const enabled = isAlwaysOn(key) ? true : (input.enabled ?? current.enabled);
 
   await prisma.homeSection.upsert({

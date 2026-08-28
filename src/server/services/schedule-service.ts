@@ -1,4 +1,4 @@
-import { addDays } from "date-fns";
+import { addDays, format } from "date-fns";
 import { prisma } from "@/lib/prisma";
 
 export type ScheduleEventType = "LIVE" | "OFFLINE" | "ASSIGNMENT" | "BATCH";
@@ -151,6 +151,49 @@ export async function getScheduleEvents(
 export async function getScheduleWindow(scope: ScheduleScope = {}): Promise<ScheduleEvent[]> {
   const now = new Date();
   return getScheduleEvents(addDays(now, -31), addDays(now, 150), scope);
+}
+
+const TYPE_LABELS: Record<ScheduleEventType, string> = {
+  LIVE: "Live class",
+  OFFLINE: "Offline class",
+  ASSIGNMENT: "Assignment",
+  BATCH: "Batch",
+};
+
+/**
+ * The schedule as a spreadsheet — one row per event, in the order the agenda
+ * shows them.
+ *
+ * Asked for directly ("here should be a download schedule option"): the office
+ * prints the week's timetable and puts it on the wall, and re-typing it out of
+ * the calendar was the alternative. `type` narrows it to the same filter the
+ * page is showing, so the download matches what the admin is looking at.
+ */
+export function scheduleToRows(
+  events: ScheduleEvent[],
+  type?: ScheduleEventType | "all",
+): { headers: string[]; data: string[][] } {
+  const filtered =
+    !type || type === "all" ? events : events.filter((e) => e.type === type);
+
+  const headers = ["Date", "Day", "Start", "End", "Type", "Title", "Course / batch", "Status"];
+
+  const data = filtered.map((e) => {
+    const at = new Date(e.at);
+    const end = e.end ? new Date(e.end) : null;
+    return [
+      format(at, "yyyy-MM-dd"),
+      format(at, "EEEE"),
+      format(at, "HH:mm"),
+      end ? format(end, "HH:mm") : "",
+      TYPE_LABELS[e.type],
+      e.title,
+      e.context ?? "",
+      e.status ?? "",
+    ];
+  });
+
+  return { headers, data };
 }
 
 export interface ScheduleStats {

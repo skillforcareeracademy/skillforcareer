@@ -88,7 +88,7 @@ const count = (max: number, fallback: number) =>
 const social = z.enum(SOCIAL_NAMES as [string, ...string[]]).catch("instagram" as never);
 
 /** A navigation entry — used by the header, the footer columns and the legal row. */
-const linkItem = z.object({ label: text(40), href: link(200) });
+const linkItem = z.object({ label: text(60), href: link(300) });
 const linkFields: Field[] = [
   { name: "label", label: "Text", type: "text" },
   { name: "href", label: "Links to", type: "text", placeholder: "/courses" },
@@ -1000,8 +1000,28 @@ const ctaDefaults: z.infer<typeof ctaSchema> = {
 
 // ── Section: header (site-wide) ──────────────────────────────────────────────
 
+/**
+ * What a header link drops down, if anything. The lists themselves come from the
+ * live catalogue — an admin who adds a course shouldn't also have to add it to
+ * the menu.
+ */
+export const HEADER_MENU_KINDS = ["none", "courses", "categories"] as const;
+export type HeaderMenuKind = (typeof HEADER_MENU_KINDS)[number];
+
+const HEADER_MENU_OPTIONS = [
+  { value: "none", label: "No dropdown — just a link" },
+  { value: "courses", label: "Courses, newest and most popular first" },
+  { value: "categories", label: "Categories, with course counts" },
+] as const;
+
+const headerLinkItem = z.object({
+  label: text(60),
+  href: link(300),
+  menu: z.enum(HEADER_MENU_KINDS).catch("none" as never),
+});
+
 const headerSchema = z.object({
-  navLinks: z.array(linkItem).max(8).default([]),
+  navLinks: z.array(headerLinkItem).max(8).default([]),
   showSearch: z.boolean().default(true),
   showThemeToggle: z.boolean().default(true),
   signInLabel: text(30),
@@ -1019,7 +1039,17 @@ const headerFields: AnyField[] = [
     titleKey: "label",
     max: 8,
     hint: "Shown across the top on desktop, and in the menu on a phone.",
-    fields: linkFields,
+    fields: [
+      ...linkFields,
+      {
+        name: "menu",
+        label: "Dropdown",
+        type: "select",
+        wide: true,
+        options: HEADER_MENU_OPTIONS,
+        hint: "The list fills itself from the live catalogue. The link itself still works.",
+      },
+    ],
   },
   {
     name: "showSearch",
@@ -1050,10 +1080,10 @@ const headerFields: AnyField[] = [
 
 const headerDefaults: z.infer<typeof headerSchema> = {
   navLinks: [
-    { label: "Courses", href: "/courses" },
-    { label: "Categories", href: "/#categories" },
-    { label: "Live Classes", href: "/live-classes" },
-    { label: "For Business", href: "/for-business" },
+    { label: "Courses", href: "/courses", menu: "courses" },
+    { label: "Categories", href: "/courses", menu: "categories" },
+    { label: "Live Classes", href: "/live-classes", menu: "none" },
+    { label: "For Business", href: "/for-business", menu: "none" },
   ],
   showSearch: true,
   showThemeToggle: true,
@@ -1066,23 +1096,27 @@ const headerDefaults: z.infer<typeof headerSchema> = {
 // ── Section: footer (site-wide) ──────────────────────────────────────────────
 
 const footerSchema = z.object({
-  about: text(300),
-  offices: z
-    .array(z.object({ label: text(60), line1: text(120), line2: text(120) }))
-    .max(4)
-    .default([]),
+  about: text(600),
+  /**
+   * Whether the footer repeats the academy's addresses. The addresses
+   * themselves live in Admin → Pages → Contact → "Centres & addresses", because
+   * they also appear on About us and Contact — and the client changing them in
+   * the footer only, then finding the other two pages unchanged, is exactly the
+   * bug that made this shared.
+   */
+  showOffices: z.boolean().default(true),
   columns: z
-    .array(z.object({ title: text(40), links: z.array(linkItem).max(8).default([]) }))
+    .array(z.object({ title: text(60), links: z.array(linkItem).max(10).default([]) }))
     .max(4)
     .default([]),
-  contactTitle: text(40),
-  phoneDisplay: text(30),
-  phone: text(30),
-  email: text(120),
-  hours: text(60),
-  socials: z.array(z.object({ platform: social, href: link(200) })).max(8).default([]),
-  copyright: text(160),
-  legalLinks: z.array(linkItem).max(5).default([]),
+  contactTitle: text(60),
+  phoneDisplay: text(40),
+  phone: text(40),
+  email: text(160),
+  hours: text(80),
+  socials: z.array(z.object({ platform: social, href: link(300) })).max(8).default([]),
+  copyright: text(240),
+  legalLinks: z.array(linkItem).max(6).default([]),
 });
 
 const footerFields: AnyField[] = [
@@ -1094,17 +1128,10 @@ const footerFields: AnyField[] = [
     hint: "The logo itself is set in Settings → Branding.",
   },
   {
-    name: "offices",
-    label: "Addresses",
-    type: "list",
-    itemLabel: "address",
-    titleKey: "label",
-    max: 4,
-    fields: [
-      { name: "label", label: "Name", type: "text", placeholder: "Faridabad" },
-      { name: "line1", label: "Address line 1", type: "text", wide: true },
-      { name: "line2", label: "Address line 2", type: "text", wide: true },
-    ],
+    name: "showOffices",
+    label: "Show our addresses in the footer",
+    type: "switch",
+    hint: "Edit the addresses themselves under Pages → Contact → Centres & addresses. They are shared with About us and Contact.",
   },
   {
     name: "columns",
@@ -1177,11 +1204,7 @@ const footerFields: AnyField[] = [
 
 const footerDefaults: z.infer<typeof footerSchema> = {
   about: siteConfig.description,
-  offices: siteConfig.contact.offices.map((o) => ({
-    label: o.label,
-    line1: o.line1,
-    line2: o.line2,
-  })),
+  showOffices: true,
   columns: [
     {
       title: "Categories",
@@ -1205,6 +1228,7 @@ const footerDefaults: z.infer<typeof footerSchema> = {
       title: "Resources",
       links: [
         { label: "Live classes", href: "/live-classes" },
+        { label: "Blog", href: "/blog" },
         { label: "Webinars", href: "/webinars" },
         { label: "Browse courses", href: "/courses" },
         { label: "Verify certificate", href: "/verify" },
@@ -1410,20 +1434,195 @@ export function isAlwaysOn(key: HomeSectionKey): boolean {
 
 /**
  * Parse stored content for a section, filling in anything missing and
- * discarding anything invalid. Content that fails outright falls back to the
- * shipped defaults, because a bad row must never take the homepage down.
+ * discarding anything invalid.
+ *
+ * Recovery is **per field**, not per section. A whole-section fallback was the
+ * cause of a real bug: one over-long line in the footer editor threw away every
+ * other edit on the page and silently restored the shipped copy. A bad row
+ * still must never take the public site down, so each field that can't be read
+ * falls back on its own and the rest of the admin's content survives.
  */
 export function parseHomeData<K extends HomeSectionKey>(
   key: K,
   stored: unknown,
 ): HomeData<K> {
   const def = HOME_SECTIONS[key];
-  const merged =
-    stored && typeof stored === "object" && !Array.isArray(stored)
-      ? { ...def.defaults, ...(stored as Record<string, unknown>) }
-      : def.defaults;
+  const defaults = def.defaults as Record<string, unknown>;
+  if (!stored || typeof stored !== "object" || Array.isArray(stored)) {
+    return defaults as HomeData<K>;
+  }
+
+  const merged = { ...defaults, ...(stored as Record<string, unknown>) };
   const parsed = def.schema.safeParse(merged);
-  return (parsed.success ? parsed.data : def.defaults) as HomeData<K>;
+  if (parsed.success) return parsed.data as HomeData<K>;
+
+  // Something in the row is unreadable. Keep every field that does parse and
+  // drop only the ones that don't back to their shipped value.
+  return parseSectionData(def, stored) as HomeData<K>;
+}
+
+/** One thing wrong with a submitted section, named the way the editor labels it. */
+export interface HomeDataIssue {
+  /** Dotted path into the section's data — `offices.1.line1`. */
+  path: string;
+  /** The field's label in the admin form, e.g. "Addresses → Address line 1". */
+  label: string;
+  message: string;
+}
+
+/** Walk a field spec to name the control a Zod issue path points at. */
+export function labelForPath(
+  fields: readonly AnyField[],
+  path: readonly PropertyKey[],
+): string {
+  const parts: string[] = [];
+  let current: readonly AnyField[] | null = fields;
+
+  for (const segment of path) {
+    if (typeof segment === "number") continue; // list index — the label is the list's
+    if (!current) break;
+    const field: AnyField | undefined = current.find((f) => f.name === segment);
+    if (!field) break;
+    parts.push(field.label);
+    current = isListField(field) ? field.fields : null;
+  }
+
+  return parts.length ? parts.join(" → ") : "This section";
+}
+
+/**
+ * Validate a section's content the strict way — for the *write* path.
+ *
+ * Saving must never quietly substitute something the admin didn't type. When a
+ * value can't be stored the editor is told which field and why, rather than the
+ * section being reset to the shipped copy behind the admin's back.
+ */
+export function validateSectionData(
+  spec: { schema: z.ZodType; fields: readonly AnyField[] },
+  input: unknown,
+): { success: true; data: unknown } | { success: false; issues: HomeDataIssue[] } {
+  const parsed = spec.schema.safeParse(input);
+  if (parsed.success) return { success: true, data: parsed.data };
+
+  const issues = parsed.error.issues.slice(0, 5).map((issue) => ({
+    path: issue.path.map(String).join("."),
+    label: labelForPath(spec.fields, issue.path),
+    message: issue.message,
+  }));
+  return { success: false, issues };
+}
+
+export function validateHomeData<K extends HomeSectionKey>(
+  key: K,
+  input: unknown,
+):
+  | { success: true; data: HomeData<K> }
+  | { success: false; issues: HomeDataIssue[] } {
+  const result = validateSectionData(HOME_SECTIONS[key], input);
+  return result.success
+    ? { success: true, data: result.data as HomeData<K> }
+    : result;
+}
+
+/**
+ * Recover a stored section field-by-field against any registry's spec — the
+ * shared half of `parseHomeData`, so the page CMS gets the same behaviour.
+ */
+export function parseSectionData(
+  spec: { schema: z.ZodType; defaults: unknown },
+  stored: unknown,
+): Record<string, unknown> {
+  const defaults = spec.defaults as Record<string, unknown>;
+  if (!stored || typeof stored !== "object" || Array.isArray(stored)) return defaults;
+
+  const merged = { ...defaults, ...(stored as Record<string, unknown>) };
+  const parsed = spec.schema.safeParse(merged);
+  if (parsed.success) return parsed.data as Record<string, unknown>;
+
+  const shape = (spec.schema as unknown as { shape?: Record<string, z.ZodType> }).shape;
+  if (!shape) return defaults;
+
+  const recovered: Record<string, unknown> = { ...defaults };
+  for (const [name, fieldSchema] of Object.entries(shape)) {
+    if (!(name in merged)) continue;
+    const field = fieldSchema.safeParse(merged[name]);
+    if (field.success) recovered[name] = field.data;
+  }
+  const retry = spec.schema.safeParse(recovered);
+  return (retry.success ? retry.data : defaults) as Record<string, unknown>;
+}
+
+/**
+ * The character ceiling on the string at `path`, read straight off the Zod
+ * schema so the form and the database can never disagree about it.
+ *
+ * List paths use index 0 as a stand-in for "any row" — `["offices", 0, "line1"]`
+ * — because every row of a list shares one schema.
+ */
+export function maxLengthAt(
+  key: HomeSectionKey,
+  path: readonly (string | number)[],
+): number | null {
+  return maxLengthIn(HOME_SECTIONS[key].schema, path);
+}
+
+/** As `maxLengthAt`, against any section schema — used by the page CMS. */
+export function maxLengthIn(
+  schema: unknown,
+  path: readonly (string | number)[],
+): number | null {
+  let node: unknown = schema;
+
+  for (const segment of path) {
+    node = unwrap(node);
+    const def = defOf(node);
+    if (!def) return null;
+    if (typeof segment === "number") {
+      if (def.type !== "array") return null;
+      node = def.element;
+    } else {
+      if (def.type !== "object") return null;
+      const shape = typeof def.shape === "function" ? def.shape() : def.shape;
+      node = (shape as Record<string, unknown> | undefined)?.[segment];
+    }
+    if (!node) return null;
+  }
+
+  return maxLengthOf(node);
+}
+
+interface ZodDef {
+  type?: string;
+  checks?: unknown[];
+  innerType?: unknown;
+  element?: unknown;
+  shape?: unknown;
+}
+
+function defOf(node: unknown): ZodDef | null {
+  return (node as { _zod?: { def?: ZodDef } })?._zod?.def ?? null;
+}
+
+/** Strip `.default()` / `.optional()` / `.catch()` wrappers to the real type. */
+function unwrap(node: unknown): unknown {
+  let current = node;
+  for (let depth = 0; depth < 8; depth += 1) {
+    const def = defOf(current);
+    if (!def?.innerType) return current;
+    current = def.innerType;
+  }
+  return current;
+}
+
+function maxLengthOf(node: unknown): number | null {
+  const def = defOf(unwrap(node));
+  if (def?.type !== "string" || !Array.isArray(def.checks)) return null;
+  for (const check of def.checks) {
+    const cd = (check as { _zod?: { def?: { check?: string; maximum?: number } } })._zod
+      ?.def;
+    if (cd?.check === "max_length" && typeof cd.maximum === "number") return cd.maximum;
+  }
+  return null;
 }
 
 /** Payload accepted by PATCH /api/homepage/[key]. */

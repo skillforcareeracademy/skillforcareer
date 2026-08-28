@@ -36,7 +36,7 @@ function Wash({
     <svg
       viewBox="0 0 1000 210"
       preserveAspectRatio="none"
-      className={`pointer-events-none absolute inset-x-0 ${edge === "top" ? "top-0" : "bottom-0"} h-[18cqw] w-full`}
+      className={`pointer-events-none absolute inset-x-0 ${edge === "top" ? "top-0" : "bottom-0"} h-[15cqw] w-full`}
       aria-hidden
     >
       <defs>
@@ -87,6 +87,11 @@ export function InternshipAppreciationCertificate({ cert, chrome }: TemplateProp
       <Wash edge="top" from="#4c2f83" via="#6b3fa0" to="#8b5fc0" />
       <Wash edge="bottom" from="#0f3d6e" via="#14507f" to="#1f6ea8" />
 
+      {/* The top wash's ragged edge dips to roughly 13cqw at the middle of the
+          sheet, which is exactly where the logo used to start — so it sat *on*
+          the purple ("logo overlap ho rha hai"). The column starts below the
+          wash now, and the gaps through the middle are tightened to pay for it,
+          because the signatures still have to clear the bottom wash. */}
       <div className="relative flex h-full flex-col items-center px-[10cqw] pt-[13cqw] pb-[4cqw] text-center">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
@@ -95,11 +100,11 @@ export function InternshipAppreciationCertificate({ cert, chrome }: TemplateProp
           className="h-[5.4cqw] w-auto max-w-[20cqw] object-contain"
         />
 
-        <h1 className="mt-[1.6cqw] font-[family-name:var(--font-cert-serif)] text-[4.2cqw] leading-none text-[#1f5c86]">
+        <h1 className="mt-[1.2cqw] font-[family-name:var(--font-cert-serif)] text-[4.2cqw] leading-none text-[#1f5c86]">
           Certificate of Internship
         </h1>
 
-        <p className="mt-[1.2cqw] text-[1.55cqw] text-[#1f5c86]">
+        <p className="mt-[0.9cqw] text-[1.55cqw] text-[#1f5c86]">
           This certificate is proudly presented to
         </p>
 
@@ -107,7 +112,7 @@ export function InternshipAppreciationCertificate({ cert, chrome }: TemplateProp
           {cert.studentName}
         </p>
 
-        <p className="mt-[2.2cqw] text-[1.5cqw] text-neutral-700">
+        <p className="mt-[1.6cqw] text-[1.5cqw] text-neutral-700">
           for outstanding performance in
         </p>
 
@@ -117,16 +122,19 @@ export function InternshipAppreciationCertificate({ cert, chrome }: TemplateProp
           </p>
         )}
 
-        <p className="mt-[1cqw] text-[1.25cqw] text-neutral-600">
+        {/* An explicit bottom margin, not just the row's `mt-auto`: when the
+            column runs out of free space `mt-auto` resolves to zero and the
+            signatures ride up onto this line. */}
+        <p className="mt-[0.8cqw] mb-[2.5cqw] text-[1.25cqw] text-neutral-600">
           at {org} · Certificate code{" "}
           <span className="font-semibold">{cert.verificationCode}</span>
         </p>
 
         {/* Above the bottom wash, not on it — dark ink on a deep blue wash is
             the one thing a printed certificate cannot afford. */}
-        <div className="mt-auto mb-[12cqw] flex w-full items-end justify-center gap-[14cqw]">
-          <Signature signatory={chrome.left} script={false} />
-          <Signature signatory={chrome.right} script={false} />
+        <div className="mt-auto mb-[9.5cqw] flex w-full items-end justify-center gap-[14cqw]">
+          <Signature signatory={chrome.left} bracketRole />
+          <Signature signatory={chrome.right} bracketRole />
         </div>
       </div>
 

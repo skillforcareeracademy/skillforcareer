@@ -1,24 +1,15 @@
 import type { Metadata } from "next";
 import Image from "next/image";
-import {
-  ArrowRight,
-  BookOpenCheck,
-  Building2,
-  CalendarClock,
-  GraduationCap,
-  Heart,
-  MapPin,
-  MonitorPlay,
-  Sparkles,
-  Target,
-  UsersRound,
-} from "lucide-react";
+import { ArrowRight, Building2, MapPin, UsersRound } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { ButtonLink } from "@/components/shared/button-link";
 import { StatsBand } from "@/components/marketing/stats-band";
 import { PlacedStudents } from "@/components/marketing/placed-students";
+import { IconGlyph } from "@/components/shared/icon-glyph";
 import { getHomeSection } from "@/server/services/homepage-service";
-import { siteConfig } from "@/config/site";
+import { getPageSectionsFor } from "@/server/services/page-service";
+import { mapsHref } from "@/lib/maps";
+import { socialFor } from "@/config/social";
 
 export const metadata: Metadata = {
   title: "About us",
@@ -26,55 +17,30 @@ export const metadata: Metadata = {
     "Skill For Career Academy empowers learners with practical, job-ready skills — IIT-qualified instructors, hands-on training and a modern LMS, online and offline.",
 };
 
-const { contact } = siteConfig;
-
-const VALUES = [
-  {
-    icon: GraduationCap,
-    title: "Taught by practitioners",
-    body: "IIT-qualified educators and working professionals who teach the way the job actually works.",
-  },
-  {
-    icon: BookOpenCheck,
-    title: "Practical over theoretical",
-    body: "Hands-on training built around projects, case studies and the tools employers hire for.",
-  },
-  {
-    icon: MonitorPlay,
-    title: "A real learning platform",
-    body: "Notes, class recordings and resources in one dashboard — not a folder of shared links.",
-  },
-  {
-    icon: CalendarClock,
-    title: "Learn on your schedule",
-    body: "Online, offline and hybrid batches with flexible timings for students and working professionals.",
-  },
-  {
-    icon: Target,
-    title: "Placement is the point",
-    body: "Career guidance, interview preparation and placement support until the offer letter arrives.",
-  },
-  {
-    icon: Heart,
-    title: "Free counselling, always",
-    body: "Free career guidance, course guidance and notes — before you pay us anything.",
-  },
-];
-
-const WHO_WE_SERVE = [
-  "Students looking for their first job",
-  "Job seekers switching into tech and data roles",
-  "Working professionals upgrading their skills",
-  "Companies training whole teams",
-];
+export const dynamic = "force-dynamic";
 
 export default async function AboutPage() {
-  // The same bands the homepage shows, from the same content — edited once,
-  // under Admin → Homepage.
-  const [stats, placed] = await Promise.all([
+  // The stats and placement bands are the homepage's, shown here from the same
+  // content; everything else on this page is edited under Admin → Pages.
+  const [stats, placed, page] = await Promise.all([
     getHomeSection("stats"),
     getHomeSection("placedStudents"),
+    getPageSectionsFor([
+      "about.hero",
+      "about.mission",
+      "about.founders",
+      "about.values",
+      "contact.offices",
+    ] as const),
   ]);
+
+  const hero = page["about.hero"];
+  const mission = page["about.mission"];
+  const founders = page["about.founders"];
+  const values = page["about.values"];
+  const offices = page["contact.offices"];
+
+  const people = founders.data.people.filter((p) => p.name.trim());
 
   return (
     <>
@@ -87,27 +53,37 @@ export default async function AboutPage() {
 
         <div className="container-page py-16 sm:py-24">
           <div className="mx-auto max-w-3xl text-center">
-            <span className="text-primary inline-flex items-center gap-1.5 rounded-full bg-rose-500/10 px-3 py-1 text-sm font-medium">
-              <Sparkles className="size-4" /> About us
-            </span>
+            {hero.data.badge && (
+              <span className="text-primary inline-flex items-center gap-1.5 rounded-full bg-rose-500/10 px-3 py-1 text-sm font-medium">
+                <IconGlyph name="Sparkles" className="size-4" /> {hero.data.badge}
+              </span>
+            )}
             <h1 className="mt-5 text-4xl leading-[1.1] font-bold sm:text-5xl">
-              Quality skill training,{" "}
+              {hero.data.titleLead}{" "}
               <span className="bg-gradient-to-r from-rose-600 to-pink-600 bg-clip-text text-transparent">
-                and the job at the end of it
+                {hero.data.titleHighlight}
               </span>
             </h1>
-            <p className="text-muted-foreground mx-auto mt-5 max-w-2xl text-lg text-pretty">
-              Skill For Career Academy empowers learners with practical, job-ready skills
-              through IIT-qualified instructors, hands-on training and a modern learning
-              platform — online, offline and hybrid.
-            </p>
+            {hero.data.subtitle && (
+              <p className="text-muted-foreground mx-auto mt-5 max-w-2xl text-lg text-pretty">
+                {hero.data.subtitle}
+              </p>
+            )}
             <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-              <ButtonLink href="/courses" size="lg">
-                Explore courses <ArrowRight className="size-4" />
-              </ButtonLink>
-              <ButtonLink href="/contact" size="lg" variant="outline">
-                Talk to a counsellor
-              </ButtonLink>
+              {hero.data.primaryLabel && (
+                <ButtonLink href={hero.data.primaryHref || "/courses"} size="lg">
+                  {hero.data.primaryLabel} <ArrowRight className="size-4" />
+                </ButtonLink>
+              )}
+              {hero.data.secondaryLabel && (
+                <ButtonLink
+                  href={hero.data.secondaryHref || "/contact"}
+                  size="lg"
+                  variant="outline"
+                >
+                  {hero.data.secondaryLabel}
+                </ButtonLink>
+              )}
             </div>
           </div>
         </div>
@@ -115,131 +91,216 @@ export default async function AboutPage() {
 
       {stats.enabled && <StatsBand data={stats.data} />}
 
-      {/* ── Story ────────────────────────────────────────────────────────── */}
-      <section className="container-page py-16 sm:py-20">
-        <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-14">
-          <div className="max-w-xl">
-            <span className="text-primary inline-flex items-center gap-1.5 rounded-full bg-rose-500/10 px-3 py-1 text-sm font-medium">
-              <Target className="size-4" /> Our mission
-            </span>
-            <h2 className="mt-4 text-3xl sm:text-4xl">
-              Practicality, meet innovation
-            </h2>
-            <div className="text-muted-foreground mt-5 space-y-4 text-base">
-              <p>
-                We exist to do two things well: teach a skill properly, and help the
-                learner land the job it unlocks. Everything else — the curriculum, the
-                batch timings, the platform — is built backwards from that.
-              </p>
-              <p>
-                Skill For Career Academy is an online and offline learning platform with
-                IIT-based educators, an updated curriculum, flexible timings, hybrid
-                classes and a dedicated LMS carrying notes, class recordings and
-                resources. That combination is what prepares students, job seekers and
-                working professionals for real corporate opportunities.
-              </p>
+      {/* ── Mission ──────────────────────────────────────────────────────── */}
+      {mission.enabled && (
+        <section className="container-page py-16 sm:py-20">
+          <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-14">
+            <div className="max-w-xl">
+              {mission.data.badge && (
+                <span className="text-primary inline-flex items-center gap-1.5 rounded-full bg-rose-500/10 px-3 py-1 text-sm font-medium">
+                  <IconGlyph name="Target" className="size-4" /> {mission.data.badge}
+                </span>
+              )}
+              <h2 className="mt-4 text-3xl sm:text-4xl">{mission.data.title}</h2>
+
+              <div className="text-muted-foreground mt-5 space-y-4 text-base">
+                {mission.data.paragraphs
+                  .filter((p) => p.text.trim())
+                  .map((p, i) => (
+                    <p key={i}>{p.text}</p>
+                  ))}
+              </div>
+
+              {mission.data.audience.length > 0 && (
+                <ul className="mt-7 grid gap-2.5 sm:grid-cols-2">
+                  {mission.data.audience
+                    .filter((a) => a.text.trim())
+                    .map((who) => (
+                      <li key={who.text} className="flex items-start gap-2.5 text-sm">
+                        <UsersRound className="text-primary mt-0.5 size-4 shrink-0" />
+                        {who.text}
+                      </li>
+                    ))}
+                </ul>
+              )}
             </div>
 
-            <ul className="mt-7 grid gap-2.5 sm:grid-cols-2">
-              {WHO_WE_SERVE.map((who) => (
-                <li key={who} className="flex items-start gap-2.5 text-sm">
-                  <UsersRound className="text-primary mt-0.5 size-4 shrink-0" />
-                  {who}
-                </li>
+            {mission.data.imageUrl && (
+              <div className="relative">
+                <div className="relative aspect-4/3 overflow-hidden rounded-3xl border shadow-xl">
+                  <Image
+                    src={mission.data.imageUrl}
+                    alt={mission.data.imageAlt || "Skill For Career Academy"}
+                    fill
+                    sizes="(min-width: 1024px) 40vw, 100vw"
+                    className="object-cover"
+                    unoptimized
+                    priority
+                  />
+                </div>
+                {/* Small floating proof card — deliberately offset so the photo
+                    doesn't read as a stock banner. */}
+                {mission.data.statValue && (
+                  <Card className="bg-card absolute -bottom-6 left-6 max-w-60 gap-0 p-4 shadow-xl sm:left-10">
+                    <p className="text-2xl font-bold">{mission.data.statValue}</p>
+                    <p className="text-muted-foreground text-xs">
+                      {mission.data.statLabel}
+                    </p>
+                  </Card>
+                )}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* ── Founders ─────────────────────────────────────────────────────── */}
+      {founders.enabled && people.length > 0 && (
+        <section className="bg-muted/30 border-y">
+          <div className="container-page py-16 sm:py-20">
+            <div className="mx-auto mb-10 max-w-2xl text-center">
+              {founders.data.badge && (
+                <span className="text-primary inline-flex items-center gap-1.5 rounded-full bg-rose-500/10 px-3 py-1 text-sm font-medium">
+                  <IconGlyph name="UsersRound" className="size-4" />{" "}
+                  {founders.data.badge}
+                </span>
+              )}
+              <h2 className="mt-4 text-3xl sm:text-4xl">{founders.data.title}</h2>
+              {founders.data.description && (
+                <p className="text-muted-foreground mt-3">{founders.data.description}</p>
+              )}
+            </div>
+
+            <div
+              className={
+                people.length === 1
+                  ? "mx-auto max-w-2xl"
+                  : "mx-auto grid max-w-5xl gap-6 sm:grid-cols-2 lg:grid-cols-3"
+              }
+            >
+              {people.map((person) => (
+                <Card key={person.name} className="h-full gap-0 overflow-hidden p-0">
+                  {person.photoUrl ? (
+                    <div className="bg-muted relative aspect-4/3 w-full">
+                      <Image
+                        src={person.photoUrl}
+                        alt={person.name}
+                        fill
+                        sizes="(min-width: 1024px) 30vw, 100vw"
+                        className="object-cover"
+                        unoptimized
+                      />
+                    </div>
+                  ) : (
+                    <div className="bg-primary/10 text-primary grid aspect-4/3 w-full place-items-center text-4xl font-bold">
+                      {person.name.trim().charAt(0).toUpperCase()}
+                    </div>
+                  )}
+
+                  <div className="p-6">
+                    <h3 className="text-lg font-semibold">{person.name}</h3>
+                    {person.role && (
+                      <p className="text-primary text-sm font-medium">{person.role}</p>
+                    )}
+                    {person.bio && (
+                      <p className="text-muted-foreground mt-3 text-sm">{person.bio}</p>
+                    )}
+                    {person.linkedin && (
+                      <a
+                        href={person.linkedin}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        className="text-muted-foreground hover:text-primary mt-4 inline-flex items-center gap-1.5 text-sm font-medium transition-colors"
+                      >
+                        {/* lucide dropped its brand glyphs; the site keeps its
+                            own social paths in config/social. */}
+                        <svg viewBox="0 0 24 24" fill="currentColor" className="size-4">
+                          <path d={socialFor("linkedin").path} />
+                        </svg>
+                        LinkedIn
+                      </a>
+                    )}
+                  </div>
+                </Card>
               ))}
-            </ul>
-          </div>
-
-          <div className="relative">
-            <div className="relative aspect-[4/3] overflow-hidden rounded-3xl border shadow-xl">
-              <Image
-                src="/images/students/student-19.png"
-                alt="A Skill For Career learner"
-                fill
-                sizes="(min-width: 1024px) 40vw, 100vw"
-                className="object-cover"
-                priority
-              />
             </div>
-            {/* Small floating proof card — deliberately offset so the photo
-                doesn't read as a stock banner. */}
-            <Card className="bg-card absolute -bottom-6 left-6 max-w-[15rem] gap-0 p-4 shadow-xl sm:left-10">
-              <p className="text-2xl font-bold">900+</p>
-              <p className="text-muted-foreground text-xs">
-                learners placed after training with us
-              </p>
-            </Card>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* ── What makes us stand out ──────────────────────────────────────── */}
-      <section className="bg-muted/30 border-y">
-        <div className="container-page py-16 sm:py-20">
-          <div className="mx-auto mb-10 max-w-2xl text-center">
-            <h2 className="text-3xl sm:text-4xl">What makes us stand out</h2>
-            <p className="text-muted-foreground mt-3">
-              Industry-relevant learning that helps students and professionals grow
-              confidently in their careers.
-            </p>
+      {values.enabled && values.data.items.length > 0 && (
+        <section className="border-b">
+          <div className="container-page py-16 sm:py-20">
+            <div className="mx-auto mb-10 max-w-2xl text-center">
+              <h2 className="text-3xl sm:text-4xl">{values.data.title}</h2>
+              {values.data.description && (
+                <p className="text-muted-foreground mt-3">{values.data.description}</p>
+              )}
+            </div>
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              {values.data.items.map((item) => (
+                <Card key={item.title} className="h-full gap-0 p-6">
+                  <span className="bg-primary/10 text-primary mb-4 grid size-11 place-items-center rounded-xl">
+                    <IconGlyph name={item.icon} className="size-5" />
+                  </span>
+                  <h3 className="font-semibold">{item.title}</h3>
+                  <p className="text-muted-foreground mt-1.5 text-sm">{item.body}</p>
+                </Card>
+              ))}
+            </div>
           </div>
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {VALUES.map(({ icon: Icon, title, body }) => (
-              <Card key={title} className="h-full gap-0 p-6">
-                <span className="bg-primary/10 text-primary mb-4 grid size-11 place-items-center rounded-xl">
-                  <Icon className="size-5" />
-                </span>
-                <h3 className="font-semibold">{title}</h3>
-                <p className="text-muted-foreground mt-1.5 text-sm">{body}</p>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {placed.enabled && <PlacedStudents data={placed.data} />}
 
       {/* ── Where to find us ─────────────────────────────────────────────── */}
-      <section className="container-page py-16 sm:py-20">
-        <div className="mx-auto mb-10 max-w-2xl text-center">
-          <h2 className="text-3xl sm:text-4xl">Where to find us</h2>
-          <p className="text-muted-foreground mt-3">
-            Two centres for offline and hybrid batches — and live classes everywhere else.
-          </p>
-        </div>
+      {offices.data.offices.length > 0 && (
+        <section className="container-page py-16 sm:py-20">
+          <div className="mx-auto mb-10 max-w-2xl text-center">
+            <h2 className="text-3xl sm:text-4xl">{offices.data.title}</h2>
+            {offices.data.description && (
+              <p className="text-muted-foreground mt-3">{offices.data.description}</p>
+            )}
+          </div>
 
-        <div className="mx-auto grid max-w-4xl gap-5 sm:grid-cols-2">
-          {contact.offices.map((office) => (
-            <Card key={office.label} className="h-full gap-0 p-6">
-              <span className="bg-primary/10 text-primary mb-4 grid size-11 place-items-center rounded-xl">
-                <MapPin className="size-5" />
-              </span>
-              <h3 className="font-semibold">{office.label}</h3>
-              <p className="text-muted-foreground mt-1.5 text-sm">
-                {office.line1}
-                <br />
-                {office.line2}
-              </p>
-              <a
-                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-                  `${office.line1}, ${office.line2}`,
-                )}`}
-                target="_blank"
-                rel="noreferrer noopener"
-                className="text-primary mt-4 inline-flex items-center gap-1 text-sm font-semibold hover:underline"
-              >
-                Open in Google Maps <ArrowRight className="size-4" />
-              </a>
-            </Card>
-          ))}
-        </div>
+          <div className="mx-auto grid max-w-4xl gap-5 sm:grid-cols-2">
+            {offices.data.offices.map((office, i) => (
+              <Card key={`${office.label}-${i}`} className="h-full gap-0 p-6">
+                <span className="bg-primary/10 text-primary mb-4 grid size-11 place-items-center rounded-xl">
+                  <MapPin className="size-5" />
+                </span>
+                <h3 className="font-semibold">{office.label}</h3>
+                <p className="text-muted-foreground mt-1.5 text-sm">
+                  {office.line1}
+                  {office.line2 && (
+                    <>
+                      <br />
+                      {office.line2}
+                    </>
+                  )}
+                </p>
+                <a
+                  href={mapsHref(office)}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="text-primary mt-4 inline-flex items-center gap-1 text-sm font-semibold hover:underline"
+                >
+                  Open in Google Maps <ArrowRight className="size-4" />
+                </a>
+              </Card>
+            ))}
+          </div>
 
-        <p className="text-muted-foreground mx-auto mt-8 flex max-w-4xl items-center justify-center gap-2 text-center text-xs">
-          <Building2 className="size-3.5 shrink-0" aria-hidden />
-          Skill For Career is a brand of Webeside Technology · GST 06CEWPB0138N1Z8
-        </p>
-      </section>
-
+          {offices.data.footnote && (
+            <p className="text-muted-foreground mx-auto mt-8 flex max-w-4xl items-center justify-center gap-2 text-center text-xs">
+              <Building2 className="size-3.5 shrink-0" aria-hidden />
+              {offices.data.footnote}
+            </p>
+          )}
+        </section>
+      )}
     </>
   );
 }

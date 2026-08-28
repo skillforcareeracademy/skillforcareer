@@ -5,6 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { format } from "date-fns";
 import {
   Plus,
+  Upload,
   MoreHorizontal,
   Pencil,
   Trash2,
@@ -23,6 +24,7 @@ import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
+import { AssignmentImportDialog } from "./assignment-import-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -203,6 +205,7 @@ export function AssignmentsClient({
   const pathname = usePathname();
   const [search, setSearch] = useState(query.search ?? "");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState<AssignmentRow | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY);
   const [saving, setSaving] = useState(false);
@@ -517,11 +520,18 @@ export function AssignmentsClient({
         title="Assignments"
         description="Create assignments, track submissions and grade your learners."
         actions={
-          <Button onClick={openCreate}>
-            <Plus className="size-4" /> New assignment
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => setImportOpen(true)}>
+              <Upload className="size-4" /> Bulk upload
+            </Button>
+            <Button onClick={openCreate}>
+              <Plus className="size-4" /> New assignment
+            </Button>
+          </div>
         }
       />
+
+      <AssignmentImportDialog open={importOpen} onOpenChange={setImportOpen} />
 
       {/* Summary */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">

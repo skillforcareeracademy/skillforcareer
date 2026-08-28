@@ -175,6 +175,31 @@ export async function deleteUserAdmin(
 }
 
 /** All users matching a filter, flattened for CSV export (no pagination). */
+/** `2026-08-28`, or blank. The sheet is read in India; ISO sorts and never
+ *  turns into an American date on the way through Excel. */
+function day(value: Date | null | undefined): string {
+  return value ? value.toISOString().slice(0, 10) : "";
+}
+
+function money(value: Prisma.Decimal | number | null | undefined): string {
+  if (value == null) return "";
+  return (typeof value === "number" ? value : value.toNumber()).toFixed(2);
+}
+
+/**
+ * The user list as a full record, one row per person.
+ *
+ * The old export was seven columns of account fields, which is what the client
+ * reported: "when i export user list, i dont get all the field of student
+ * profile in sheet. I need to download complete detail of a student." This is
+ * the 360 profile flattened — enrolments, cohorts, attendance, assessments,
+ * certificates and fees — so a row answers the questions the profile screen
+ * does without opening it.
+ *
+ * Every aggregate is one grouped query across the whole result set rather than
+ * a query per user: the database is a region away, and a per-user fan-out over
+ * a few hundred learners would take minutes.
+ */
 export async function usersForExport(q: ListUsersQuery) {
   const and: Prisma.UserWhereInput[] = [];
   if (q.search) and.push({ OR: [{ name: { contains: q.search } }, { email: { contains: q.search } }] });
@@ -186,17 +211,300 @@ export async function usersForExport(q: ListUsersQuery) {
     where,
     orderBy: { createdAt: "desc" },
     take: 10000,
-    include: { role: { select: { name: true } } },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      phone: true,
+      headline: true,
+      status: true,
+      emailVerified: true,
+      timezone: true,
+      referralCode: true,
+      internshipStartAt: true,
+      internshipEndAt: true,
+      lastLoginAt: true,
+      createdAt: true,
+      role: { select: { name: true } },
+    },
   });
-  const headers = ["Name", "Email", "Phone", "Role", "Status", "Email verified", "Joined"];
-  const data = rows.map((u) => [
-    u.name,
-    u.email,
-    u.phone ?? "",
-    u.role.name,
-    u.status,
-    u.emailVerified ? "Yes" : "No",
-    u.createdAt.toISOString().slice(0, 10),
+
+  const userIds = rows.map((u) => u.id);
+  if (userIds.length === 0) return { headers: EXPORT_HEADERS, data: [] as string[][] };
+
+  const [
+    enrollments,
+    attendance,
+    quizAttempts,
+    submissions,
+    certificates,
+    payments,
+    leads,
+  ] = await Promise.all([
+    prisma.enrollment.findMany({
+      where: { userId: { in: userIds } },
+      orderBy: { enrolledAt: "asc" },
+      select: {
+        userId: true,
+        status: true,
+        progressPercent: true,
+        enrolledAt: true,
+        completedAt: true,
+        course: { select: { title: true } },
+        batch: {
+          select: {
+            name: true,
+            code: true,
+            startDate: true,
+            endDate: true,
+            instructor: { select: { name: true } },
+          },
+        },
+      },
+    }),
+    prisma.attendance.groupBy({
+      by: ["userId", "status"],
+      where: { userId: { in: userIds } },
+      _count: { _all: true },
+    }),
+    prisma.quizAttempt.findMany({
+      where: { studentId: { in: userIds } },
+      select: { studentId: true, status: true, score: true, maxScore: true },
+    }),
+    prisma.assignmentSubmission.groupBy({
+      by: ["studentId", "status"],
+      where: { studentId: { in: userIds } },
+      _count: { _all: true },
+    }),
+    prisma.certificate.groupBy({
+      by: ["userId", "status"],
+      where: { userId: { in: userIds } },
+      _count: { _all: true },
+    }),
+    prisma.payment.findMany({
+      where: { userId: { in: userIds } },
+      orderBy: { createdAt: "desc" },
+      select: {
+        userId: true,
+        netAmount: true,
+        status: true,
+        method: true,
+        paidAt: true,
+        createdAt: true,
+      },
+    }),
+    prisma.lead.findMany({
+      where: { convertedUserId: { in: userIds } },
+      select: { convertedUserId: true, leadNo: true, source: true, stage: true },
+    }),
   ]);
-  return { headers, data };
+
+  // ── Index everything by user, once ─────────────────────────────────────────
+  const enrolByUser = groupBy(enrollments, (e) => e.userId);
+  const quizByUser = groupBy(quizAttempts, (a) => a.studentId);
+  const payByUser = groupBy(payments, (p) => p.userId);
+  const leadByUser = new Map(
+    leads.filter((l) => l.convertedUserId).map((l) => [l.convertedUserId!, l]),
+  );
+
+  const attendanceByUser = countsByUser(attendance, (r) => r.userId, (r) => r.status);
+  const submissionsByUser = countsByUser(submissions, (r) => r.studentId, (r) => r.status);
+  const certsByUser = countsByUser(certificates, (r) => r.userId, (r) => r.status);
+
+  const data = rows.map((u) => {
+    const enrols = enrolByUser.get(u.id) ?? [];
+    const attend = attendanceByUser.get(u.id) ?? {};
+    const subs = submissionsByUser.get(u.id) ?? {};
+    const certs = certsByUser.get(u.id) ?? {};
+    const quizzes = quizByUser.get(u.id) ?? [];
+    const pays = payByUser.get(u.id) ?? [];
+    const lead = leadByUser.get(u.id);
+
+    // "Left early" still counts as having turned up.
+    const present = attend.PRESENT ?? 0;
+    const late = (attend.LATE ?? 0) + (attend.LEFT_EARLY ?? 0);
+    const absent = attend.ABSENT ?? 0;
+    const marked = present + late + absent;
+
+    const graded = quizzes.filter((a) => a.status === "GRADED" || a.status === "SUBMITTED");
+    const quizPercents = graded
+      .filter((a) => a.maxScore > 0 && a.score != null)
+      .map((a) => (Number(a.score) / a.maxScore) * 100);
+
+    const settled = pays.filter((p) => p.status === "PAID");
+    // Money still owed: raised but not settled, and not written off.
+    const pending = pays.filter(
+      (p) => p.status === "PENDING" || p.status === "PROCESSING",
+    );
+    const lastPaid = settled[0];
+
+    const avgProgress = enrols.length
+      ? Math.round(enrols.reduce((sum, e) => sum + e.progressPercent, 0) / enrols.length)
+      : null;
+
+    // "Date of joining": whichever came first — the enrolment or the money.
+    const firstEnrolment = enrols[0]?.enrolledAt ?? null;
+    const firstPayment = settled.length
+      ? settled.reduce<Date>(
+          (earliest, p) => {
+            const at = p.paidAt ?? p.createdAt;
+            return at < earliest ? at : earliest;
+          },
+          settled[0].paidAt ?? settled[0].createdAt,
+        )
+      : null;
+    const joined =
+      firstEnrolment && firstPayment
+        ? firstEnrolment < firstPayment
+          ? firstEnrolment
+          : firstPayment
+        : (firstEnrolment ?? firstPayment);
+
+    return [
+      u.name,
+      u.email,
+      u.phone ?? "",
+      u.role.name,
+      u.status,
+      u.emailVerified ? "Yes" : "No",
+      u.headline ?? "",
+      day(u.createdAt),
+      day(joined),
+      day(u.lastLoginAt),
+      u.timezone,
+      u.referralCode ?? "",
+      day(u.internshipStartAt),
+      day(u.internshipEndAt),
+
+      String(enrols.length),
+      enrols.map((e) => e.course.title).join(" | "),
+      enrols
+        .map((e) => (e.batch ? `${e.batch.name} (${e.batch.code})` : ""))
+        .filter(Boolean)
+        .join(" | "),
+      unique(enrols.map((e) => e.batch?.instructor?.name).filter(Boolean) as string[]).join(" | "),
+      day(enrols[0]?.batch?.startDate),
+      day(enrols[enrols.length - 1]?.batch?.endDate),
+      String(enrols.filter((e) => e.status === "COMPLETED").length),
+      avgProgress == null ? "" : String(avgProgress),
+
+      String(marked),
+      String(present + late),
+      String(absent),
+      marked > 0 ? String(Math.round(((present + late) / marked) * 100)) : "",
+
+      String(quizzes.length),
+      String(graded.length),
+      quizPercents.length
+        ? String(Math.round(quizPercents.reduce((a, b) => a + b, 0) / quizPercents.length))
+        : "",
+
+      // Drafts aren't submitted; everything else has been handed in.
+      String(
+        Object.entries(subs)
+          .filter(([status]) => status !== "DRAFT")
+          .reduce((sum, [, count]) => sum + count, 0),
+      ),
+      String(subs.GRADED ?? 0),
+      String((subs.SUBMITTED ?? 0) + (subs.LATE ?? 0) + (subs.RESUBMIT_REQUESTED ?? 0)),
+
+      String(certs.ISSUED ?? 0),
+      String(certs.REVOKED ?? 0),
+
+      money(settled.reduce((sum, p) => sum + p.netAmount.toNumber(), 0)),
+      money(pending.reduce((sum, p) => sum + p.netAmount.toNumber(), 0)),
+      String(pays.length),
+      day(lastPaid?.paidAt ?? lastPaid?.createdAt),
+      lastPaid?.method ?? "",
+
+      lead?.leadNo ?? "",
+      lead?.source ?? "",
+      lead?.stage ?? "",
+    ];
+  });
+
+  return { headers: EXPORT_HEADERS, data };
+}
+
+const EXPORT_HEADERS = [
+  "Name",
+  "Email",
+  "Phone",
+  "Role",
+  "Status",
+  "Email verified",
+  "Headline",
+  "Registered on",
+  "Date of joining",
+  "Last login",
+  "Timezone",
+  "Referral code",
+  "Internship from",
+  "Internship to",
+
+  "Enrolments",
+  "Courses",
+  "Batches",
+  "Instructors",
+  "Batch start",
+  "Batch end",
+  "Courses completed",
+  "Average progress %",
+
+  "Classes marked",
+  "Present",
+  "Absent",
+  "Attendance %",
+
+  "Quiz attempts",
+  "Quizzes completed",
+  "Quiz average %",
+
+  "Assignments submitted",
+  "Assignments graded",
+  "Assignments pending",
+
+  "Certificates issued",
+  "Certificates revoked",
+
+  "Fees paid",
+  "Fees pending",
+  "Payments",
+  "Last payment on",
+  "Last payment method",
+
+  "Lead no",
+  "Lead source",
+  "Lead stage",
+];
+
+function groupBy<T, K>(rows: T[], key: (row: T) => K): Map<K, T[]> {
+  const map = new Map<K, T[]>();
+  for (const row of rows) {
+    const k = key(row);
+    const list = map.get(k);
+    if (list) list.push(row);
+    else map.set(k, [row]);
+  }
+  return map;
+}
+
+/** `groupBy` rows → `{ userId → { STATUS: count } }`. */
+function countsByUser<T extends { _count: { _all: number } }>(
+  rows: T[],
+  userId: (row: T) => string,
+  status: (row: T) => string,
+): Map<string, Record<string, number>> {
+  const map = new Map<string, Record<string, number>>();
+  for (const row of rows) {
+    const id = userId(row);
+    const bucket = map.get(id) ?? {};
+    bucket[status(row)] = (bucket[status(row)] ?? 0) + row._count._all;
+    map.set(id, bucket);
+  }
+  return map;
+}
+
+function unique(values: string[]): string[] {
+  return [...new Set(values)];
 }

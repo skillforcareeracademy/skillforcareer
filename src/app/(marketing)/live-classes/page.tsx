@@ -5,14 +5,9 @@ import {
   Award,
   CalendarCheck,
   CalendarClock,
-  ClipboardCheck,
   Clock,
-  Hand,
-  MessageSquare,
-  MonitorPlay,
   Presentation,
   Radio,
-  ScreenShare,
   Ticket,
   Users,
   Video,
@@ -20,6 +15,7 @@ import {
 import { format } from "date-fns";
 import { listUpcomingLiveBatches } from "@/server/services/batch-service";
 import { listPublicWebinars } from "@/server/services/webinar-service";
+import { getPageSectionsFor } from "@/server/services/page-service";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -31,6 +27,7 @@ import {
 import { ButtonLink } from "@/components/shared/button-link";
 import { EmptyState } from "@/components/shared/empty-state";
 import { StepList, type Step } from "@/components/marketing/step-list";
+import { IconGlyph } from "@/components/shared/icon-glyph";
 import { siteConfig } from "@/config/site";
 import { cn } from "@/lib/utils";
 
@@ -43,39 +40,6 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 const { contact } = siteConfig;
-
-const FEATURES = [
-  {
-    icon: Video,
-    title: "Face-to-face teaching",
-    body: "Two-way video with the instructor — not a webinar you watch in silence.",
-  },
-  {
-    icon: Hand,
-    title: "Ask as you go",
-    body: "Raise a hand mid-class and get your doubt cleared before the topic moves on.",
-  },
-  {
-    icon: ScreenShare,
-    title: "Live code & screen share",
-    body: "Watch the work happen step by step, then build it alongside the class.",
-  },
-  {
-    icon: MonitorPlay,
-    title: "Recordings on tap",
-    body: "Missed a session? The recording lands in your dashboard with the notes.",
-  },
-  {
-    icon: ClipboardCheck,
-    title: "Graded practice",
-    body: "Assignments and quizzes after each module, reviewed with real feedback.",
-  },
-  {
-    icon: MessageSquare,
-    title: "Between-class support",
-    body: "A discussion board per batch, so questions don't wait for the next session.",
-  },
-];
 
 const STEPS: Step[] = [
   {
@@ -100,29 +64,6 @@ const STEPS: Step[] = [
   },
 ];
 
-const FAQS = [
-  {
-    q: "What if I miss a live class?",
-    a: "Every session is recorded and published to your dashboard, usually within a few hours. You keep access for the length of your enrolment, so you can catch up and still attend the next class with the batch.",
-  },
-  {
-    q: "How big is a batch?",
-    a: "Batches are kept small enough that the instructor can take questions from everyone. Each cohort lists its remaining seats below, and enrolment closes once it fills.",
-  },
-  {
-    q: "Do I need any special software?",
-    a: "No. Classes run inside the browser — a laptop or desktop with a stable connection, a mic and (optionally) a webcam is enough.",
-  },
-  {
-    q: "Can I switch to another batch?",
-    a: "Yes. If your schedule changes, talk to your counsellor and we will move you to the next suitable cohort of the same course.",
-  },
-  {
-    q: "Are live classes more expensive than self-paced?",
-    a: "Pricing is per course and is shown on the course page. Live cohorts include mentor time and doubt-clearing sessions, which self-paced access does not.",
-  },
-];
-
 /** "19:00" → "7:00 PM" */
 function fmtTime(hhmm: string): string {
   const [h, m] = hhmm.split(":").map(Number);
@@ -143,11 +84,17 @@ function scheduleLine(schedule: { days: string[]; startTime: string; endTime: st
 }
 
 export default async function LiveClassesPage() {
-  const [batches, webinars] = await Promise.all([
+  const [batches, webinars, page] = await Promise.all([
     listUpcomingLiveBatches(9),
     listPublicWebinars(),
+    getPageSectionsFor(["live.hero", "live.features", "live.faq"] as const),
   ]);
   const upcomingWebinars = webinars.filter((w) => !w.isPast).slice(0, 3);
+
+  const hero = page["live.hero"];
+  const features = page["live.features"];
+  const faq = page["live.faq"];
+  const faqItems = faq.data.items.filter((f) => f.q.trim());
 
   return (
     <>
@@ -160,19 +107,22 @@ export default async function LiveClassesPage() {
 
         <div className="container-page py-16 sm:py-24">
           <div className="mx-auto max-w-3xl text-center">
-            <span className="text-primary inline-flex items-center gap-1.5 rounded-full bg-rose-500/10 px-3 py-1 text-sm font-medium">
-              <Radio className="size-4" /> Live & instructor-led
-            </span>
+            {hero.data.badge && (
+              <span className="text-primary inline-flex items-center gap-1.5 rounded-full bg-rose-500/10 px-3 py-1 text-sm font-medium">
+                <Radio className="size-4" /> {hero.data.badge}
+              </span>
+            )}
             <h1 className="mt-5 text-4xl leading-[1.1] font-bold sm:text-5xl">
-              Learn live, ask questions,{" "}
+              {hero.data.titleLead}{" "}
               <span className="bg-gradient-to-r from-rose-600 to-pink-600 bg-clip-text text-transparent">
-                get unstuck
+                {hero.data.titleHighlight}
               </span>
             </h1>
-            <p className="text-muted-foreground mx-auto mt-5 max-w-2xl text-lg text-pretty">
-              Scheduled classes with a real instructor and a small batch of peers —
-              every session recorded, every doubt answered, every assignment reviewed.
-            </p>
+            {hero.data.subtitle && (
+              <p className="text-muted-foreground mx-auto mt-5 max-w-2xl text-lg text-pretty">
+                {hero.data.subtitle}
+              </p>
+            )}
             <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
               <ButtonLink href="#batches" size="lg">
                 See upcoming batches <ArrowRight className="size-4" />
@@ -193,25 +143,27 @@ export default async function LiveClassesPage() {
       </section>
 
       {/* ── What's inside a live class ───────────────────────────────────── */}
-      <section className="container-page py-16 sm:py-20">
-        <div className="mx-auto mb-10 max-w-2xl text-center">
-          <h2 className="text-3xl sm:text-4xl">What a live class actually gives you</h2>
-          <p className="text-muted-foreground mt-3">
-            Everything a classroom does, minus the commute.
-          </p>
-        </div>
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {FEATURES.map(({ icon: Icon, title, body }) => (
-            <Card key={title} className="h-full gap-0 p-6">
-              <span className="bg-primary/10 text-primary mb-4 grid size-11 place-items-center rounded-xl">
-                <Icon className="size-5" />
-              </span>
-              <h3 className="font-semibold">{title}</h3>
-              <p className="text-muted-foreground mt-1.5 text-sm">{body}</p>
-            </Card>
-          ))}
-        </div>
-      </section>
+      {features.enabled && features.data.items.length > 0 && (
+        <section className="container-page py-16 sm:py-20">
+          <div className="mx-auto mb-10 max-w-2xl text-center">
+            <h2 className="text-3xl sm:text-4xl">{features.data.title}</h2>
+            {features.data.description && (
+              <p className="text-muted-foreground mt-3">{features.data.description}</p>
+            )}
+          </div>
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {features.data.items.map((item) => (
+              <Card key={item.title} className="h-full gap-0 p-6">
+                <span className="bg-primary/10 text-primary mb-4 grid size-11 place-items-center rounded-xl">
+                  <IconGlyph name={item.icon} className="size-5" />
+                </span>
+                <h3 className="font-semibold">{item.title}</h3>
+                <p className="text-muted-foreground mt-1.5 text-sm">{item.body}</p>
+              </Card>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* ── How it works ─────────────────────────────────────────────────── */}
       <section className="bg-muted/30 border-y">
@@ -377,25 +329,27 @@ export default async function LiveClassesPage() {
       )}
 
       {/* ── FAQ ──────────────────────────────────────────────────────────── */}
-      <section className="container-page py-16 sm:py-20">
-        <div className="mx-auto max-w-3xl">
-          <h2 className="text-center text-3xl sm:text-4xl">Common questions</h2>
-          <Card className="mt-8 gap-0 p-2 sm:p-4">
-            <Accordion className="divide-y">
-              {FAQS.map((faq, i) => (
-                <AccordionItem key={faq.q} value={String(i)} className="border-b-0 px-3">
-                  <AccordionTrigger className="py-4 text-base hover:no-underline">
-                    {faq.q}
-                  </AccordionTrigger>
-                  <AccordionContent className="text-muted-foreground pr-6 pb-4">
-                    {faq.a}
-                  </AccordionContent>
-                </AccordionItem>
-              ))}
-            </Accordion>
-          </Card>
-        </div>
-      </section>
+      {faq.enabled && faqItems.length > 0 && (
+        <section className="container-page py-16 sm:py-20">
+          <div className="mx-auto max-w-3xl">
+            <h2 className="text-center text-3xl sm:text-4xl">{faq.data.title}</h2>
+            <Card className="mt-8 gap-0 p-2 sm:p-4">
+              <Accordion className="divide-y">
+                {faqItems.map((item, i) => (
+                  <AccordionItem key={item.q} value={String(i)} className="border-b-0 px-3">
+                    <AccordionTrigger className="py-4 text-base hover:no-underline">
+                      {item.q}
+                    </AccordionTrigger>
+                    <AccordionContent className="text-muted-foreground pr-6 pb-4">
+                      {item.a}
+                    </AccordionContent>
+                  </AccordionItem>
+                ))}
+              </Accordion>
+            </Card>
+          </div>
+        </section>
+      )}
 
     </>
   );

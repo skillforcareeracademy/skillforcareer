@@ -10,6 +10,7 @@ import {
   ACCEPTED_DOC_MIME,
 } from "@/lib/storage";
 import { UPLOAD } from "@/lib/constants";
+import { recordUpload } from "@/server/services/media-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,7 +23,7 @@ export const dynamic = "force-dynamic";
  * pickers can't be talked into storing something else.
  */
 export const POST = withRoute(async (req) => {
-  await requireApiUser();
+  const user = await requireApiUser();
 
   const form = await req.formData();
   const file = form.get("file");
@@ -51,5 +52,17 @@ export const POST = withRoute(async (req) => {
 
   const buffer = Buffer.from(await file.arrayBuffer());
   const url = await saveUpload(buffer, ext, file.name);
+
+  // Catalogue it so it shows up in Admin → Media and can be reused elsewhere.
+  // `recordUpload` swallows its own failures: the file is already stored, and
+  // failing to index it is no reason to tell the admin the upload failed.
+  await recordUpload({
+    url,
+    name: file.name,
+    mime: file.type,
+    size: file.size,
+    uploadedById: user.id,
+  });
+
   return created({ url, name: file.name, mime: file.type, size: file.size });
 });

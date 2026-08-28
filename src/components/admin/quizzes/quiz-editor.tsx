@@ -15,9 +15,11 @@ import {
   ListChecks,
   Upload,
   Download,
+  FileSpreadsheet,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
+import { parseQuestionBank } from "@/lib/question-csv";
 import { GRADING_MODES, GRADING_MODE_LABEL, QUESTION_TYPE_LABEL } from "@/lib/validations/quiz";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
@@ -133,20 +135,35 @@ export function QuizEditor({
     ? batches.filter((b) => b.courseId === form.courseId)
     : batches;
 
-  /** Read a previously exported JSON bank back in, appending to what's here. */
+  /**
+   * Read a question bank back in, appending to what's here.
+   *
+   * The sheet is parsed in the browser so a bad row can be named before
+   * anything is sent; the API still validates every question it is given.
+   * Accepts the CSV the export now produces, and the JSON older exports did.
+   */
   async function onImport(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
     setImporting(true);
     try {
-      const parsed = JSON.parse(await file.text());
-      const payload = Array.isArray(parsed) ? { questions: parsed } : parsed;
+      const { questions, errors } = parseQuestionBank(await file.text());
+      if (questions.length === 0) {
+        toast.error(errors[0]?.message ?? "That file has no questions in it.");
+        return;
+      }
       const res = await api.post<{ message: string }>(
         `/api/quizzes/${quiz.id}/questions/import`,
-        { questions: payload.questions, replace: false },
+        { questions, replace: false },
       );
-      toast.success(res.message);
+      // Rows the sheet got wrong are worth saying out loud — silently importing
+      // 48 of 50 questions is how a paper goes out with two missing.
+      toast.success(
+        errors.length > 0
+          ? `${res.message} ${errors.length} row${errors.length === 1 ? "" : "s"} skipped — row ${errors[0].row}: ${errors[0].message}`
+          : res.message,
+      );
       router.refresh();
     } catch (err) {
       const d =
@@ -393,6 +410,18 @@ export function QuizEditor({
               </CardDescription>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              {/* The blank sheet first: an admin who has never imported a paper
+                  needs to see the columns before the Import button means
+                  anything. */}
+              <Button
+                variant="ghost"
+                nativeButton={false}
+                render={
+                  <a href={`/api/quizzes/${quiz.id}/questions/template`} download />
+                }
+              >
+                <FileSpreadsheet className="size-4" /> Sample sheet
+              </Button>
               <Button
                 variant="outline"
                 onClick={() => fileRef.current?.click()}
@@ -420,7 +449,7 @@ export function QuizEditor({
               <input
                 ref={fileRef}
                 type="file"
-                accept="application/json,.json"
+                accept=".csv,text/csv,application/json,.json"
                 className="hidden"
                 onChange={onImport}
               />

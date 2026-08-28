@@ -35,10 +35,19 @@ function rowTitle(item: Item, spec: ListField, index: number): string {
 
 export function ListFieldEditor({
   spec,
+  path,
+  maxLengthFor,
   value,
   onChange,
 }: {
   spec: ListField;
+  /**
+   * Where this list sits in the section's data, e.g. `["columns"]` or
+   * `["columns", 0, "links"]`. Every row shares one schema, so index 0 stands
+   * in for "any row" when the character limits are looked up.
+   */
+  path: (string | number)[];
+  maxLengthFor: (path: (string | number)[]) => number | null;
   value: unknown;
   onChange: (value: Item[]) => void;
 }) {
@@ -184,6 +193,8 @@ export function ListFieldEditor({
                       <div key={field.name} className="bg-muted/30 rounded-lg p-3 sm:col-span-2">
                         <ListFieldEditor
                           spec={field}
+                          path={[...path, 0, field.name]}
+                          maxLengthFor={maxLengthFor}
                           value={item[field.name]}
                           onChange={(next) => setField(index, field.name, next)}
                         />
@@ -194,6 +205,7 @@ export function ListFieldEditor({
                           field={field}
                           value={item[field.name]}
                           onChange={(next) => setField(index, field.name, next)}
+                          maxLength={maxLengthFor([...path, 0, field.name])}
                         />
                       </div>
                     ),

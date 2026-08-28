@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
 import type { CreateCourseInput, UpdateCourseInput } from "@/lib/validations/course";
+import { invalidateHeaderMenus } from "./header-menu-service";
 
 function slugify(value: string): string {
   return value
@@ -85,6 +86,8 @@ export async function updateCourse(
     if (isUnique(e)) throw AppError.conflict("That slug is already in use.");
     throw e;
   }
+  // Title, slug and category all show in the header's Courses dropdown.
+  invalidateHeaderMenus();
 }
 
 export async function setCoursePublished(
@@ -106,6 +109,8 @@ export async function setCoursePublished(
       publishedAt: publish ? new Date() : null,
     },
   });
+  // The header's Courses dropdown lists published courses only.
+  invalidateHeaderMenus();
 }
 
 export async function deleteCourse(id: string): Promise<void> {
@@ -114,6 +119,7 @@ export async function deleteCourse(id: string): Promise<void> {
     throw AppError.conflict("This course has enrolments and can't be deleted.");
   }
   await prisma.course.delete({ where: { id } });
+  invalidateHeaderMenus();
 }
 
 // ── Reads: editor ───────────────────────────────────────────────────────────

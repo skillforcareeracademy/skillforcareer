@@ -23,6 +23,7 @@ import {
   HOME_SECTIONS,
   isAlwaysOn,
   isGlobalSection,
+  maxLengthAt,
 } from "@/lib/validations/homepage";
 import { cn } from "@/lib/utils";
 import { IconGlyph } from "./icon-glyph";
@@ -192,7 +193,14 @@ export function HomepageClient({ initial }: { initial: EditableSection[] }) {
           </div>
         </div>
 
-        {open && <SectionEditor section={section} />}
+        {open && (
+          <SectionEditor
+            section={section}
+            spec={spec}
+            endpoint={`/api/homepage/${section.key}`}
+            maxLengthFor={(path) => maxLengthAt(section.key, path)}
+          />
+        )}
       </div>
     );
   }

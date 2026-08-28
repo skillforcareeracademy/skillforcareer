@@ -3,6 +3,7 @@ import { AnnouncementBar } from "@/components/marketing/announcement-bar";
 import { MarketingHeader } from "@/components/layout/marketing-header";
 import { MarketingFooter } from "@/components/layout/marketing-footer";
 import { CtaBand } from "@/components/marketing/cta-band";
+import { CtaBandSlot } from "@/components/marketing/cta-band-slot";
 import { getHomeSection } from "@/server/services/homepage-service";
 
 export default async function MarketingLayout({ children }: { children: ReactNode }) {
@@ -18,8 +19,14 @@ export default async function MarketingLayout({ children }: { children: ReactNod
         {/* One conversion band above the footer, on every public page — asked
             for by the client, and it means individual pages don't each have to
             remember to end on a call to action. Edited under
-            Admin → Homepage → Closing banner, and switched off there too. */}
-        {cta.enabled && <CtaBand data={cta.data} />}
+            Admin → Homepage → Closing banner, and switched off there too.
+            `CtaBandSlot` drops it on the handful of pages that close on a
+            banner of their own, so the two never stack. */}
+        {cta.enabled && (
+          <CtaBandSlot>
+            <CtaBand data={cta.data} />
+          </CtaBandSlot>
+        )}
       </main>
       <MarketingFooter />
     </div>

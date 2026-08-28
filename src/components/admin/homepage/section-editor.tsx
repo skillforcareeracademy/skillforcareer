@@ -16,15 +16,34 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { HOME_SECTIONS, isListField } from "@/lib/validations/homepage";
+import { isListField } from "@/lib/validations/homepage";
 import { cn } from "@/lib/utils";
 import { FieldControl } from "./field-control";
 import { ListFieldEditor } from "./list-field";
-import type { EditableSection } from "./types";
+import type { EditableRecord, SectionSpec } from "./types";
 
-export function SectionEditor({ section }: { section: EditableSection }) {
+/**
+ * The form behind one editable section.
+ *
+ * Registry-agnostic on purpose: Admin → Homepage and Admin → Pages hold their
+ * content in different tables under different keys, but a "section" is the same
+ * thing in both — a spec that says which controls to draw, and an endpoint that
+ * takes the result. `maxLengthFor` comes from whichever Zod schema owns the
+ * section, so the boxes can't accept more than the database will store.
+ */
+export function SectionEditor({
+  section,
+  spec,
+  endpoint,
+  maxLengthFor,
+}: {
+  section: EditableRecord;
+  spec: SectionSpec;
+  /** Where PATCH (save) and DELETE (reset to original) go. */
+  endpoint: string;
+  maxLengthFor: (path: (string | number)[]) => number | null;
+}) {
   const router = useRouter();
-  const spec = HOME_SECTIONS[section.key];
   const [form, setForm] = useState<Record<string, unknown>>(section.data);
   const [saving, setSaving] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
@@ -44,7 +63,7 @@ export function SectionEditor({ section }: { section: EditableSection }) {
   async function save() {
     setSaving(true);
     try {
-      await api.patch(`/api/homepage/${section.key}`, { data: form });
+      await api.patch(endpoint, { data: form });
       toast.success(`${spec.label} saved.`);
       router.refresh();
     } catch (e) {
@@ -57,7 +76,7 @@ export function SectionEditor({ section }: { section: EditableSection }) {
   async function reset() {
     setResetting(true);
     try {
-      const restored = await api.del<EditableSection>(`/api/homepage/${section.key}`);
+      const restored = await api.del<EditableRecord>(endpoint);
       setForm(restored.data);
       toast.success(`${spec.label} restored to the original content.`);
       setConfirmReset(false);
@@ -77,6 +96,8 @@ export function SectionEditor({ section }: { section: EditableSection }) {
             <div key={field.name} className="sm:col-span-2">
               <ListFieldEditor
                 spec={field}
+                path={[field.name]}
+                maxLengthFor={maxLengthFor}
                 value={form[field.name]}
                 onChange={(next) => set(field.name, next)}
               />
@@ -87,6 +108,7 @@ export function SectionEditor({ section }: { section: EditableSection }) {
                 field={field}
                 value={form[field.name]}
                 onChange={(next) => set(field.name, next)}
+                maxLength={maxLengthFor([field.name])}
               />
             </div>
           ),

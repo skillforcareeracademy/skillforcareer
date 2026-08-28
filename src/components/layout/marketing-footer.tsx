@@ -4,6 +4,7 @@ import { Logo } from "@/components/shared/logo";
 import { FooterLinkColumns, type FooterColumn } from "./footer-link-columns";
 import { socialFor } from "@/config/social";
 import { getHomeSection } from "@/server/services/homepage-service";
+import { getPageSection } from "@/server/services/page-service";
 import { cn } from "@/lib/utils";
 
 /**
@@ -20,14 +21,20 @@ const GRID_COLS: Record<number, string> = {
 };
 
 /**
- * Public site footer — every word, link, address and social account comes from
- * Admin → Homepage → Footer. The logo is Settings → Branding.
+ * Public site footer — every word, link and social account comes from
+ * Admin → Homepage → Footer; the addresses come from Admin → Pages → Contact,
+ * shared with About us and Contact. The logo is Settings → Branding.
  */
 export async function MarketingFooter() {
-  const section = await getHomeSection("footer");
+  // The addresses are shared with About us and Contact — one list, edited under
+  // Pages → Contact, so changing it there changes it everywhere it shows.
+  const [section, centres] = await Promise.all([
+    getHomeSection("footer"),
+    getPageSection("contact.offices"),
+  ]);
   const {
     about,
-    offices,
+    showOffices,
     columns,
     contactTitle,
     phone,
@@ -48,6 +55,9 @@ export async function MarketingFooter() {
     }))
     .filter((col) => col.title && col.links.length > 0);
 
+  const offices = showOffices
+    ? centres.data.offices.filter((o) => o.label.trim() || o.line1.trim())
+    : [];
   const socialLinks = socials.filter((s) => s.href.trim());
   const legal = legalLinks.filter((l) => l.label.trim() && l.href.trim());
   const hasContact = phoneDisplay.trim() || email.trim() || hours.trim();

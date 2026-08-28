@@ -12,6 +12,7 @@ import {
   Radio,
   School,
   ChevronRight,
+  Download,
 } from "lucide-react";
 import type { ScheduleEvent, ScheduleEventType, ScheduleStats } from "@/server/services/schedule-service";
 import { PageHeader } from "@/components/shared/page-header";
@@ -133,6 +134,22 @@ export function ScheduleClient({
       <PageHeader
         title="Schedule"
         description="All your live and offline classes, assignment deadlines and batch milestones in one place."
+        actions={
+          // Downloads exactly what the filter above is showing, so the sheet
+          // matches the screen it was taken from.
+          <Button
+            variant="outline"
+            nativeButton={false}
+            render={
+              <a
+                href={`/api/schedule/export${type === "all" ? "" : `?type=${type}`}`}
+                download
+              />
+            }
+          >
+            <Download className="size-4" /> Download schedule
+          </Button>
+        }
       />
 
       {/* Summary */}

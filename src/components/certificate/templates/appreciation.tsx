@@ -152,8 +152,8 @@ export function AppreciationCertificate({ cert, chrome }: TemplateProps) {
           </div>
 
           <div className="flex items-end justify-center gap-[12cqw] pt-[2cqw]">
-            <Signature signatory={chrome.left} script={false} />
-            <Signature signatory={chrome.right} script={false} />
+            <Signature signatory={chrome.left} bracketRole />
+            <Signature signatory={chrome.right} bracketRole />
           </div>
         </div>
       </div>

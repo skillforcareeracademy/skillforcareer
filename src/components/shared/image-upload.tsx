@@ -2,16 +2,22 @@
 
 import { useRef, useState, type ChangeEvent } from "react";
 import Image from "next/image";
-import { ImageIcon, Loader2, Trash2, Upload } from "lucide-react";
+import { ImageIcon, Library, Loader2, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { MediaPicker } from "./media-picker";
 
 const MAX_BYTES = 5 * 1024 * 1024;
 
 /**
- * Generic image uploader with a rectangular preview — used for the site logo
- * and favicon. Posts to /api/upload and hands the stored URL back via onChange.
+ * Generic image uploader with a rectangular preview — used for the site logo,
+ * the favicon and every image field in the homepage editor. Posts to
+ * /api/upload and hands the stored URL back via onChange.
+ *
+ * "Library" opens the media picker, so a photo that was uploaded once for one
+ * section can be reused in another without being uploaded again. Every upload
+ * from here is catalogued there too.
  */
 export function ImageUpload({
   value,
@@ -19,15 +25,19 @@ export function ImageUpload({
   label = "image",
   className,
   previewClassName,
+  showLibrary = true,
 }: {
   value: string;
   onChange: (url: string) => void;
   label?: string;
   className?: string;
   previewClassName?: string;
+  /** Off for pickers outside the admin, where /api/media isn't readable. */
+  showLibrary?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [libraryOpen, setLibraryOpen] = useState(false);
 
   async function handleFile(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -103,6 +113,18 @@ export function ImageUpload({
             <Upload className="size-4" />
             {value ? "Replace" : "Upload"}
           </Button>
+          {showLibrary && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setLibraryOpen(true)}
+              disabled={uploading}
+            >
+              <Library className="size-4" />
+              Library
+            </Button>
+          )}
           {value && (
             <Button
               type="button"
@@ -127,6 +149,17 @@ export function ImageUpload({
         className="hidden"
         onChange={handleFile}
       />
+
+      {showLibrary && (
+        <MediaPicker
+          open={libraryOpen}
+          onOpenChange={setLibraryOpen}
+          onSelect={(url) => {
+            onChange(url);
+            toast.success("Image chosen from the library.");
+          }}
+        />
+      )}
     </div>
   );
 }

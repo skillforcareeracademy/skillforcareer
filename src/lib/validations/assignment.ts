@@ -69,6 +69,51 @@ export const assignmentSchema = z
 export const createAssignmentSchema = assignmentSchema;
 export const updateAssignmentSchema = assignmentSchema;
 
+/**
+ * Bulk upload — a whole term's assignments from one sheet.
+ *
+ * Rows are matched to courses and batches by *name*, not by id, because the
+ * sheet is written by a person looking at the timetable, not at the database.
+ * Resolution happens server-side so the same rules apply however the CSV
+ * arrives.
+ */
+export const importAssignmentRowSchema = z.object({
+  title: z.string().trim().min(3, "Title is too short").max(150),
+  description: z.string().trim().max(2000).default(""),
+  instructions: z.string().trim().max(8000).default(""),
+  /** Course title, slug or id — resolved on the server. */
+  course: z.string().trim().max(200).default(""),
+  /** Batch names or codes, comma-separated. Blank = everyone on the course. */
+  batches: z.string().trim().max(500).default(""),
+  type: z.string().trim().max(40).default("FILE"),
+  gradingMode: z.string().trim().max(40).default("MANUAL"),
+  maxScore: z.coerce.number().int().min(1).max(1000).default(100),
+  /** `2026-09-30` or `2026-09-30T17:00`; blank means no deadline. */
+  dueDate: z.string().trim().max(40).default(""),
+  allowLate: z.string().trim().max(10).default(""),
+});
+
+export const importAssignmentsSchema = z.object({
+  rows: z.array(importAssignmentRowSchema).min(1, "Nothing to import").max(500),
+});
+
+export type ImportAssignmentRow = z.infer<typeof importAssignmentRowSchema>;
+export type ImportAssignmentsInput = z.infer<typeof importAssignmentsSchema>;
+
+/** The sheet's columns, shared by the template, the parser and the docs. */
+export const ASSIGNMENT_CSV_COLUMNS = [
+  "Title",
+  "Course",
+  "Batches",
+  "Type",
+  "Grading",
+  "Max score",
+  "Due date",
+  "Allow late",
+  "Description",
+  "Instructions",
+] as const;
+
 export const gradeSubmissionSchema = z.object({
   score: z.coerce.number().int().min(0).max(1000),
   feedback: z.string().trim().max(5000).optional().or(z.literal("")),

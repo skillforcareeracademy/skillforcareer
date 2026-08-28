@@ -58,7 +58,14 @@ function DialogContent({
           // content. One long option in a <Select> was enough to push the form
           // — and everything lined up with it — clean out past the dialog's
           // own width. Letting the items shrink keeps the box authoritative.
-          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none *:min-w-0 sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          //
+          // `max-h` + `overflow-y-auto`: without a ceiling, a tall form (issuing
+          // a certificate, creating an assignment) grew past the viewport with
+          // its Save button off-screen and nothing to scroll — the popup is
+          // `position: fixed`, so the page behind it can't scroll it into view.
+          // A dialog that uses <DialogBody> scrolls its middle instead and never
+          // reaches this; this is the floor that keeps every other one usable.
+          "fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col gap-4 overflow-y-auto overscroll-contain rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none *:min-w-0 sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
           className
         )}
         {...props}
@@ -89,7 +96,29 @@ function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="dialog-header"
-      className={cn("flex flex-col gap-2", className)}
+      className={cn("flex shrink-0 flex-col gap-2", className)}
+      {...props}
+    />
+  )
+}
+
+/**
+ * The scrolling middle of a tall dialog.
+ *
+ * Wrap the form between <DialogHeader> and <DialogFooter> in this and the title
+ * and the buttons stay put while the fields scroll — which is what a long form
+ * on a laptop needs. The negative margins let a scrollbar sit at the edge of the
+ * popup rather than inset from the padding, and the padding is added back so
+ * focus rings aren't clipped against it.
+ */
+function DialogBody({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="dialog-body"
+      className={cn(
+        "-mx-4 min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-0.5",
+        className
+      )}
       {...props}
     />
   )
@@ -107,7 +136,7 @@ function DialogFooter({
     <div
       data-slot="dialog-footer"
       className={cn(
-        "-mx-4 -mb-4 flex flex-col-reverse gap-2 rounded-b-xl border-t bg-muted/50 p-4 sm:flex-row sm:justify-end",
+        "-mx-4 -mb-4 flex shrink-0 flex-col-reverse gap-2 rounded-b-xl border-t bg-muted/50 p-4 sm:flex-row sm:justify-end",
         className
       )}
       {...props}
@@ -153,6 +182,7 @@ function DialogDescription({
 
 export {
   Dialog,
+  DialogBody,
   DialogClose,
   DialogContent,
   DialogDescription,

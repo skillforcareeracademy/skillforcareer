@@ -349,6 +349,8 @@ model User {
   webinarsHosted     Webinar[]              @relation("WebinarHost")
   webinarsAttended   WebinarRegistration[]  @relation("WebinarAttendee")
   assignmentsSet     AssignmentStudent[]    @relation("AssignmentAssignee")
+  blogPosts          BlogPost[]             @relation("BlogAuthor")
+  mediaUploads       MediaFile[]            @relation("MediaUploader")
 
   @@index([roleId])
   @@index([status])
@@ -446,7 +448,8 @@ model Category {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  courses Course[]
+  courses   Course[]
+  blogPosts BlogPost[]
 
   @@index([parentId])
 }
@@ -1736,4 +1739,99 @@ model WebinarRegistration {
   @@unique([webinarId, email])
   @@index([webinarId])
   @@index([userId])
+}
+
+/// One editable band of a secondary page — About, Contact, For Business or
+/// Live Classes. Same shape and same machinery as `HomeSection`, kept in its own
+/// table so the header and footer, which are read on *every* request, don't have
+/// to page in the copy of four pages nobody is looking at.
+model PageSection {
+  key         String   @id
+  enabled     Boolean  @default(true)
+  order       Int      @default(0)
+  data        Json
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([order])
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// MEDIA LIBRARY
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// One catalogued upload.
+///
+/// `MediaAsset` above holds the *bytes* for the `db` storage driver only; this
+/// is the driver-independent index the admin's Media page browses, so a file
+/// uploaded to disk or to S3 is just as findable. Every upload through
+/// `POST /api/upload` is recorded here, whatever it was uploaded for.
+model MediaFile {
+  id           String  @id @default(cuid())
+  /// The public path the site uses — `/api/files/<id>/<name>`, or an S3 URL.
+  url          String  @db.VarChar(512)
+  /// The uploader's own filename, kept so the library is searchable by name.
+  name         String
+  mime         String
+  size         Int
+  /// Set for images, where known, so the picker can show dimensions.
+  width        Int?
+  height       Int?
+  /// Free-text label an admin can add to find a file again later.
+  alt          String?
+  uploadedById String?
+
+  createdAt DateTime @default(now())
+
+  uploadedBy User? @relation("MediaUploader", fields: [uploadedById], references: [id], onUpdate: NoAction)
+
+  @@index([createdAt])
+  @@index([uploadedById])
+  @@index([mime])
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// BLOG
+// ══════════════════════════════════════════════════════════════════════════════
+
+enum PostStatus {
+  DRAFT
+  PUBLISHED
+}
+
+model BlogPost {
+  id       String     @id @default(cuid())
+  /// Unique — see scripts/add-blog-slug-index.ts for why the index is created
+  /// with raw DDL rather than by `db push`.
+  slug     String     @unique @db.VarChar(191)
+  title    String
+  /// The card blurb and the meta description.
+  excerpt  String?    @db.Text
+  /// The body, as HTML from the editor.
+  content  String     @db.LongText
+  coverUrl String?    @db.VarChar(512)
+  status   PostStatus @default(DRAFT)
+  /// Free tags, stored as a JSON array of strings.
+  tags     Json?
+  /// Optional catalogue category, so a post can sit beside the courses it is about.
+  categoryId String?
+  authorId   String?
+  /// Shown on the card and used for ordering; set the first time it is published.
+  publishedAt DateTime?
+  readMinutes Int       @default(3)
+  views       Int       @default(0)
+  /// Overrides for the page's <title> and description when set.
+  metaTitle       String?
+  metaDescription String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  category Category? @relation(fields: [categoryId], references: [id], onUpdate: NoAction)
+  author   User?     @relation("BlogAuthor", fields: [authorId], references: [id], onUpdate: NoAction)
+
+  @@index([status, publishedAt])
+  @@index([categoryId])
+  @@index([authorId])
 }

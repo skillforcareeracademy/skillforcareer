@@ -2,11 +2,13 @@ import { prisma } from "@/lib/prisma";
 import { notify } from "./notification-service";
 import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
+import { ASSIGNMENT_CSV_COLUMNS } from "@/lib/validations/assignment";
 import type {
   AssignmentInput,
   GradeSubmissionInput,
   AssignmentQuestionInput,
   ImportAssignmentQuestionsInput,
+  ImportAssignmentsInput,
 } from "@/lib/validations/assignment";
 
 function toDate(value?: string): Date | null {
@@ -314,6 +316,166 @@ export async function createAssignment(input: AssignmentInput, createdById: stri
   await setAudience(a.id, input.batchIds, input.studentIds);
   await announceAssignment(a.id);
   return a.id;
+}
+
+/** Blank, "no", "false" and "0" are all false; anything else is true. */
+function truthy(raw: string): boolean {
+  const v = raw.trim().toLowerCase();
+  return v === "yes" || v === "y" || v === "true" || v === "1";
+}
+
+/** `2026-09-30` → `2026-09-30T23:59`; a full datetime is taken as written. */
+function normaliseDue(raw: string): string {
+  const value = raw.trim();
+  if (!value) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return `${value}T23:59`;
+  // Excel writes "30/09/2026" when the sheet was typed by hand in India.
+  const dmy = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/.exec(value);
+  if (dmy) {
+    const [, d, m, y] = dmy;
+    return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}T23:59`;
+  }
+  return value.replace(" ", "T").slice(0, 16);
+}
+
+function matchType(raw: string): AssignmentInput["type"] {
+  const v = raw.trim().toLowerCase().replace(/[^a-z]/g, "");
+  if (v.startsWith("mcq") || v.startsWith("multiple")) return "MCQ";
+  if (v.startsWith("qna") || v.startsWith("written") || v.startsWith("question")) return "QNA";
+  return "FILE";
+}
+
+function matchGrading(raw: string): AssignmentInput["gradingMode"] {
+  const v = raw.trim().toLowerCase();
+  return v.startsWith("auto") ? "AUTO" : "MANUAL";
+}
+
+export interface ImportAssignmentsResult {
+  imported: number;
+  skipped: number;
+  errors: { row: number; message: string }[];
+}
+
+/**
+ * Create many assignments from one sheet.
+ *
+ * Asked for directly: "there is not bulk upload assignment option in lms".
+ * Setting a term's worth of work one dialog at a time is the slow part, and the
+ * timetable already exists as a spreadsheet.
+ *
+ * Courses and batches are matched by name — the sheet is written against the
+ * timetable, not the database. A row that can't be read is reported and skipped
+ * rather than aborting the run, so a mostly-good sheet still lands.
+ */
+export async function importAssignments(
+  input: ImportAssignmentsInput,
+  createdById: string,
+): Promise<ImportAssignmentsResult> {
+  // Two reads for the whole file, not two per row.
+  const [courses, batches] = await Promise.all([
+    prisma.course.findMany({ select: { id: true, title: true, slug: true } }),
+    prisma.batch.findMany({ select: { id: true, name: true, code: true, courseId: true } }),
+  ]);
+
+  const key = (v: string) => v.trim().toLowerCase();
+  const courseByName = new Map<string, string>();
+  for (const c of courses) {
+    courseByName.set(key(c.title), c.id);
+    courseByName.set(key(c.slug), c.id);
+    courseByName.set(c.id, c.id);
+  }
+  const batchByName = new Map<string, { id: string; courseId: string }>();
+  for (const b of batches) {
+    batchByName.set(key(b.name), { id: b.id, courseId: b.courseId });
+    batchByName.set(key(b.code), { id: b.id, courseId: b.courseId });
+    batchByName.set(b.id, { id: b.id, courseId: b.courseId });
+  }
+
+  const errors: ImportAssignmentsResult["errors"] = [];
+  let imported = 0;
+
+  for (const [index, row] of input.rows.entries()) {
+    // +2: one for the header row, one because people count from 1.
+    const lineNo = index + 2;
+
+    const courseId = row.course.trim() ? courseByName.get(key(row.course)) : undefined;
+    if (row.course.trim() && !courseId) {
+      errors.push({ row: lineNo, message: `No course called "${row.course}".` });
+      continue;
+    }
+
+    const batchIds: string[] = [];
+    let batchProblem: string | null = null;
+    for (const name of row.batches.split(/[,;|]+/)) {
+      if (!name.trim()) continue;
+      const batch = batchByName.get(key(name));
+      if (!batch) {
+        batchProblem = `No batch called "${name.trim()}".`;
+        break;
+      }
+      if (courseId && batch.courseId !== courseId) {
+        batchProblem = `Batch "${name.trim()}" isn't on that course.`;
+        break;
+      }
+      batchIds.push(batch.id);
+    }
+    if (batchProblem) {
+      errors.push({ row: lineNo, message: batchProblem });
+      continue;
+    }
+
+    const type = matchType(row.type);
+    // Written answers need a person to read them — the same rule the form has.
+    const gradingMode = type === "QNA" ? "MANUAL" : matchGrading(row.gradingMode);
+
+    try {
+      await createAssignment(
+        {
+          title: row.title,
+          description: row.description,
+          instructions: row.instructions,
+          courseId: courseId ?? "",
+          type,
+          gradingMode,
+          maxScore: row.maxScore,
+          dueDate: normaliseDue(row.dueDate),
+          allowLate: truthy(row.allowLate),
+          batchIds,
+          studentIds: [],
+        },
+        createdById,
+      );
+      imported += 1;
+    } catch (e) {
+      errors.push({
+        row: lineNo,
+        message: e instanceof Error ? e.message : "Couldn't create this assignment.",
+      });
+    }
+  }
+
+  return { imported, skipped: input.rows.length - imported, errors };
+}
+
+/** A one-row sample sheet, so the columns the importer expects are visible. */
+export function assignmentImportTemplate(): { headers: string[]; data: string[][] } {
+  return {
+    headers: [...ASSIGNMENT_CSV_COLUMNS],
+    data: [
+      [
+        "Module 1 — Coding practice set",
+        "Medical Coding Course with Exam Guidance",
+        "MC-SEP26",
+        "MCQ",
+        "Auto",
+        "50",
+        "2026-09-30",
+        "Yes",
+        "Twenty coding scenarios from module 1.",
+        "Attempt every question. One mark each, no negative marking.",
+      ],
+    ],
+  };
 }
 
 export async function updateAssignment(id: string, input: AssignmentInput): Promise<void> {

@@ -22,6 +22,9 @@ import {
   NotebookPen,
   KeyRound,
   School,
+  FileText,
+  Newspaper,
+  Image as ImageIcon,
   type LucideIcon,
 } from "lucide-react";
 import { ROLES, type Role } from "./roles";
@@ -83,6 +86,9 @@ export const NAV_SECTIONS: NavSection[] = [
     label: "Management",
     items: [
       { title: "Homepage", href: "/homepage", icon: LayoutTemplate, roles: STAFF },
+      { title: "Pages", href: "/pages", icon: FileText, roles: STAFF },
+      { title: "Blog", href: "/blog", icon: Newspaper, roles: STAFF },
+      { title: "Media", href: "/media", icon: ImageIcon, roles: STAFF },
       { title: "Users", href: "/users", icon: Users, roles: STAFF },
       { title: "Leads", href: "/leads", icon: Target, roles: STAFF },
       { title: "Schedule", href: "/schedule", icon: CalendarClock, roles: TEACHING },

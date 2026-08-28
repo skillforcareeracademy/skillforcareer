@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import {
   Check,
   Download,
+  FileSpreadsheet,
   GripVertical,
   ListChecks,
   Loader2,
@@ -15,6 +16,7 @@ import {
   Upload,
 } from "lucide-react";
 import { api, ApiError } from "@/lib/api-client";
+import { parseQuestionBank } from "@/lib/question-csv";
 import {
   Sheet,
   SheetContent,
@@ -272,20 +274,31 @@ function Body({
     }
   }
 
-  /** Read a previously exported JSON file back in. */
+  /**
+   * Read a question paper back in — the CSV the export now produces, or the
+   * JSON older exports did. Parsed here so a bad row can be named; the API
+   * still validates every question it is handed.
+   */
   async function onImport(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
     setImporting(true);
     try {
-      const parsed = JSON.parse(await file.text());
-      const payload = Array.isArray(parsed) ? { questions: parsed } : parsed;
+      const { questions: parsed, errors } = parseQuestionBank(await file.text());
+      if (parsed.length === 0) {
+        toast.error(errors[0]?.message ?? "That file has no questions in it.");
+        return;
+      }
       const res = await api.post<{ count: number; message: string }>(
         `/api/assignments/${assignment.id}/questions/import`,
-        { questions: payload.questions, replace: false },
+        { questions: parsed, replace: false },
       );
-      toast.success(res.message);
+      toast.success(
+        errors.length > 0
+          ? `${res.message} ${errors.length} row${errors.length === 1 ? "" : "s"} skipped — row ${errors[0].row}: ${errors[0].message}`
+          : res.message,
+      );
       await load();
       router.refresh();
     } catch (err) {
@@ -319,6 +332,16 @@ function Body({
         </Button>
         <Button
           size="sm"
+          variant="ghost"
+          nativeButton={false}
+          render={
+            <a href={`/api/assignments/${assignment.id}/questions/template`} download />
+          }
+        >
+          <FileSpreadsheet className="size-4" /> Sample sheet
+        </Button>
+        <Button
+          size="sm"
           variant="outline"
           onClick={() => fileRef.current?.click()}
           disabled={importing}
@@ -344,7 +367,7 @@ function Body({
         <input
           ref={fileRef}
           type="file"
-          accept="application/json,.json"
+          accept=".csv,text/csv,application/json,.json"
           className="hidden"
           onChange={onImport}
         />

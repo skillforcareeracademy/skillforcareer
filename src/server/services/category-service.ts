@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
 import type { CategoryInput } from "@/lib/validations/category";
+import { invalidateHeaderMenus } from "./header-menu-service";
 
 function slugify(value: string): string {
   return value
@@ -99,6 +100,8 @@ export async function createCategory(input: CategoryInput): Promise<void> {
     }
     throw e;
   }
+  // The header's Categories dropdown is built from this table.
+  invalidateHeaderMenus();
 }
 
 export async function updateCategory(
@@ -126,6 +129,7 @@ export async function updateCategory(
     }
     throw e;
   }
+  invalidateHeaderMenus();
 }
 
 export async function deleteCategory(id: string): Promise<void> {
@@ -141,4 +145,5 @@ export async function deleteCategory(id: string): Promise<void> {
     throw AppError.conflict("Delete or move its sub-categories first.");
   }
   await prisma.category.delete({ where: { id } });
+  invalidateHeaderMenus();
 }

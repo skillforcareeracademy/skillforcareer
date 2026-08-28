@@ -90,7 +90,9 @@ export function RichTextEditor({
     editorProps: {
       attributes: {
         class: cn(
-          "prose prose-sm dark:prose-invert max-w-none min-h-[160px] px-4 py-3 focus:outline-none",
+          // `prose-blog` is the same stylesheet the published article uses, so
+          // the editor shows what the post will look like.
+          "prose-blog max-w-none min-h-[160px] px-4 py-3 text-[0.95rem] focus:outline-none",
           "[&_h2]:text-lg [&_h2]:font-semibold [&_h3]:text-base [&_h3]:font-semibold",
           "[&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5",
           "[&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground",
