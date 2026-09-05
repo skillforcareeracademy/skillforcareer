@@ -21,6 +21,7 @@ import {
   Target,
   UserRound,
   Wallet,
+  Activity as ActivityIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
@@ -328,6 +329,58 @@ export function StudentProfileView({ profile }: { profile: StudentProfile }) {
               {profile.attendance.unmarked === 1 ? "class has" : "classes have"} no
               register taken, so they don&apos;t count either way.
             </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ── Sign-ins and what they did ─────────────────────────────────── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <ActivityIcon className="size-4" /> Login &amp; activity
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-4">
+            <Field
+              label="Last signed in"
+              value={
+                profile.logins.lastLoginAt
+                  ? format(new Date(profile.logins.lastLoginAt), "d MMM yyyy, h:mm a")
+                  : "Never"
+              }
+            />
+            <Field label="Sign-ins (7 days)" value={String(profile.logins.logins7d)} />
+            <Field label="Sign-ins (30 days)" value={String(profile.logins.logins30d)} />
+            <Field
+              label="Active days (30 days)"
+              value={`${profile.logins.activeDays30d} of 30`}
+            />
+          </div>
+
+          {profile.activity.length === 0 ? (
+            <p className="text-muted-foreground text-sm">
+              Nothing logged for this learner yet.
+            </p>
+          ) : (
+            <div className="space-y-2 border-t pt-4">
+              <p className="text-sm font-medium">Recent activity</p>
+              <ul className="max-h-80 space-y-2 overflow-y-auto pr-1">
+                {profile.activity.map((a) => (
+                  <li key={a.id} className="flex items-start gap-3 text-sm">
+                    <span className="bg-muted-foreground/40 mt-1.5 size-1.5 shrink-0 rounded-full" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block">{a.description ?? a.label}</span>
+                      <span className="text-muted-foreground block text-xs">
+                        {a.description ? `${a.label} · ` : ""}
+                        {format(new Date(a.createdAt), "d MMM yyyy, h:mm a")}
+                        {a.ip ? ` · ${a.ip}` : ""}
+                      </span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
         </CardContent>
       </Card>

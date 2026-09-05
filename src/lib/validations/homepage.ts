@@ -1028,6 +1028,8 @@ const headerSchema = z.object({
   signInHref: link(200),
   ctaLabel: text(30),
   ctaHref: link(200),
+  /** The callback popup in the header. Blank label = no button. */
+  enquiryLabel: text(30),
 });
 
 const headerFields: AnyField[] = [
@@ -1076,6 +1078,12 @@ const headerFields: AnyField[] = [
     hint: "Leave blank to drop the button.",
   },
   { name: "ctaHref", label: "Main button links to", type: "text" },
+  {
+    name: "enquiryLabel",
+    label: "Enquiry button text",
+    type: "text",
+    hint: "Opens the callback popup. Leave blank to drop the button. Shown to signed-out and signed-in visitors alike.",
+  },
 ];
 
 const headerDefaults: z.infer<typeof headerSchema> = {
@@ -1091,6 +1099,7 @@ const headerDefaults: z.infer<typeof headerSchema> = {
   signInHref: "/login",
   ctaLabel: "Get started",
   ctaHref: "/register",
+  enquiryLabel: "Enquiry",
 };
 
 // ── Section: footer (site-wide) ──────────────────────────────────────────────
@@ -1255,6 +1264,80 @@ const footerDefaults: z.infer<typeof footerSchema> = {
   ],
 };
 
+// ── Section: sign-in panel (the brand half of every auth screen) ─────────────
+
+const authPanelSchema = z.object({
+  heading: text(90),
+  subtitle: text(240),
+  features: z
+    .array(z.object({ icon: icon("Radio"), text: text(90) }))
+    .max(5)
+    .default([]),
+  showTestimonial: z.boolean().default(true),
+  quote: text(320),
+  authorName: text(60),
+  authorRole: text(60),
+  authorPhoto: link(),
+  stars: count(5, 5),
+  copyright: text(120),
+});
+
+const authPanelFields: AnyField[] = [
+  { name: "heading", label: "Headline", type: "textarea", wide: true },
+  { name: "subtitle", label: "Sub-heading", type: "textarea", wide: true },
+  {
+    name: "features",
+    label: "Selling points",
+    type: "list",
+    itemLabel: "point",
+    titleKey: "text",
+    max: 5,
+    hint: "The ticked list under the headline. Leave empty to drop it.",
+    fields: [
+      { name: "icon", label: "Icon", type: "icon" },
+      { name: "text", label: "Text", type: "text", wide: true },
+    ],
+  },
+  {
+    name: "showTestimonial",
+    label: "Show the learner quote",
+    type: "switch",
+    wide: true,
+  },
+  { name: "quote", label: "Quote", type: "textarea", wide: true },
+  { name: "authorName", label: "Who said it", type: "text" },
+  { name: "authorRole", label: "Their role", type: "text" },
+  { name: "authorPhoto", label: "Their photo", type: "image", wide: true },
+  { name: "stars", label: "Stars above the quote", type: "number", hint: "1 to 5." },
+  {
+    name: "copyright",
+    label: "Line at the foot of the panel",
+    type: "text",
+    wide: true,
+    hint: "{year} is replaced with the current year.",
+  },
+];
+
+const authPanelDefaults: z.infer<typeof authPanelSchema> = {
+  heading: "Learn the skills. Build the career.",
+  subtitle:
+    "Join 1,000+ learners upskilling with live classes, real-world projects and verified certificates.",
+  features: [
+    { icon: "Radio", text: "Live interactive classes with expert mentors" },
+    { icon: "Award", text: "Verified certificates on completion" },
+    { icon: "BriefcaseBusiness", text: "Placement support · 100+ hiring partners" },
+  ],
+  showTestimonial: true,
+  quote:
+    "The live mentorship and projects helped me switch into data science with a 2x salary jump.",
+  authorName: "Priya N.",
+  authorRole: "Data Scientist",
+  authorPhoto:
+    "https://images.pexels.com/photos/7580822/pexels-photo-7580822.jpeg?auto=compress&cs=tinysrgb&w=200&h=200&fit=crop&crop=faces",
+  stars: 5,
+  copyright: `© {year} ${siteConfig.name}`,
+};
+
 // ── The registry ─────────────────────────────────────────────────────────────
 
 /**
@@ -1394,6 +1477,15 @@ export const HOME_SECTIONS = {
     fields: footerFields,
     defaults: footerDefaults,
   },
+  authPanel: {
+    label: "Sign-in panel",
+    description:
+      "The purple half of the sign-in, sign-up, OTP and password screens — headline, selling points and the learner quote.",
+    icon: "ShieldCheck",
+    schema: authPanelSchema,
+    fields: authPanelFields,
+    defaults: authPanelDefaults,
+  },
 } as const;
 
 export type HomeSectionKey = keyof typeof HOME_SECTIONS;
@@ -1414,7 +1506,7 @@ export function isHomeSectionKey(value: string): value is HomeSectionKey {
  * they are still homepage furniture — but reordering them means nothing, and
  * switching one off hides it site-wide.
  */
-export const GLOBAL_SECTION_KEYS: HomeSectionKey[] = ["header", "cta", "footer"];
+export const GLOBAL_SECTION_KEYS: HomeSectionKey[] = ["header", "cta", "footer", "authPanel"];
 
 export function isGlobalSection(key: HomeSectionKey): boolean {
   return GLOBAL_SECTION_KEYS.includes(key);
@@ -1426,7 +1518,7 @@ export function isGlobalSection(key: HomeSectionKey): boolean {
  * its address, phone number and legal links — neither is a state an admin can
  * usefully choose, and both are a long way from Admin → Homepage to undo.
  */
-export const ALWAYS_ON_KEYS: HomeSectionKey[] = ["header", "footer"];
+export const ALWAYS_ON_KEYS: HomeSectionKey[] = ["header", "footer", "authPanel"];
 
 export function isAlwaysOn(key: HomeSectionKey): boolean {
   return ALWAYS_ON_KEYS.includes(key);

@@ -9,16 +9,19 @@ import { Mail } from "lucide-react";
 import { loginSchema, type LoginInput } from "@/lib/validations/auth";
 import { api, ApiError } from "@/lib/api-client";
 import { useAuthStore, type SessionUser } from "@/stores/auth-store";
-import { ROLE_HOME } from "@/config/roles";
 import { AuthCard } from "./auth-card";
 import { Field } from "./field";
 import { IconInput } from "./icon-input";
 import { PasswordInput } from "./password-input";
 import { SubmitButton } from "./submit-button";
 import { ROUTES } from "@/lib/constants";
+import { destinationFor, safeNext } from "@/lib/auth/next-url";
 
-export function LoginForm() {
+export function LoginForm({ next }: { next?: string }) {
   const router = useRouter();
+  // Carried on to the verify screen too, so an unverified buyer who has to
+  // detour through OTP still lands back on the checkout they came from.
+  const nextQuery = safeNext(next) ? `&next=${encodeURIComponent(next!)}` : "";
   const setUser = useAuthStore((s) => s.setUser);
   const {
     register,
@@ -34,7 +37,7 @@ export function LoginForm() {
       );
       setUser(user);
       toast.success(`Welcome back, ${user.name.split(" ")[0]}!`);
-      router.replace(ROLE_HOME[user.role] ?? ROUTES.student);
+      router.replace(destinationFor(user.role, next));
     } catch (e) {
       if (e instanceof ApiError) {
         const details = e.details as { reason?: string; email?: string } | undefined;
@@ -43,7 +46,9 @@ export function LoginForm() {
           await api
             .post("/api/auth/resend-otp", { email: details.email, purpose: "verify-email" })
             .catch(() => {});
-          router.push(`${ROUTES.verifyOtp}?email=${encodeURIComponent(details.email ?? values.email)}`);
+          router.push(
+            `${ROUTES.verifyOtp}?email=${encodeURIComponent(details.email ?? values.email)}${nextQuery}`,
+          );
           return;
         }
         toast.error(e.message);
@@ -60,7 +65,10 @@ export function LoginForm() {
       footer={
         <span className="text-muted-foreground">
           New here?{" "}
-          <Link className="text-primary font-medium" href={ROUTES.register}>
+          <Link
+            className="text-primary font-medium"
+            href={next ? `${ROUTES.register}?next=${encodeURIComponent(next)}` : ROUTES.register}
+          >
             Create an account
           </Link>
         </span>

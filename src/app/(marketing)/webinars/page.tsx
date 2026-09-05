@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Presentation, CalendarClock, Clock, Users } from "lucide-react";
+import { Presentation, CalendarClock, Clock, Users, Radio } from "lucide-react";
 import { format } from "date-fns";
 import { listPublicWebinars } from "@/server/services/webinar-service";
 import { Card } from "@/components/ui/card";
@@ -15,8 +15,13 @@ export const dynamic = "force-dynamic";
 
 export default async function WebinarsCatalogPage() {
   const webinars = await listPublicWebinars();
-  const upcoming = webinars.filter((w) => !w.isPast);
-  const past = webinars.filter((w) => w.isPast);
+  // Four bands, in the order a visitor cares about them: what's on right now,
+  // what's coming, then the archive.
+  const live = webinars.filter((w) => w.phase === "LIVE");
+  const upcoming = webinars.filter((w) => w.phase === "UPCOMING");
+  const past = webinars
+    .filter((w) => w.phase === "PAST")
+    .sort((a, b) => b.scheduledStart.localeCompare(a.scheduledStart));
 
   return (
     <div className="container-page py-12 sm:py-16">
@@ -34,6 +39,7 @@ export default async function WebinarsCatalogPage() {
         <EmptyState icon={Presentation} title="No webinars scheduled" description="Check back soon — new masterclasses are added regularly." />
       ) : (
         <div className="space-y-12">
+          {live.length > 0 && <WebinarGrid title="Happening now" items={live} />}
           {upcoming.length > 0 && <WebinarGrid title="Upcoming" items={upcoming} />}
           {past.length > 0 && <WebinarGrid title="Past webinars" items={past} muted />}
         </div>
@@ -57,7 +63,8 @@ function WebinarGrid({
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {items.map((w) => (
           <Link key={w.id} href={`/webinars/${w.slug}`} className="group block h-full">
-            <Card className={`h-full gap-0 overflow-hidden p-0 transition-all group-hover:-translate-y-1 group-hover:shadow-xl ${muted ? "opacity-80" : ""}`}>
+            {/* A finished session goes grey, as the client asked. */}
+            <Card className={`h-full gap-0 overflow-hidden p-0 transition-all group-hover:-translate-y-1 group-hover:shadow-xl ${muted ? "opacity-70 grayscale" : ""}`}>
               <div className="relative aspect-video overflow-hidden bg-gradient-to-br from-rose-500 to-pink-600">
                 {w.coverImageUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -67,7 +74,14 @@ function WebinarGrid({
                     <Presentation className="size-10" />
                   </div>
                 )}
-                {w.isPast && <Badge className="absolute top-3 left-3 bg-black/50 text-white">Ended</Badge>}
+                {w.phase === "LIVE" && (
+                  <Badge className="absolute top-3 left-3 gap-1.5 bg-rose-600 text-white">
+                    <Radio className="size-3 animate-pulse" /> Live now
+                  </Badge>
+                )}
+                {w.phase === "PAST" && (
+                  <Badge className="absolute top-3 left-3 bg-black/50 text-white">Ended</Badge>
+                )}
               </div>
               <div className="flex flex-1 flex-col p-5">
                 <h3 className="line-clamp-2 leading-snug font-semibold">{w.title}</h3>

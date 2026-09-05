@@ -94,6 +94,8 @@ export async function listAssignmentsAdmin(q: AssignmentListQuery) {
       dueDate: a.dueDate ? a.dueDate.toISOString() : null,
       isOverdue: a.dueDate ? a.dueDate.getTime() < Date.now() : false,
       allowLate: a.allowLate,
+      releaseAt: a.releaseAt ? a.releaseAt.toISOString() : null,
+      maxAttempts: a.maxAttempts,
       submissions: a._count.submissions,
       needsGrading: a.submissions.length,
     })),
@@ -272,6 +274,8 @@ function coreData(input: AssignmentInput) {
     maxScore: input.maxScore,
     dueDate: toDate(input.dueDate),
     allowLate: input.allowLate,
+    releaseAt: toDate(input.releaseAt),
+    maxAttempts: input.maxAttempts,
   };
 }
 
@@ -440,6 +444,10 @@ export async function importAssignments(
           maxScore: row.maxScore,
           dueDate: normaliseDue(row.dueDate),
           allowLate: truthy(row.allowLate),
+          // The CSV carries neither, so an imported assignment opens straight
+          // away with the platform's own submission cap.
+          releaseAt: "",
+          maxAttempts: 0,
           batchIds,
           studentIds: [],
         },

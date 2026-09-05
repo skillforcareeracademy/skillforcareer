@@ -13,6 +13,7 @@ import {
   ArrowRight,
   Loader2,
   CheckCircle2,
+  ShoppingCart,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
@@ -158,11 +159,24 @@ function CourseCard({ course, isEnrolled }: { course: Course; isEnrolled: boolea
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const effective = course.discountPrice ?? course.price;
-  const isFree = course.pricingType === "FREE";
+  // Free means free *and* costing nothing — a course left as PAID with a zero
+  // price is still free to the learner, and one marked FREE with a price is not
+  // something this card gets to give away.
+  const isFree = course.pricingType === "FREE" || effective <= 0;
   const priceLabel = isFree ? "Free" : `₹${effective.toLocaleString("en-IN")}`;
   const detailHref = isEnrolled ? `/student/learn/${course.slug}` : `/courses/${course.slug}`;
 
+  /**
+   * Only free courses enrol from here. A paid one goes to checkout — this
+   * button used to call `/api/enrollments` whatever the price, which is how a
+   * learner could tap "Enroll" inside the panel and get a paid programme for
+   * nothing. The server refuses that now too; this keeps the button honest.
+   */
   async function enroll() {
+    if (!isFree) {
+      router.push(`/checkout/${course.slug}`);
+      return;
+    }
     setLoading(true);
     try {
       await api.post("/api/enrollments", { courseId: course.id });
@@ -242,8 +256,14 @@ function CourseCard({ course, isEnrolled }: { course: Course; isEnrolled: boolea
             </ButtonLink>
           ) : (
             <Button size="sm" onClick={enroll} disabled={loading}>
-              {loading ? <Loader2 className="size-4 animate-spin" /> : <ArrowRight className="size-4" />}
-              {isFree ? "Enroll free" : "Enroll"}
+              {loading ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : isFree ? (
+                <ArrowRight className="size-4" />
+              ) : (
+                <ShoppingCart className="size-4" />
+              )}
+              {isFree ? "Enroll free" : "Enroll now"}
             </Button>
           )}
         </div>

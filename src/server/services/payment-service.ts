@@ -6,6 +6,8 @@ import { AppError } from "@/lib/api/errors";
 import { bumpCourseEnrollmentCount } from "@/server/repositories/counters";
 import { validateCoupon } from "@/server/services/coupon-service";
 import { getRazorpayAccount } from "@/server/services/payment-account-service";
+import { getSettings } from "@/server/services/settings-service";
+import { ACTIVITY_ACTIONS, logActivity } from "@/server/services/activity-service";
 import {
   createRazorpayOrder,
   verifyCheckoutSignature,
@@ -263,15 +265,26 @@ export async function recordPayment(input: RecordPaymentInput): Promise<string> 
     ]);
   }
 
-  // EMI → generate a monthly installment schedule over the net amount.
+  // EMI → generate a monthly instalment schedule.
+  //
+  // A zero-cost plan simply divides the net; an interest plan adds the rate to
+  // it first and remembers both figures, so the learner's panel can show what
+  // the course cost and what the finance added rather than one blended number
+  // they can't reconcile.
   if (input.type === "EMI" && input.installments && input.installments >= 2) {
     const n = input.installments;
-    const per = Math.floor((net / n) * 100) / 100;
+    const { settings } = await getSettings();
+    const plan = input.emiPlan ?? (settings.emiZeroCostEnabled ? "ZERO_COST" : "INTEREST");
+    const rate =
+      plan === "INTEREST" ? (input.interestPercent ?? settings.emiInterestPercent) : 0;
+    const financed = Math.round(net * (1 + rate / 100) * 100) / 100;
+
+    const per = Math.floor((financed / n) * 100) / 100;
     const rows = Array.from({ length: n }, (_, i) => {
       const due = new Date();
       due.setMonth(due.getMonth() + i + 1);
       // Last installment absorbs the rounding remainder.
-      const amount = i === n - 1 ? Math.round((net - per * (n - 1)) * 100) / 100 : per;
+      const amount = i === n - 1 ? Math.round((financed - per * (n - 1)) * 100) / 100 : per;
       return {
         paymentId: payment.id,
         installmentNo: i + 1,
@@ -280,7 +293,20 @@ export async function recordPayment(input: RecordPaymentInput): Promise<string> 
         status: "SCHEDULED" as const,
       };
     });
-    await prisma.installment.createMany({ data: rows });
+
+    await Promise.all([
+      prisma.installment.createMany({ data: rows }),
+      prisma.payment.update({
+        where: { id: payment.id },
+        data: {
+          emiPlan: plan,
+          interestPercent: new Prisma.Decimal(rate),
+          principalAmount: new Prisma.Decimal(net),
+          // The learner owes the financed total, not the sticker price.
+          netAmount: new Prisma.Decimal(financed),
+        },
+      }),
+    ]);
   }
 
   return payment.id;
@@ -510,6 +536,24 @@ export async function fulfillPaidCheckout(
   }
 
   const amount = `₹${num(payment.netAmount).toLocaleString("en-IN")}`;
+  void logActivity({
+    userId: payment.userId,
+    action: ACTIVITY_ACTIONS.PAYMENT,
+    entityType: "Payment",
+    entityId: payment.id,
+    description: `Paid ${amount}${payment.course ? ` for “${payment.course.title}”` : ""} · ${payment.invoiceNumber}`,
+    metadata: { invoiceNumber: payment.invoiceNumber, amount: num(payment.netAmount) },
+  });
+  if (payment.courseId) {
+    void logActivity({
+      userId: payment.userId,
+      action: ACTIVITY_ACTIONS.ENROLL,
+      entityType: "Course",
+      entityId: payment.courseId,
+      description: payment.course ? `Enrolled in “${payment.course.title}”` : null,
+    });
+  }
+
   await Promise.all([
     notify({
       userIds: [payment.userId],

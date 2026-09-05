@@ -31,10 +31,19 @@ export const updateQuizSchema = z.object({
   courseId: z.string().optional().or(z.literal("")),
   /** Cohorts this quiz is set for. Empty = everyone on the course. */
   batchIds: z.array(z.string().min(1)).max(200).optional(),
+  /** Extra individuals on top of the batches — mirrors assignments. */
+  studentIds: z.array(z.string().min(1)).max(2000).optional(),
+  /** Hidden from learners until this moment. Blank = as soon as it's published. */
+  releaseAt: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, "Invalid date/time")
+    .optional()
+    .or(z.literal("")),
   timeLimitMinutes: z.coerce.number().int().min(1).max(1440).optional(),
   passingScore: z.coerce.number().int().min(0).max(100).default(60),
   gradingMode: z.enum(GRADING_MODES).default("AUTO"),
-  maxAttempts: z.coerce.number().int().min(1).max(50).default(1),
+  /** 0 = unlimited, falling back to the platform default in Settings. */
+  maxAttempts: z.coerce.number().int().min(0).max(50).default(1),
   shuffleQuestions: z.boolean().default(false),
   showAnswers: z.boolean().default(true),
 });

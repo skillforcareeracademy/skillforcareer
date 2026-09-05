@@ -85,6 +85,15 @@ enum AttachmentType {
   OTHER
 }
 
+/// When a lesson opens up for a learner. The default keeps every course that
+/// existed before release control behaving exactly as it did.
+enum LessonRelease {
+  IMMEDIATE // open as soon as they enrol
+  SCHEDULED // opens on a fixed date
+  DRIP // opens N days after this learner enrolled
+  MANUAL // opens only for the cohorts / learners staff have unlocked
+}
+
 enum ProgressStatus {
   NOT_STARTED
   IN_PROGRESS
@@ -150,6 +159,13 @@ enum PaymentAccountKind {
 enum CouponType {
   PERCENTAGE
   FIXED
+}
+
+/// How an instalment plan is priced. Zero-cost means the learner pays the
+/// sticker price spread out; interest-based adds a percentage on top.
+enum EmiPlan {
+  ZERO_COST
+  INTEREST
 }
 
 enum InstallmentStatus {
@@ -351,6 +367,9 @@ model User {
   assignmentsSet     AssignmentStudent[]    @relation("AssignmentAssignee")
   blogPosts          BlogPost[]             @relation("BlogAuthor")
   mediaUploads       MediaFile[]            @relation("MediaUploader")
+  quizzesSet         QuizStudent[]          @relation("QuizAssignee")
+  lessonAccess       LessonAccess[]         @relation("LessonAccessUser")
+  chatMessages       ChatMessage[]          @relation("ChatMessageUser")
 
   @@index([roleId])
   @@index([status])
@@ -535,8 +554,9 @@ model Batch {
   enrollments Enrollment[]
   meetings    Meeting[]
   attendance  Attendance[]
-  assignments AssignmentBatch[]
-  quizzes     QuizBatch[]
+  assignments  AssignmentBatch[]
+  quizzes      QuizBatch[]
+  lessonAccess LessonAccess[]
 
   @@index([courseId])
   @@index([instructorId])
@@ -567,7 +587,20 @@ model Lesson {
   order           Int        @default(0)
   isPreview       Boolean    @default(false)
   durationSeconds Int        @default(0)
-  content         String?    @db.Text // rich text for ARTICLE lessons
+  content         String?    @db.Text
+
+  /// Release control — "students ko saare lessons ek saath nhi denge".
+  /// IMMEDIATE (the shipped behaviour) opens the lesson to anyone enrolled;
+  /// the other three narrow that by date, by days-since-enrolment, or to the
+  /// cohorts and individuals listed in `access`.
+  releaseMode LessonRelease @default(IMMEDIATE)
+  releaseAt   DateTime?
+  dripDays    Int?
+
+  /// Watch/download caps, per learner. Null falls back to the platform default
+  /// in Admin → Settings → Learning; 0 there too means unlimited.
+  viewLimit     Int?
+  downloadLimit Int? // rich text for ARTICLE lessons
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -581,8 +614,31 @@ model Lesson {
   notes       Note[]
   bookmarks   Bookmark[]
   discussions Discussion[]
+  access      LessonAccess[]
 
   @@index([chapterId])
+}
+
+/// Who a MANUAL-release lesson is open to. Exactly one of `batchId` / `userId`
+/// is set on a row. Deliberately no unique index: the service replaces the
+/// whole set on every save (deleteMany + createMany), so duplicates can't
+/// arise, and `db push` refuses to add a unique constraint without a
+/// data-loss flag it is never given here.
+model LessonAccess {
+  id       String  @id @default(cuid())
+  lessonId String
+  batchId  String?
+  userId   String?
+
+  createdAt DateTime @default(now())
+
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  batch  Batch? @relation(fields: [batchId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user   User?  @relation("LessonAccessUser", fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([lessonId])
+  @@index([batchId])
+  @@index([userId])
 }
 
 model Video {
@@ -664,6 +720,11 @@ model LessonProgress {
   lastPositionSeconds Int            @default(0) // video resume point
   completed           Boolean        @default(false)
   completedAt         DateTime?
+
+  /// How many times this learner has opened the lesson and downloaded its
+  /// material — what `Lesson.viewLimit` / `downloadLimit` are measured against.
+  viewCount     Int @default(0)
+  downloadCount Int @default(0)
 
   updatedAt DateTime @updatedAt
   createdAt DateTime @default(now())
@@ -782,6 +843,12 @@ model Assignment {
   dueDate      DateTime?
   allowLate    Boolean        @default(false)
 
+  /// Hidden from learners until this moment. Null = visible as soon as it is
+  /// set for them, which is how every assignment behaved before release control.
+  releaseAt DateTime?
+  /// How many times a learner may submit. 0 = unlimited (the shipped behaviour).
+  maxAttempts Int @default(0)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -866,6 +933,12 @@ model AssignmentSubmission {
   assignmentId String
   studentId    String
   attempt      Int              @default(1)
+  /// How many times the learner has pressed submit on this row.
+  ///
+  /// `attempt` stays 1 and the row is overwritten — that is what grading reads
+  /// — so the resubmission count needs somewhere of its own to live. This is
+  /// what `Assignment.maxAttempts` is measured against.
+  submitCount  Int              @default(1)
   status       SubmissionStatus @default(DRAFT)
   content      String?          @db.Text
   fileUrl      String?
@@ -907,6 +980,10 @@ model Quiz {
   showAnswers      Boolean     @default(true)
   isPublished      Boolean     @default(false)
 
+  /// Hidden from learners until this moment. Null = visible as soon as it is
+  /// published and set for them.
+  releaseAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -916,6 +993,7 @@ model Quiz {
   questions Question[]
   attempts  QuizAttempt[]
   batches   QuizBatch[]
+  students  QuizStudent[]
   notes     Note[]
   bookmarks Bookmark[]
 
@@ -936,6 +1014,23 @@ model QuizBatch {
 
   @@unique([quizId, batchId])
   @@index([batchId])
+}
+
+/// Individual learners a quiz is set for, on top of the chosen batches — the
+/// mirror of `AssignmentStudent`. No unique index for the same reason as
+/// `LessonAccess`: the audience is replaced wholesale on every save.
+model QuizStudent {
+  id     String @id @default(cuid())
+  quizId String
+  userId String
+
+  createdAt DateTime @default(now())
+
+  quiz Quiz @relation(fields: [quizId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user User @relation("QuizAssignee", fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([quizId])
+  @@index([userId])
 }
 
 model Question {
@@ -1041,6 +1136,13 @@ model Payment {
   metadata          Json?
   paidAt            DateTime?
   lastRemindedAt    DateTime?
+
+  /// EMI pricing, set when `type = EMI`. Zero-cost plans spread the sticker
+  /// price; interest plans add `interestPercent` on top, and `principalAmount`
+  /// keeps the pre-interest figure so the learner's panel can show both.
+  emiPlan         EmiPlan?
+  interestPercent Decimal? @db.Decimal(5, 2)
+  principalAmount Decimal? @db.Decimal(10, 2)
 
   /// Set when a counsellor collected this against a CRM lead, so admissions can
   /// trace a learner's first payment back to the enquiry that produced it.
@@ -1834,4 +1936,70 @@ model BlogPost {
   @@index([status, publishedAt])
   @@index([categoryId])
   @@index([authorId])
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ASSISTANT — the site chatbot ("Ami"), trained from the admin panel
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// One thing the assistant knows how to answer.
+///
+/// The academy trains it by writing these rows — there is no rented model
+/// behind it, in keeping with the plan's "no third party" rule. Matching is
+/// keyword scoring over `question` + `patterns` (see lib/chatbot/match.ts), so
+/// an answer is only ever the words staff typed.
+model ChatIntent {
+  id       String @id @default(cuid())
+  /// The canonical way a visitor asks this.
+  question String @db.Text
+  /// Other phrasings and keywords, as a JSON array of strings.
+  patterns Json?
+  answer   String @db.Text
+  /// Optional button under the answer, e.g. "See courses" → /courses.
+  actionLabel String?
+  actionUrl   String? @db.VarChar(500)
+  /// Grouping for the admin list ("Fees", "Placement", …).
+  category String?
+  /// Offered as a starter chip when the window opens.
+  isSuggested Boolean @default(false)
+  isActive    Boolean @default(true)
+  /// How often this answer has been served — the admin list sorts by it, so
+  /// the academy can see what people actually ask.
+  hits Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  messages ChatMessage[]
+
+  @@index([isActive])
+  @@index([isSuggested])
+}
+
+/// A line of a conversation, kept so admins can read what was asked and teach
+/// an answer to whatever went unmatched.
+model ChatMessage {
+  id        String  @id @default(cuid())
+  sessionId String  @db.VarChar(64)
+  userId    String?
+  /// "user" or "bot".
+  role      String  @db.VarChar(8)
+  text      String  @db.Text
+  intentId  String?
+  /// False on a visitor question the assistant could not answer — the queue
+  /// the admin "teach Ami" screen works through.
+  matched   Boolean @default(true)
+  /// Set once staff have turned this unanswered question into an intent.
+  resolved  Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  user   User?       @relation("ChatMessageUser", fields: [userId], references: [id], onUpdate: NoAction)
+  intent ChatIntent? @relation(fields: [intentId], references: [id], onUpdate: NoAction)
+
+  @@index([sessionId])
+  @@index([userId])
+  @@index([intentId])
+  @@index([matched, resolved])
+  @@index([createdAt])
 }

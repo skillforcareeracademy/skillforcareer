@@ -6,8 +6,8 @@ export const metadata: Metadata = { title: "Verify email" };
 export default async function VerifyOtpPage({
   searchParams,
 }: {
-  searchParams: Promise<{ email?: string }>;
+  searchParams: Promise<{ email?: string; next?: string }>;
 }) {
-  const { email } = await searchParams;
-  return <VerifyOtpForm email={email} />;
+  const { email, next } = await searchParams;
+  return <VerifyOtpForm email={email} next={next} />;
 }

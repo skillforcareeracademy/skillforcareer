@@ -27,6 +27,18 @@ export const PAYMENT_PROVIDER_LABEL: Record<string, string> = {
 
 export const PAYMENT_TYPES = ["ONE_TIME", "EMI"] as const;
 
+/**
+ * How an instalment plan is priced. Zero-cost spreads the sticker price;
+ * interest adds a percentage on top. Which of the two the office may offer is
+ * itself a setting — "interest percentage or zero cost option can [be]
+ * controlled by admin if they want to give or not".
+ */
+export const EMI_PLANS = ["ZERO_COST", "INTEREST"] as const;
+export const EMI_PLAN_LABEL: Record<string, string> = {
+  ZERO_COST: "Zero-cost EMI",
+  INTEREST: "Interest-based EMI",
+};
+
 export const PAYMENT_METHODS = ["UPI", "ONLINE", "CASH", "EMI"] as const;
 export const PAYMENT_METHOD_LABEL: Record<string, string> = {
   UPI: "UPI",
@@ -57,7 +69,10 @@ export const recordPaymentSchema = z.object({
   paidAt: z.string().datetime({ offset: true }).optional().or(z.literal("")),
   couponCode: z.string().trim().max(30).optional().or(z.literal("")),
   type: z.enum(PAYMENT_TYPES).default("ONE_TIME"),
-  installments: z.coerce.number().int().min(2).max(24).optional(),
+  installments: z.coerce.number().int().min(2).max(36).optional(),
+  emiPlan: z.enum(EMI_PLANS).optional(),
+  /** Ignored on a zero-cost plan; blank falls back to the platform rate. */
+  interestPercent: z.coerce.number().min(0).max(60).optional(),
 });
 
 export const paymentAccountSchema = z.object({

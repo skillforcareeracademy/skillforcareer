@@ -44,6 +44,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import { PageHeader } from "@/components/shared/page-header";
 import { ImageUpload } from "@/components/shared/image-upload";
 import { PhoneInput } from "@/components/shared/phone-input";
@@ -191,6 +192,15 @@ export function SettingsClient({ data }: { data: SettingsWithMeta }) {
           </TabsTrigger>
           <TabsTrigger value="notifications" className={TAB_TRIGGER}>
             <Bell /> Notifications
+          </TabsTrigger>
+          <TabsTrigger value="learning" className={TAB_TRIGGER}>
+            Learning
+          </TabsTrigger>
+          <TabsTrigger value="fees" className={TAB_TRIGGER}>
+            Fees &amp; EMI
+          </TabsTrigger>
+          <TabsTrigger value="assistant" className={TAB_TRIGGER}>
+            Assistant
           </TabsTrigger>
           <TabsTrigger value="certificates" className={TAB_TRIGGER}>
             <Award /> Certificates
@@ -408,6 +418,200 @@ export function SettingsClient({ data }: { data: SettingsWithMeta }) {
                 checked={form.maintenanceMode}
                 onChange={(v) => set("maintenanceMode", v)}
               />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── Learning limits ─────────────────────────────────────────────── */}
+        <TabsContent value="learning" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Watch &amp; attempt limits</CardTitle>
+              <CardDescription>
+                Platform-wide caps. A lesson, quiz or assignment can override its
+                own — set one of these to 0 for no limit, which is how the
+                platform behaved before limits existed.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-4 sm:grid-cols-2">
+              <Field
+                label="Lesson views per learner"
+                htmlFor="lessonViewLimit"
+                hint="How many times a learner may open the same lecture. 0 = unlimited."
+              >
+                <Input
+                  id="lessonViewLimit"
+                  type="number"
+                  min={0}
+                  value={form.lessonViewLimit}
+                  onChange={(e) => set("lessonViewLimit", Number(e.target.value) || 0)}
+                />
+              </Field>
+              <Field
+                label="Material downloads per learner"
+                htmlFor="lessonDownloadLimit"
+                hint="Applies to a lesson's notes, PDFs and attachments. 0 = unlimited."
+              >
+                <Input
+                  id="lessonDownloadLimit"
+                  type="number"
+                  min={0}
+                  value={form.lessonDownloadLimit}
+                  onChange={(e) => set("lessonDownloadLimit", Number(e.target.value) || 0)}
+                />
+              </Field>
+              <Field
+                label="Quiz attempts"
+                htmlFor="quizAttemptLimit"
+                hint="Used when a quiz doesn't set its own. 0 = unlimited."
+              >
+                <Input
+                  id="quizAttemptLimit"
+                  type="number"
+                  min={0}
+                  value={form.quizAttemptLimit}
+                  onChange={(e) => set("quizAttemptLimit", Number(e.target.value) || 0)}
+                />
+              </Field>
+              <Field
+                label="Assignment submissions"
+                htmlFor="assignmentAttemptLimit"
+                hint="How many times a learner may submit the same assignment. 0 = unlimited."
+              >
+                <Input
+                  id="assignmentAttemptLimit"
+                  type="number"
+                  min={0}
+                  value={form.assignmentAttemptLimit}
+                  onChange={(e) =>
+                    set("assignmentAttemptLimit", Number(e.target.value) || 0)
+                  }
+                />
+              </Field>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── Fees & EMI ──────────────────────────────────────────────────── */}
+        <TabsContent value="fees" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Instalment plans</CardTitle>
+              <CardDescription>
+                What the office may offer when it sets a learner up on EMI.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="divide-y">
+                <ToggleRow
+                  label="Offer EMI"
+                  description="Let staff split a fee into monthly instalments."
+                  checked={form.emiEnabled}
+                  onChange={(v) => set("emiEnabled", v)}
+                />
+                <ToggleRow
+                  label="Allow zero-cost EMI"
+                  description="A plan with nothing added on top of the course price."
+                  checked={form.emiZeroCostEnabled}
+                  onChange={(v) => set("emiZeroCostEnabled", v)}
+                />
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field
+                  label="Interest rate (%)"
+                  htmlFor="emiInterestPercent"
+                  hint="Applied to an interest-based plan when the counsellor doesn't override it."
+                >
+                  <Input
+                    id="emiInterestPercent"
+                    type="number"
+                    min={0}
+                    max={60}
+                    step="0.5"
+                    value={form.emiInterestPercent}
+                    onChange={(e) =>
+                      set("emiInterestPercent", Number(e.target.value) || 0)
+                    }
+                  />
+                </Field>
+                <Field
+                  label="Longest plan (months)"
+                  htmlFor="emiMaxInstallments"
+                  hint="The most instalments a fee may be split into."
+                >
+                  <Input
+                    id="emiMaxInstallments"
+                    type="number"
+                    min={2}
+                    max={36}
+                    value={form.emiMaxInstallments}
+                    onChange={(e) =>
+                      set("emiMaxInstallments", Number(e.target.value) || 2)
+                    }
+                  />
+                </Field>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── Assistant & guides ──────────────────────────────────────────── */}
+        <TabsContent value="assistant" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Assistant &amp; guided tour</CardTitle>
+              <CardDescription>
+                The chat assistant on the website and the walkthrough that runs
+                the first time someone opens a panel. Train the assistant&apos;s
+                answers under Assistant in the sidebar.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="divide-y">
+                <ToggleRow
+                  label="Show the chat assistant"
+                  description="The floating chat button on the public site and inside the panels."
+                  checked={form.chatbotEnabled}
+                  onChange={(v) => set("chatbotEnabled", v)}
+                />
+                <ToggleRow
+                  label="Run the panel tour"
+                  description="A guided walkthrough on someone's first visit to their panel."
+                  checked={form.tourEnabled}
+                  onChange={(v) => set("tourEnabled", v)}
+                />
+                <ToggleRow
+                  label="Offer the voice guide"
+                  description="Lets the tour read itself aloud, using the browser's own speech."
+                  checked={form.voiceGuideEnabled}
+                  onChange={(v) => set("voiceGuideEnabled", v)}
+                />
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field
+                  label="Assistant's name"
+                  htmlFor="chatbotName"
+                  hint="Shown on the chat button and in the window."
+                >
+                  <Input
+                    id="chatbotName"
+                    value={form.chatbotName}
+                    onChange={(e) => set("chatbotName", e.target.value)}
+                  />
+                </Field>
+              </div>
+              <Field
+                label="Opening message"
+                htmlFor="chatbotGreeting"
+                hint="The first thing a visitor sees when they open the chat."
+              >
+                <Textarea
+                  id="chatbotGreeting"
+                  rows={3}
+                  value={form.chatbotGreeting}
+                  onChange={(e) => set("chatbotGreeting", e.target.value)}
+                />
+              </Field>
             </CardContent>
           </Card>
         </TabsContent>

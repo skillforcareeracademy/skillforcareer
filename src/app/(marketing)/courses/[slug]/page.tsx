@@ -224,12 +224,10 @@ export default async function CourseDetailPage({
 
                 <div className="space-y-2.5">
                   <PurchasePanel
-                    courseId={c.id}
                     slug={c.slug}
-                    isAuthed={Boolean(user)}
+                    courseTitle={c.title}
                     isEnrolled={enrolled}
                     isFree={isFree}
-                    price={effective}
                   />
                   {enrolled && (
                     <p className="text-muted-foreground text-center text-xs">

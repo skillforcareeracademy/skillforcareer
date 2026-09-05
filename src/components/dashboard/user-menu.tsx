@@ -10,6 +10,7 @@ import {
   Loader2,
   ChevronDown,
   LayoutDashboard,
+  Compass,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api-client";
@@ -95,6 +96,16 @@ export function UserMenu({ user }: { user: SessionUser }) {
         <DropdownMenuItem render={<Link href={`${home}/settings`} />} className="gap-2.5 py-2">
           <Settings className="text-muted-foreground size-4" />
           Settings
+        </DropdownMenuItem>
+        {/* The tour only auto-runs once; this is how anyone gets it back.
+            A window event rather than lifted state — the tour lives at the
+            other end of the shell, and neither needs to know about the other. */}
+        <DropdownMenuItem
+          onClick={() => window.dispatchEvent(new Event("sfc:start-tour"))}
+          className="gap-2.5 py-2"
+        >
+          <Compass className="text-muted-foreground size-4" />
+          Replay panel tour
         </DropdownMenuItem>
 
         <DropdownMenuSeparator className="mx-0" />

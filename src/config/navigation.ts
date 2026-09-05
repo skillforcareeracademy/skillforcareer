@@ -25,6 +25,8 @@ import {
   FileText,
   Newspaper,
   Image as ImageIcon,
+  CalendarCheck,
+  Bot,
   type LucideIcon,
 } from "lucide-react";
 import { ROLES, type Role } from "./roles";
@@ -74,10 +76,20 @@ export const NAV_SECTIONS: NavSection[] = [
       { title: "My Learning", href: "/learning", icon: GraduationCap, roles: [ROLES.STUDENT] },
       { title: "Live Classes", href: "/live", icon: Video, roles: ALL },
       { title: "Offline Classes", href: "/offline", icon: School, roles: STAFF },
-      { title: "Webinars", href: "/webinars", icon: Presentation, roles: STAFF },
+      // Staff manage webinars here; learners get their own tab of the same
+      // route showing what they're registered for and what's coming up.
+      // Deliberately not instructors — there is no /instructor/webinars page,
+      // and a nav link that lands on "coming soon" is worse than no link.
+      {
+        title: "Webinars",
+        href: "/webinars",
+        icon: Presentation,
+        roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.STUDENT],
+      },
       { title: "Assignments", href: "/assignments", icon: ClipboardList, roles: ALL },
       { title: "Quizzes", href: "/quizzes", icon: FileQuestion, roles: ALL },
       { title: "Notes", href: "/notes", icon: NotebookPen, roles: [ROLES.STUDENT] },
+      { title: "Attendance", href: "/attendance", icon: CalendarCheck, roles: [ROLES.STUDENT] },
       { title: "Discussions", href: "/discussions", icon: MessageSquare, roles: ALL },
       { title: "Certificates", href: "/certificates", icon: Award, roles: ALL },
     ],
@@ -93,6 +105,9 @@ export const NAV_SECTIONS: NavSection[] = [
       { title: "Leads", href: "/leads", icon: Target, roles: STAFF },
       { title: "Schedule", href: "/schedule", icon: CalendarClock, roles: TEACHING },
       { title: "Payments", href: "/payments", icon: CreditCard, roles: STAFF },
+      { title: "Fees", href: "/payments", icon: CreditCard, roles: [ROLES.STUDENT] },
+      { title: "Activity", href: "/activity", icon: Activity, roles: STAFF },
+      { title: "Assistant", href: "/chatbot", icon: Bot, roles: STAFF },
       { title: "Coupons", href: "/coupons", icon: Ticket, roles: STAFF },
       { title: "Roles", href: "/permissions", icon: KeyRound, roles: [ROLES.SUPER_ADMIN] },
       { title: "Settings", href: "/settings", icon: Settings, roles: ALL },

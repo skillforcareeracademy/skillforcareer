@@ -180,26 +180,131 @@ export async function getWebinarForEdit(id: string) {
 
 // ── Public ───────────────────────────────────────────────────────────────────
 
-export async function listPublicWebinars() {
+/**
+ * Where a webinar sits in time, right now.
+ *
+ * The client asked for these four states by name — "upcoming webinar, ongoing
+ * webinar (jo us time pr chal raha ho), past webinar (jo date jaane ke baad
+ * grey color ho jaana chahiye)" — so they are computed in one place and the
+ * public page and the learner panel both read them from here rather than each
+ * re-deriving "is it on now?" from a start time and a duration.
+ */
+export type WebinarPhase = "UPCOMING" | "LIVE" | "PAST";
+
+export function webinarPhase(start: Date, durationMinutes: number, now = Date.now()): WebinarPhase {
+  const startMs = start.getTime();
+  const endMs = startMs + Math.max(1, durationMinutes) * 60_000;
+  if (now < startMs) return "UPCOMING";
+  return now <= endMs ? "LIVE" : "PAST";
+}
+
+export interface PublicWebinar {
+  id: string;
+  title: string;
+  slug: string;
+  description: string | null;
+  hostName: string;
+  coverImageUrl: string | null;
+  scheduledStart: string;
+  durationMinutes: number;
+  registrations: number;
+  phase: WebinarPhase;
+  isPast: boolean;
+}
+
+export async function listPublicWebinars(): Promise<PublicWebinar[]> {
   const rows = await prisma.webinar.findMany({
     where: { isPublished: true },
     orderBy: { scheduledStart: "asc" },
     take: 48,
     include: { _count: { select: { registrations: true } } },
   });
-  const now = new Date();
-  return rows.map((w) => ({
-    id: w.id,
-    title: w.title,
-    slug: w.slug,
-    description: w.description,
-    hostName: w.hostName,
-    coverImageUrl: w.coverImageUrl,
-    scheduledStart: w.scheduledStart.toISOString(),
-    durationMinutes: w.durationMinutes,
-    registrations: w._count.registrations,
-    isPast: w.scheduledStart < now,
-  }));
+  const now = Date.now();
+  return rows.map((w) => {
+    const phase = webinarPhase(w.scheduledStart, w.durationMinutes, now);
+    return {
+      id: w.id,
+      title: w.title,
+      slug: w.slug,
+      description: w.description,
+      hostName: w.hostName,
+      coverImageUrl: w.coverImageUrl,
+      scheduledStart: w.scheduledStart.toISOString(),
+      durationMinutes: w.durationMinutes,
+      registrations: w._count.registrations,
+      phase,
+      // Kept for the pages that only ask the yes/no question.
+      isPast: phase === "PAST",
+    };
+  });
+}
+
+export interface StudentWebinar extends PublicWebinar {
+  /** This learner has a seat. */
+  registered: boolean;
+  /** Their own attendance, once the room has seen them. */
+  attendedSeconds: number;
+  attendedFully: boolean;
+  /** Live room link, only while it is worth offering. */
+  joinUrl: string | null;
+  roomCode: string | null;
+}
+
+/**
+ * Every published webinar, tagged with whether this learner has a seat — the
+ * "enrolled webinar / all webinar" split the client asked for in the panel.
+ */
+export async function listWebinarsForStudent(
+  userId: string,
+  email: string,
+): Promise<StudentWebinar[]> {
+  const rows = await prisma.webinar.findMany({
+    where: { isPublished: true },
+    orderBy: { scheduledStart: "asc" },
+    take: 96,
+    include: { _count: { select: { registrations: true } } },
+  });
+  if (rows.length === 0) return [];
+
+  // Registrations are matched on the account *or* the address, because a
+  // learner may have signed up from the public page before they had a login.
+  const mine = await prisma.webinarRegistration.findMany({
+    where: {
+      webinarId: { in: rows.map((w) => w.id) },
+      OR: [{ userId }, { email }],
+    },
+    select: {
+      webinarId: true,
+      attendedSeconds: true,
+      attendedFully: true,
+    },
+  });
+  const byWebinar = new Map(mine.map((r) => [r.webinarId, r]));
+
+  const now = Date.now();
+  return rows.map((w) => {
+    const phase = webinarPhase(w.scheduledStart, w.durationMinutes, now);
+    const reg = byWebinar.get(w.id);
+    return {
+      id: w.id,
+      title: w.title,
+      slug: w.slug,
+      description: w.description,
+      hostName: w.hostName,
+      coverImageUrl: w.coverImageUrl,
+      scheduledStart: w.scheduledStart.toISOString(),
+      durationMinutes: w.durationMinutes,
+      registrations: w._count.registrations,
+      phase,
+      isPast: phase === "PAST",
+      registered: reg != null,
+      attendedSeconds: reg?.attendedSeconds ?? 0,
+      attendedFully: reg?.attendedFully ?? false,
+      // A finished session's room is a dead end, so the link stops being offered.
+      joinUrl: phase === "PAST" ? null : w.joinUrl,
+      roomCode: phase === "PAST" ? null : w.roomCode,
+    };
+  });
 }
 
 export async function getPublicWebinarBySlug(slug: string) {

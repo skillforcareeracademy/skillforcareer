@@ -64,6 +64,32 @@ export const settingsSchema = z.object({
   certRightTitle: z.string().trim().max(60),
   certRightSignatureUrl: z.string().trim().max(500),
 
+  // ── Learning limits ──────────────────────────────────────────────────────
+  // Platform-wide caps. A lesson, quiz or assignment may override its own; 0
+  // anywhere means unlimited, which is what every course did before the client
+  // asked for "watch limit on lectures, notes, assignments and quizzes".
+  lessonViewLimit: z.coerce.number().int().min(0).max(999),
+  lessonDownloadLimit: z.coerce.number().int().min(0).max(999),
+  quizAttemptLimit: z.coerce.number().int().min(0).max(99),
+  assignmentAttemptLimit: z.coerce.number().int().min(0).max(99),
+
+  // ── Fees & EMI ───────────────────────────────────────────────────────────
+  emiEnabled: z.boolean(),
+  /// Whether the office may offer a plan with nothing added on top.
+  emiZeroCostEnabled: z.boolean(),
+  /// Annual rate applied to an interest-bearing plan, in percent.
+  emiInterestPercent: z.coerce.number().min(0).max(60),
+  emiMaxInstallments: z.coerce.number().int().min(2).max(36),
+
+  // ── Assistant & guides ───────────────────────────────────────────────────
+  chatbotEnabled: z.boolean(),
+  chatbotName: z.string().trim().min(1).max(30),
+  chatbotGreeting: z.string().trim().max(300),
+  /// The guided walkthrough that runs the first time a panel is opened.
+  tourEnabled: z.boolean(),
+  /// Whether that walkthrough can also read itself aloud.
+  voiceGuideEnabled: z.boolean(),
+
   // ── Social links ─────────────────────────────────────────────────────────
   socialWebsite: optionalUrl,
   socialLinkedin: optionalUrl,
@@ -113,6 +139,23 @@ export const DEFAULT_SETTINGS: Settings = {
   certRightName: "Amisha Chauhan",
   certRightTitle: "Program Manager",
   certRightSignatureUrl: "",
+
+  lessonViewLimit: 0,
+  lessonDownloadLimit: 0,
+  quizAttemptLimit: 0,
+  assignmentAttemptLimit: 0,
+
+  emiEnabled: true,
+  emiZeroCostEnabled: true,
+  emiInterestPercent: 12,
+  emiMaxInstallments: 12,
+
+  chatbotEnabled: true,
+  chatbotName: "Ami",
+  chatbotGreeting:
+    "Hi! I'm Ami, your SkillForCareer assistant. Ask me about courses, fees, batches or placements.",
+  tourEnabled: true,
+  voiceGuideEnabled: true,
 
   socialWebsite: "",
   socialLinkedin: "",

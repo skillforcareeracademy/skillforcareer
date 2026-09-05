@@ -17,6 +17,7 @@ import {
   Loader2,
   FileText,
   ExternalLink,
+  Lock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
@@ -27,6 +28,18 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { resolveEmbed, embedLabel } from "@/lib/media";
+
+/** Why a lesson is shut, as the server worked it out. See release-service. */
+export interface LessonLock {
+  locked: boolean;
+  reason: "SCHEDULED" | "DRIP" | "MANUAL" | "VIEW_LIMIT" | null;
+  unlocksAt: string | null;
+  message: string | null;
+  viewLimit: number | null;
+  viewsUsed: number;
+  downloadLimit: number | null;
+  downloadsUsed: number;
+}
 
 interface Lesson {
   id: string;
@@ -40,6 +53,7 @@ interface Lesson {
   attachmentName: string | null;
   completed: boolean;
   lastPosition: number;
+  lock: LessonLock;
 }
 interface Chapter {
   id: string;
@@ -96,8 +110,11 @@ export function CoursePlayer({
   // no longer in the course falls back to the normal resume behaviour.
   const requestedId = useSearchParams().get("lesson");
   const startId =
-    (requestedId && allLessons.some((l) => l.id === requestedId) ? requestedId : null) ??
+    (requestedId && allLessons.some((l) => l.id === requestedId && !l.lock.locked)
+      ? requestedId
+      : null) ??
     player.resumeLessonId ??
+    allLessons.find((l) => !l.lock.locked)?.id ??
     allLessons[0]?.id ??
     "";
 
@@ -112,10 +129,19 @@ export function CoursePlayer({
   const [noteDraft, setNoteDraft] = useState("");
   const [bmLabel, setBmLabel] = useState("");
   const [marking, setMarking] = useState(false);
+  /**
+   * The lock as it stands after the current lesson's view was spent, keyed by
+   * lesson id. The server answers `/view` with it, so "2 of 3 views used" stays
+   * right without another read.
+   */
+  const [locks, setLocks] = useState<Record<string, LessonLock>>({});
+  const [downloading, setDownloading] = useState(false);
 
   const current = allLessons.find((l) => l.id === currentId) ?? allLessons[0];
   const currentIndex = allLessons.findIndex((l) => l.id === currentId);
   const next = allLessons[currentIndex + 1] ?? null;
+  const lock = (current && locks[current.id]) ?? current?.lock;
+  const isLocked = Boolean(lock?.locked);
   /**
    * How this lesson's material should be shown. A lesson carries either a video
    * URL or a document/link attachment, and either may be a Drive or YouTube
@@ -134,6 +160,35 @@ export function CoursePlayer({
       alive = false;
     };
   }, [currentId]);
+
+  /**
+   * Spend one of the learner's allowed views as the lesson opens.
+   *
+   * Separate from the notes effect because it must not run for a lesson they
+   * cannot open — and because the answer, the lock *after* this view, is what
+   * powers the "1 view left" warning. A course with no cap gets the same call
+   * and simply never runs out.
+   */
+  useEffect(() => {
+    const lesson = allLessons.find((l) => l.id === currentId);
+    if (!currentId || !lesson || lesson.lock.locked) return;
+    let alive = true;
+    api.post<LessonLock>(`/api/lessons/${currentId}/view`, {}).then(
+      (next) => {
+        if (!alive) return;
+        setLocks((prev) => ({ ...prev, [currentId]: next }));
+        if (next.viewLimit != null && !next.locked) {
+          const left = next.viewLimit - next.viewsUsed;
+          if (left === 0) toast.info("This was your last allowed view of this lesson.");
+          else if (left === 1) toast.info("1 view of this lesson left.");
+        }
+      },
+      () => {},
+    );
+    return () => {
+      alive = false;
+    };
+  }, [currentId, allLessons]);
 
   function saveProgress(body: { position?: number; watched?: number; completed?: boolean }) {
     return api.post(`/api/lessons/${currentId}/progress`, body).catch(() => null);
@@ -179,12 +234,49 @@ export function CoursePlayer({
 
   function selectLesson(id: string) {
     if (id === currentId) return;
+    // A shut lesson is not navigable. The server refuses it too, but telling
+    // the learner *why* here is the difference between a paced course and a
+    // broken one.
+    const target = allLessons.find((l) => l.id === id);
+    if (target?.lock.locked) {
+      toast.info(target.lock.message ?? "This lesson isn't available yet.");
+      return;
+    }
     const v = videoRef.current;
     if (v && current?.videoUrl) saveProgress({ position: Math.floor(v.currentTime) });
     setNotes([]);
     setBookmarks([]);
     setCurrentId(id);
   }
+  /**
+   * Spend a download, then open the file.
+   *
+   * The window is opened *before* the await — a popup blocker throws away any
+   * `window.open` that happens after one, the same trap the lead outreach
+   * buttons hit. So the tab goes out blank and is pointed at the file once the
+   * server has agreed, or closed again if it hasn't.
+   */
+  async function openMaterial(href: string) {
+    if (!current) return;
+    const tab = window.open("", "_blank", "noopener,noreferrer");
+    setDownloading(true);
+    try {
+      const next = await api.post<LessonLock>(`/api/lessons/${current.id}/download`, {});
+      setLocks((prev) => ({ ...prev, [current.id]: next }));
+      // `window.location.href = …` trips the compiler's immutability rule;
+      // assign() is the same navigation as a method call.
+      if (tab) tab.location.assign(href);
+      else window.location.assign(href);
+    } catch (err) {
+      tab?.close();
+      toast.error(
+        err instanceof ApiError ? err.message : "Couldn't open that material.",
+      );
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   function seekTo(seconds: number) {
     const v = videoRef.current;
     if (v) {
@@ -260,7 +352,26 @@ export function CoursePlayer({
           className="relative overflow-hidden rounded-2xl bg-black select-none"
           onContextMenu={(e) => e.preventDefault()}
         >
-          {embed?.kind === "video-file" ? (
+          {isLocked ? (
+            /* The server sends no media for a shut lesson, so there is nothing
+               here to hide — this is the whole of what a locked lesson is. */
+            <div className="bg-muted grid aspect-video place-items-center p-6 text-center">
+              <div className="max-w-sm">
+                <span className="bg-background mx-auto mb-3 flex size-12 items-center justify-center rounded-full">
+                  <Lock className="text-muted-foreground size-5" />
+                </span>
+                <p className="text-sm font-medium">{current?.title}</p>
+                <p className="text-muted-foreground mt-1.5 text-sm">
+                  {lock?.message ?? "This lesson isn't available yet."}
+                </p>
+                {lock?.reason === "VIEW_LIMIT" && (
+                  <p className="text-muted-foreground mt-2 text-xs">
+                    Ask your instructor if you need it reopened.
+                  </p>
+                )}
+              </div>
+            </div>
+          ) : embed?.kind === "video-file" ? (
             <video
               key={current!.id}
               ref={videoRef}
@@ -325,6 +436,8 @@ export function CoursePlayer({
             <p className="text-muted-foreground text-xs">
               Lesson {currentIndex + 1} of {allLessons.length}
               {current?.durationSeconds ? ` · ${fmt(current.durationSeconds)}` : ""}
+              {lock?.viewLimit != null &&
+                ` · ${Math.min(lock.viewsUsed, lock.viewLimit)} of ${lock.viewLimit} views used`}
             </p>
           </div>
           <div className="flex gap-2">
@@ -332,7 +445,7 @@ export function CoursePlayer({
               variant={isDone ? "outline" : "default"}
               size="sm"
               onClick={() => markComplete(!isDone)}
-              disabled={marking}
+              disabled={marking || isLocked}
             >
               {marking ? (
                 <Loader2 className="size-4 animate-spin" />
@@ -342,27 +455,45 @@ export function CoursePlayer({
               {isDone ? "Completed" : "Mark complete"}
             </Button>
             {next && (
-              <Button variant="secondary" size="sm" onClick={() => selectLesson(next.id)}>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => selectLesson(next.id)}
+                disabled={next.lock.locked}
+              >
                 Next <ArrowRight className="size-4" />
               </Button>
             )}
           </div>
         </div>
 
-        {embed && (
-          <a
-            href={embed.href}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-muted-foreground hover:text-foreground mt-3 inline-flex items-center gap-1.5 text-sm"
+        {/* The material link. Behind a click rather than a bare href because a
+            download counts against the learner's allowance — the server has to
+            be told before the file is opened, which is what makes the cap on
+            "notes" mean anything. */}
+        {embed && !isLocked && (
+          <button
+            type="button"
+            onClick={() => openMaterial(embed.href)}
+            disabled={downloading}
+            className="text-muted-foreground hover:text-foreground mt-3 inline-flex items-center gap-1.5 text-sm disabled:opacity-60"
           >
-            <ExternalLink className="size-4" />
+            {downloading ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <ExternalLink className="size-4" />
+            )}
             {current?.attachmentName ?? embedLabel(embed)}
-          </a>
+            {lock?.downloadLimit != null && (
+              <span className="text-xs">
+                ({Math.min(lock.downloadsUsed, lock.downloadLimit)}/{lock.downloadLimit})
+              </span>
+            )}
+          </button>
         )}
 
         {/* Article content */}
-        {!current?.videoUrl && current?.content && (
+        {!isLocked && !current?.videoUrl && current?.content && (
           <div
             className="prose prose-sm dark:prose-invert mt-4 max-w-none"
             dangerouslySetInnerHTML={{ __html: current.content }}
@@ -480,27 +611,42 @@ export function CoursePlayer({
                 {ch.lessons.map((l) => {
                   const isCurrent = l.id === currentId;
                   const isComplete = completed.has(l.id);
+                  const rowLock = locks[l.id] ?? l.lock;
+                  const rowLocked = rowLock.locked;
                   return (
                     <li key={l.id}>
                       <button
                         type="button"
                         onClick={() => selectLesson(l.id)}
+                        title={rowLocked ? (rowLock.message ?? undefined) : undefined}
                         className={cn(
                           "hover:bg-accent flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors",
                           isCurrent && "bg-accent",
+                          rowLocked && "cursor-not-allowed opacity-60 hover:bg-transparent",
                         )}
                       >
-                        {isComplete ? (
+                        {rowLocked ? (
+                          <Lock className="text-muted-foreground size-4 shrink-0" />
+                        ) : isComplete ? (
                           <CheckCircle2 className="size-4 shrink-0 text-emerald-500" />
                         ) : isCurrent ? (
                           <PlayCircle className="text-primary size-4 shrink-0" />
                         ) : (
                           <Circle className="text-muted-foreground size-4 shrink-0" />
                         )}
-                        <span className={cn("min-w-0 flex-1 truncate", isCurrent && "font-medium")}>
-                          {l.title}
+                        <span className="min-w-0 flex-1">
+                          <span
+                            className={cn("block truncate", isCurrent && "font-medium")}
+                          >
+                            {l.title}
+                          </span>
+                          {rowLocked && rowLock.message && (
+                            <span className="text-muted-foreground block truncate text-xs">
+                              {rowLock.message}
+                            </span>
+                          )}
                         </span>
-                        {l.durationSeconds > 0 && (
+                        {l.durationSeconds > 0 && !rowLocked && (
                           <span className="text-muted-foreground shrink-0 text-xs tabular-nums">
                             {fmt(l.durationSeconds)}
                           </span>

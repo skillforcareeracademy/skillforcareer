@@ -1,28 +1,26 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import Image from "next/image";
-import {
-  ArrowLeft,
-  GraduationCap,
-  Radio,
-  Award,
-  Briefcase,
-  Star,
-} from "lucide-react";
+import { ArrowLeft, Star } from "lucide-react";
 import { Logo } from "@/components/shared/logo";
 import { ThemeToggle } from "@/components/shared/theme-toggle";
 import { ButtonLink } from "@/components/shared/button-link";
-import { siteConfig } from "@/config/site";
-import { pexelsAvatar } from "@/config/marketing";
+import { IconGlyph } from "@/components/shared/icon-glyph";
+import { getHomeSection } from "@/server/services/homepage-service";
 
-const FEATURES = [
-  { icon: Radio, label: "Live interactive classes with expert mentors" },
-  { icon: Award, label: "Verified certificates on completion" },
-  { icon: Briefcase, label: "Placement support · 100+ hiring partners" },
-];
+export const dynamic = "force-dynamic";
 
-/** Split-screen shell for all authentication screens. */
-export default function AuthLayout({ children }: { children: ReactNode }) {
+/**
+ * Split-screen shell for all authentication screens.
+ *
+ * The brand half is content, not code: every word, bullet and the learner
+ * quote come from Admin → Homepage → "Sign-in panel", the same registry the
+ * header and footer use. Nothing on this side is hardcoded.
+ */
+export default async function AuthLayout({ children }: { children: ReactNode }) {
+  const { data } = await getHomeSection("authPanel");
+  const features = data.features.filter((f) => f.text.trim());
+  const hasQuote = data.showTestimonial && data.quote.trim();
+
   return (
     <div className="grid min-h-dvh lg:grid-cols-[1.05fr_1fr]">
       {/* ── Brand panel (desktop only) ─────────────────────────────── */}
@@ -41,66 +39,78 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
           />
         </div>
 
-        {/* logo */}
-        <Link href="/" className="relative inline-flex w-fit items-center gap-2.5">
-          <span className="flex size-9 items-center justify-center rounded-xl bg-white/15 ring-1 ring-white/25 backdrop-blur">
-            <GraduationCap className="size-5 text-white" aria-hidden />
-          </span>
-          <span className="text-lg font-semibold tracking-tight">
-            {siteConfig.name}
+        {/* The real brand mark, on a light chip so a dark logo stays legible
+            against the magenta gradient. */}
+        <Link href="/" className="relative inline-flex w-fit">
+          <span className="rounded-xl bg-white/90 px-3 py-1.5 ring-1 ring-white/40 backdrop-blur">
+            <Logo href="" className="h-8" />
           </span>
         </Link>
 
         {/* headline + features */}
         <div className="relative max-w-md space-y-8">
           <div className="space-y-4">
-            <h2 className="text-4xl leading-[1.1] font-bold tracking-tight text-balance xl:text-5xl">
-              Learn the skills. Build the career.
-            </h2>
-            <p className="text-lg text-white/85">
-              Join 1,000+ learners upskilling with live classes, real-world
-              projects and verified certificates.
-            </p>
+            {data.heading.trim() && (
+              <h2 className="text-4xl leading-[1.1] font-bold tracking-tight text-balance xl:text-5xl">
+                {data.heading}
+              </h2>
+            )}
+            {data.subtitle.trim() && (
+              <p className="text-lg text-white/85">{data.subtitle}</p>
+            )}
           </div>
 
-          <ul className="space-y-3.5">
-            {FEATURES.map((f) => (
-              <li key={f.label} className="flex items-center gap-3">
-                <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-white/15 ring-1 ring-white/20 backdrop-blur">
-                  <f.icon className="size-4.5 text-white" aria-hidden />
-                </span>
-                <span className="text-sm text-white/90">{f.label}</span>
-              </li>
-            ))}
-          </ul>
-
-          {/* testimonial */}
-          <figure className="rounded-2xl bg-white/10 p-5 ring-1 ring-white/15 backdrop-blur">
-            <div className="mb-2 flex gap-0.5">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Star key={i} className="size-4 fill-amber-300 text-amber-300" />
+          {features.length > 0 && (
+            <ul className="space-y-3.5">
+              {features.map((f, i) => (
+                <li key={`${f.text}-${i}`} className="flex items-center gap-3">
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-white/15 ring-1 ring-white/20 backdrop-blur">
+                    <IconGlyph name={f.icon} className="size-4.5 text-white" />
+                  </span>
+                  <span className="text-sm text-white/90">{f.text}</span>
+                </li>
               ))}
-            </div>
-            <blockquote className="text-sm leading-relaxed text-white/90">
-              “The live mentorship and projects helped me switch into data
-              science with a 2× salary jump.”
-            </blockquote>
-            <figcaption className="mt-3 flex items-center gap-3">
-              <Image
-                src={pexelsAvatar(7580822)}
-                alt="Learner"
-                width={36}
-                height={36}
-                className="size-9 rounded-full object-cover ring-2 ring-white/40"
-              />
-              <span className="text-sm font-medium">Priya N. · Data Scientist</span>
-            </figcaption>
-          </figure>
+            </ul>
+          )}
+
+          {hasQuote && (
+            <figure className="rounded-2xl bg-white/10 p-5 ring-1 ring-white/15 backdrop-blur">
+              {data.stars > 0 && (
+                <div className="mb-2 flex gap-0.5">
+                  {Array.from({ length: data.stars }).map((_, i) => (
+                    <Star key={i} className="size-4 fill-amber-300 text-amber-300" />
+                  ))}
+                </div>
+              )}
+              <blockquote className="text-sm leading-relaxed text-white/90">
+                &ldquo;{data.quote}&rdquo;
+              </blockquote>
+              {(data.authorName.trim() || data.authorPhoto.trim()) && (
+                <figcaption className="mt-3 flex items-center gap-3">
+                  {data.authorPhoto.trim() && (
+                    // Not next/image: the photo is admin-supplied, so its host
+                    // and intrinsic size aren't known at build time.
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={data.authorPhoto}
+                      alt={data.authorName || "Learner"}
+                      className="size-9 rounded-full object-cover ring-2 ring-white/40"
+                    />
+                  )}
+                  <span className="text-sm font-medium">
+                    {[data.authorName, data.authorRole].filter(Boolean).join(" · ")}
+                  </span>
+                </figcaption>
+              )}
+            </figure>
+          )}
         </div>
 
-        <p className="relative text-sm text-white/60">
-          © {new Date().getFullYear()} {siteConfig.name}
-        </p>
+        {data.copyright.trim() && (
+          <p className="relative text-sm text-white/60">
+            {data.copyright.replaceAll("{year}", String(new Date().getFullYear()))}
+          </p>
+        )}
       </aside>
 
       {/* ── Form panel ─────────────────────────────────────────────── */}

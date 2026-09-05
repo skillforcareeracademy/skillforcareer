@@ -1,4 +1,10 @@
 import { prisma } from "@/lib/prisma";
+import {
+  getLoginSummary,
+  listUserActivity,
+  type ActivityRow,
+  type LoginSummary,
+} from "./activity-service";
 import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
 import type { BatchSchedule } from "@/lib/validations/batch";
@@ -110,6 +116,10 @@ export interface StudentProfile {
   pendingTotal: number;
   /** The CRM enquiry this learner came from, when there was one. */
   lead: { id: string; leadNo: string | null; source: string } | null;
+  /** Sign-in tracking — how often they actually turn up to the platform. */
+  logins: LoginSummary;
+  /** Their most recent trail, newest first. */
+  activity: ActivityRow[];
 }
 
 /** Sessions already over count against attendance; the rest are still ahead. */
@@ -191,6 +201,8 @@ export async function getStudentProfile(userId: string): Promise<StudentProfile>
     assignedCount,
     payments,
     lead,
+    logins,
+    activity,
   ] = await Promise.all([
     batchIds.length
       ? prisma.meeting.groupBy({
@@ -234,6 +246,8 @@ export async function getStudentProfile(userId: string): Promise<StudentProfile>
       where: { convertedUserId: userId },
       select: { id: true, leadNo: true, source: true },
     }),
+    getLoginSummary(userId),
+    listUserActivity(userId, 40),
   ]);
 
   // ── Attendance ─────────────────────────────────────────────────────────────
@@ -367,5 +381,7 @@ export async function getStudentProfile(userId: string): Promise<StudentProfile>
       .filter((p) => p.status === "PENDING")
       .reduce((sum, p) => sum + p.netAmount, 0),
     lead,
+    logins,
+    activity,
   };
 }

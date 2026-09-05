@@ -49,6 +49,10 @@ export const assignmentSchema = z
     maxScore: z.coerce.number().int().min(1).max(1000).default(100),
     dueDate: z.string().regex(DT, "Invalid date/time").optional().or(z.literal("")),
     allowLate: z.boolean().default(false),
+    /** Hidden from learners until this moment. Blank = visible straight away. */
+    releaseAt: z.string().regex(DT, "Invalid date/time").optional().or(z.literal("")),
+    /** How many times a learner may submit. 0 = unlimited (platform default). */
+    maxAttempts: z.coerce.number().int().min(0).max(50).default(0),
     /** Empty = everyone on the course. */
     batchIds: z.array(z.string().min(1)).max(200).optional(),
     /** Extra individuals, on top of whatever the batches cover. */

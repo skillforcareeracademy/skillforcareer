@@ -2,6 +2,8 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
 import type { SubmitQuizInput } from "@/lib/validations/quiz-attempt";
+import { getSettings } from "./settings-service";
+import { ACTIVITY_ACTIONS, logActivity } from "./activity-service";
 
 // ── Reads ────────────────────────────────────────────────────────────────────
 
@@ -33,14 +35,22 @@ export async function listStudentQuizzes(userId: string): Promise<StudentQuiz[]>
     .filter((id): id is string => Boolean(id));
 
   const quizzes = await prisma.quiz.findMany({
-    // A quiz set for particular cohorts reaches only those cohorts; one with no
-    // cohorts named reaches everyone on its course, as it always has.
+    // A quiz set for particular cohorts or named learners reaches only those;
+    // one with neither reaches everyone on its course, as it always has. On top
+    // of that, `releaseAt` holds it back until its moment — the assessment half
+    // of "students ko saare quiz ek saath nhi denge".
     where: {
       isPublished: true,
       OR: [
-        { courseId: { in: courseIds }, batches: { none: {} } },
+        {
+          courseId: { in: courseIds },
+          batches: { none: {} },
+          students: { none: {} },
+        },
         ...(batchIds.length ? [{ batches: { some: { batchId: { in: batchIds } } } }] : []),
+        { students: { some: { userId } } },
       ],
+      AND: [{ OR: [{ releaseAt: null }, { releaseAt: { lte: new Date() } }] }],
     },
     orderBy: { updatedAt: "desc" },
     include: {
@@ -97,6 +107,8 @@ export async function getQuizForAttempt(userId: string, quizId: string) {
     },
   });
   if (!quiz || !quiz.courseId) return null;
+  // A quiz still under wraps is not takeable by URL either.
+  if (quiz.releaseAt && quiz.releaseAt.getTime() > Date.now()) return null;
 
   const enrolled = await prisma.enrollment.findUnique({
     where: { userId_courseId: { userId, courseId: quiz.courseId } },
@@ -104,10 +116,14 @@ export async function getQuizForAttempt(userId: string, quizId: string) {
   });
   if (!enrolled) return null;
 
-  const [attemptsUsed, bookmark] = await Promise.all([
+  const [attemptsUsed, bookmark, { settings }] = await Promise.all([
     prisma.quizAttempt.count({ where: { quizId, studentId: userId } }),
     prisma.bookmark.findFirst({ where: { userId, quizId }, select: { id: true } }),
+    getSettings(),
   ]);
+  // Same effective cap the submit path applies, so the button and the endpoint
+  // never disagree about whether an attempt is left.
+  const cap = quiz.maxAttempts || settings.quizAttemptLimit;
 
   return {
     id: quiz.id,
@@ -116,9 +132,9 @@ export async function getQuizForAttempt(userId: string, quizId: string) {
     courseTitle: quiz.course?.title ?? null,
     timeLimitMinutes: quiz.timeLimitMinutes,
     passingScore: quiz.passingScore,
-    maxAttempts: quiz.maxAttempts,
+    maxAttempts: cap,
     attemptsUsed,
-    canAttempt: attemptsUsed < quiz.maxAttempts,
+    canAttempt: cap === 0 || attemptsUsed < cap,
     bookmarked: bookmark != null,
     totalPoints: quiz.questions.reduce((s, q) => s + q.points, 0),
     questions: quiz.questions.map((q) => ({
@@ -169,8 +185,17 @@ export async function submitQuizAttempt(
   });
   if (!enrolled) throw AppError.forbidden("You're not enrolled in this course.");
 
+  if (quiz.releaseAt && quiz.releaseAt.getTime() > Date.now()) {
+    throw AppError.badRequest("This quiz hasn't opened yet.");
+  }
+
+  // The quiz's own cap, else the platform default from Settings → Learning.
+  // 0 in both means unlimited — an instructor who wants open practice sets it
+  // to 0 rather than to some large number.
+  const { settings } = await getSettings();
+  const cap = quiz.maxAttempts || settings.quizAttemptLimit;
   const attemptsUsed = await prisma.quizAttempt.count({ where: { quizId, studentId: userId } });
-  if (attemptsUsed >= quiz.maxAttempts) {
+  if (cap > 0 && attemptsUsed >= cap) {
     throw AppError.badRequest("You've used all your attempts for this quiz.");
   }
 
@@ -234,6 +259,15 @@ export async function submitQuizAttempt(
     select: { id: true },
   });
   void attempt;
+
+  void logActivity({
+    userId,
+    action: ACTIVITY_ACTIONS.QUIZ_SUBMIT,
+    entityType: "Quiz",
+    entityId: quizId,
+    description: `Scored ${percent}% on “${quiz.title}”`,
+    metadata: { score, maxScore, percent, passed },
+  });
 
   return {
     score,

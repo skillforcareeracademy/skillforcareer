@@ -5,14 +5,14 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
 import { useAuthStore, type SessionUser } from "@/stores/auth-store";
-import { ROLE_HOME } from "@/config/roles";
 import { AuthCard } from "./auth-card";
 import { OtpInput } from "./otp-input";
 import { SubmitButton } from "./submit-button";
 import { ButtonLink } from "@/components/shared/button-link";
 import { ROUTES } from "@/lib/constants";
+import { destinationFor } from "@/lib/auth/next-url";
 
-export function VerifyOtpForm({ email }: { email?: string }) {
+export function VerifyOtpForm({ email, next }: { email?: string; next?: string }) {
   const router = useRouter();
   const setUser = useAuthStore((s) => s.setUser);
   const [code, setCode] = useState("");
@@ -46,7 +46,9 @@ export function VerifyOtpForm({ email }: { email?: string }) {
       );
       setUser(user);
       toast.success("Email verified! Welcome aboard.");
-      router.replace(ROLE_HOME[user.role] ?? ROUTES.student);
+      // Verifying is the last step of signing up, so with nowhere else to go a
+      // brand-new learner lands on the catalogue rather than an empty dashboard.
+      router.replace(destinationFor(user.role, next, { isNewAccount: true }));
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Verification failed.");
     } finally {

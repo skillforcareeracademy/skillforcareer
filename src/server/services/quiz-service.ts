@@ -100,6 +100,7 @@ export async function getQuizEdit(id: string) {
         include: { options: { orderBy: { order: "asc" } } },
       },
       batches: { select: { batch: { select: { id: true, name: true } } } },
+      students: { select: { userId: true } },
     },
   });
   if (!z) throw AppError.notFound("Quiz not found.");
@@ -116,8 +117,11 @@ export async function getQuizEdit(id: string) {
     shuffleQuestions: z.shuffleQuestions,
     showAnswers: z.showAnswers,
     isPublished: z.isPublished,
+    // datetime-local wants local wall clock without the zone or seconds.
+    releaseAt: z.releaseAt ? toLocalInput(z.releaseAt) : "",
     batchIds: z.batches.map((b) => b.batch.id),
     batches: z.batches.map((b) => b.batch),
+    studentIds: z.students.map((s) => s.userId),
     questions: z.questions.map((q) => ({
       id: q.id,
       type: q.type,
@@ -168,22 +172,39 @@ export async function updateQuiz(id: string, input: UpdateQuizInput): Promise<vo
       maxAttempts: input.maxAttempts,
       shuffleQuestions: input.shuffleQuestions,
       showAnswers: input.showAnswers,
+      releaseAt: input.releaseAt ? new Date(input.releaseAt) : null,
     },
   });
-  await setQuizBatches(id, input.batchIds);
+  await setQuizAudience(id, input.batchIds, input.studentIds);
+}
+
+/** `2026-09-30T14:05:00Z` → `2026-09-30T19:35` in the server's zone. */
+function toLocalInput(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 /**
- * Replace the cohorts a quiz is set for. Deleted and re-created rather than
- * diffed — a handful of rows, and two statements beat a per-row reconciliation
- * against a database a region away.
+ * Replace the cohorts and individuals a quiz is set for. Deleted and re-created
+ * rather than diffed — a handful of rows, and two statements beat a per-row
+ * reconciliation against a database a region away. The mirror of
+ * `assignment-service.setAudience`.
  */
-async function setQuizBatches(quizId: string, batchIds: string[] | undefined): Promise<void> {
+async function setQuizAudience(
+  quizId: string,
+  batchIds: string[] | undefined,
+  studentIds: string[] | undefined,
+): Promise<void> {
   const batches = [...new Set(batchIds ?? [])];
+  const students = [...new Set(studentIds ?? [])];
   await prisma.$transaction([
     prisma.quizBatch.deleteMany({ where: { quizId } }),
+    prisma.quizStudent.deleteMany({ where: { quizId } }),
     ...(batches.length
       ? [prisma.quizBatch.createMany({ data: batches.map((batchId) => ({ quizId, batchId })) })]
+      : []),
+    ...(students.length
+      ? [prisma.quizStudent.createMany({ data: students.map((userId) => ({ quizId, userId })) })]
       : []),
   ]);
 }

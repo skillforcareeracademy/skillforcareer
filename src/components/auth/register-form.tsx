@@ -14,9 +14,11 @@ import { IconInput } from "./icon-input";
 import { PasswordInput } from "./password-input";
 import { SubmitButton } from "./submit-button";
 import { ROUTES } from "@/lib/constants";
+import { safeNext } from "@/lib/auth/next-url";
 
-export function RegisterForm() {
+export function RegisterForm({ next }: { next?: string }) {
   const router = useRouter();
+  const nextQuery = safeNext(next) ? `&next=${encodeURIComponent(next!)}` : "";
   const {
     register,
     handleSubmit,
@@ -31,7 +33,7 @@ export function RegisterForm() {
       );
       toast.success("Verification code sent to your email.");
       if (res.devOtp) toast.info(`Dev code: ${res.devOtp}`);
-      router.push(`${ROUTES.verifyOtp}?email=${encodeURIComponent(res.email)}`);
+      router.push(`${ROUTES.verifyOtp}?email=${encodeURIComponent(res.email)}${nextQuery}`);
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "Something went wrong.");
     }
@@ -44,7 +46,10 @@ export function RegisterForm() {
       footer={
         <span className="text-muted-foreground">
           Already have an account?{" "}
-          <Link className="text-primary font-medium" href={ROUTES.login}>
+          <Link
+            className="text-primary font-medium"
+            href={next ? `${ROUTES.login}?next=${encodeURIComponent(next)}` : ROUTES.login}
+          >
             Sign in
           </Link>
         </span>

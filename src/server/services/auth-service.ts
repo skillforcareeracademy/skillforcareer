@@ -16,6 +16,7 @@ import { otpEmail, type OtpPurpose } from "@/lib/mail/templates/otp";
 import { emitEvent } from "@/lib/events";
 import { AppError } from "@/lib/api/errors";
 import { ROLES, type Role } from "@/config/roles";
+import { ACTIVITY_ACTIONS, logActivity, recordLogin } from "./activity-service";
 
 /** Public representation of a user — safe to send to the client. */
 export interface PublicUser {
@@ -269,6 +270,109 @@ export async function register(input: {
   return { email: user.email, code };
 }
 
+/**
+ * Express checkout identity — the "student ko pata bhi na chale aur sign up ho
+ * jaaye" step on `/checkout/[slug]`.
+ *
+ * A visitor nobody has seen before is signed up and signed in on the spot: they
+ * typed their name, email and phone into the buy form, and stopping them for an
+ * inbox round-trip before they have paid is how carts are abandoned. The
+ * account is created exactly as a counsellor-converted lead's is — ACTIVE, no
+ * password — and they set one later from Forgot password.
+ *
+ * Anyone who *already* has an account has to prove it, because knowing an email
+ * address is not a credential. With a password set, they type it; without one
+ * (a lead the office converted), a code goes to that inbox. Either way the
+ * caller stays on the checkout page — no redirect to /login, which was the
+ * complaint that produced this flow.
+ */
+export type CheckoutIdentity =
+  | { status: "SIGNED_IN"; user: PublicUser; tokens: AuthTokens; created: boolean }
+  | { status: "PASSWORD_REQUIRED"; name: string; email: string }
+  | { status: "CODE_SENT"; name: string; email: string; code: string };
+
+/** Last ten digits — how phone numbers are matched everywhere in this app. */
+function phoneKey(phone: string): string {
+  return phone.replace(/[^0-9]/g, "").slice(-10);
+}
+
+async function findUserIdByPhone(phone: string): Promise<string | null> {
+  const key = phoneKey(phone);
+  if (key.length < 10) return null;
+  const rows = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT id FROM \`User\`
+    WHERE RIGHT(REGEXP_REPLACE(COALESCE(phone, ''), '[^0-9]', ''), 10) = ${key}
+    LIMIT 1
+  `;
+  return rows[0]?.id ?? null;
+}
+
+export async function identifyForCheckout(input: {
+  name: string;
+  email: string;
+  phone: string;
+}): Promise<CheckoutIdentity> {
+  const email = input.email.trim().toLowerCase();
+
+  const byEmail = await loadAuthUserByEmail(email);
+  const existingId = byEmail?.id ?? (await findUserIdByPhone(input.phone));
+
+  if (existingId) {
+    const user = byEmail ?? (await loadAuthUserById(existingId));
+    if (!user) throw AppError.internal("Couldn't load that account.");
+    if (user.status === "SUSPENDED") {
+      throw AppError.forbidden("This account is suspended. Please contact support.");
+    }
+    if (user.passwordHash) {
+      return { status: "PASSWORD_REQUIRED", name: user.name, email: user.email };
+    }
+    // No password on the account, so there is nothing to check against — a
+    // code to the address on file is the proof.
+    const code = await createAndSendOtp(user.id, user.email, "login", user.name);
+    return { status: "CODE_SENT", name: user.name, email: user.email, code };
+  }
+
+  const studentRole = await prisma.role.findUnique({
+    where: { slug: ROLES.STUDENT },
+    select: { id: true },
+  });
+  if (!studentRole) {
+    throw AppError.internal("Default role missing. Run `npm run db:seed`.");
+  }
+  const created = await prisma.user.create({
+    data: {
+      name: input.name.trim(),
+      email,
+      phone: input.phone.trim() || null,
+      roleId: studentRole.id,
+      status: "ACTIVE",
+      emailVerified: new Date(),
+    },
+    select: { id: true },
+  });
+
+  const user = await loadAuthUserById(created.id);
+  if (!user) throw AppError.internal("Couldn't create that account.");
+  await emitEvent("user.registered", { userId: user.id, email: user.email });
+  const tokens = await issueTokens(user);
+  await recordLogin(user.id);
+  return { status: "SIGNED_IN", user: toPublicUser(user), tokens, created: true };
+}
+
+/** Second half of the CODE_SENT branch above. */
+export async function completeCheckoutOtp(input: {
+  email: string;
+  code: string;
+}): Promise<{ user: PublicUser; tokens: AuthTokens }> {
+  const email = input.email.trim().toLowerCase();
+  await consumeOtp(email, input.code, "login");
+  const user = await loadAuthUserByEmail(email);
+  if (!user) throw AppError.notFound("User not found.");
+  const tokens = await issueTokens(user);
+  await recordLogin(user.id);
+  return { user: toPublicUser(user), tokens };
+}
+
 export async function verifyEmailOtp(input: {
   email: string;
   code: string;
@@ -285,6 +389,7 @@ export async function verifyEmailOtp(input: {
 
   await emitEvent("user.verified", { userId: updated.id, email: updated.email });
   const tokens = await issueTokens(updated);
+  await recordLogin(updated.id);
   return { user: toPublicUser(updated), tokens };
 }
 
@@ -318,10 +423,17 @@ export async function login(input: {
     ? await hashPassword(input.password)
     : undefined;
 
-  // Independent writes — the stamp doesn't gate the tokens.
+  // Independent writes — the stamp doesn't gate the tokens. `touchLogin`
+  // already writes lastLoginAt, so the tracking side only owes the audit row.
   const [, tokens] = await Promise.all([
     touchLogin(user.id, upgradedHash),
     issueTokens(user),
+    logActivity({
+      userId: user.id,
+      action: ACTIVITY_ACTIONS.LOGIN,
+      entityType: "User",
+      entityId: user.id,
+    }),
   ]);
   return { user: toPublicUser(user), tokens };
 }

@@ -68,7 +68,9 @@ interface Quiz {
   shuffleQuestions: boolean;
   showAnswers: boolean;
   isPublished: boolean;
+  releaseAt: string;
   batchIds: string[];
+  studentIds: string[];
   questions: EditableQuestion[];
   totalPoints: number;
 }
@@ -78,17 +80,25 @@ interface BatchOpt {
   courseId: string;
   courseTitle: string;
 }
+interface StudentOpt {
+  id: string;
+  name: string;
+  email: string;
+}
 
 export function QuizEditor({
   quiz,
   courses,
   batches,
+  students = [],
   basePath = "/admin/quizzes",
   canExport = true,
 }: {
   quiz: Quiz;
   courses: { id: string; title: string }[];
   batches: BatchOpt[];
+  /** Individuals who can be set the quiz on top of the chosen cohorts. */
+  students?: StudentOpt[];
   basePath?: string;
   /** Instructors may import a question bank but not download the answer key. */
   canExport?: boolean;
@@ -104,7 +114,9 @@ export function QuizEditor({
     maxAttempts: String(quiz.maxAttempts),
     shuffleQuestions: quiz.shuffleQuestions,
     showAnswers: quiz.showAnswers,
+    releaseAt: quiz.releaseAt,
     batchIds: quiz.batchIds,
+    studentIds: quiz.studentIds,
   });
   const [savingSettings, setSavingSettings] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -187,10 +199,12 @@ export function QuizEditor({
         timeLimitMinutes: form.timeLimitMinutes ? Number(form.timeLimitMinutes) : undefined,
         passingScore: Number(form.passingScore) || 0,
         gradingMode: form.gradingMode,
-        maxAttempts: Number(form.maxAttempts) || 1,
+        maxAttempts: Number(form.maxAttempts) || 0,
         shuffleQuestions: form.shuffleQuestions,
         showAnswers: form.showAnswers,
+        releaseAt: form.releaseAt || undefined,
         batchIds: form.batchIds,
+        studentIds: form.studentIds,
       });
       toast.success("Settings saved.");
       router.refresh();
@@ -330,6 +344,33 @@ export function QuizEditor({
               maxHeight="11rem"
             />
 
+            {students.length > 0 && (
+              <AudiencePicker
+                label="Additional students"
+                emptyMeans="Nobody named individually."
+                searchPlaceholder="Search learners…"
+                options={students.map((st) => ({ id: st.id, label: st.name, hint: st.email }))}
+                selected={form.studentIds}
+                onChange={(ids) => set("studentIds", ids)}
+                maxHeight="11rem"
+              />
+            )}
+
+            {/* Release date — a published quiz stays out of sight until this
+                moment, so a paper can be prepared well before the class sits it. */}
+            <div className="space-y-1.5">
+              <Label htmlFor="q-rel">Opens on</Label>
+              <Input
+                id="q-rel"
+                type="datetime-local"
+                value={form.releaseAt}
+                onChange={(e) => set("releaseAt", e.target.value)}
+              />
+              <p className="text-muted-foreground text-xs">
+                Leave blank to open as soon as it&apos;s published.
+              </p>
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="q-pass">Pass %</Label>
@@ -360,9 +401,10 @@ export function QuizEditor({
                 <Input
                   id="q-att"
                   type="number"
-                  min={1}
+                  min={0}
                   value={form.maxAttempts}
                   onChange={(e) => set("maxAttempts", e.target.value)}
+                  placeholder="0 = platform default"
                 />
               </div>
               <div className="space-y-1.5">

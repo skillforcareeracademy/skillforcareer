@@ -5,10 +5,12 @@ import { MarketingFooter } from "@/components/layout/marketing-footer";
 import { CtaBand } from "@/components/marketing/cta-band";
 import { CtaBandSlot } from "@/components/marketing/cta-band-slot";
 import { getHomeSection } from "@/server/services/homepage-service";
+import { getSettings } from "@/server/services/settings-service";
+import { AmiWidget } from "@/components/chatbot/ami-widget";
 
 export default async function MarketingLayout({ children }: { children: ReactNode }) {
   // Shares the single homepage read with the page below it.
-  const cta = await getHomeSection("cta");
+  const [cta, { settings }] = await Promise.all([getHomeSection("cta"), getSettings()]);
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -29,6 +31,9 @@ export default async function MarketingLayout({ children }: { children: ReactNod
         )}
       </main>
       <MarketingFooter />
+      {/* "Website pr Ami name se chatbot bhi hona chahiye" — trained from
+          Admin → Assistant, and switchable there too. */}
+      {settings.chatbotEnabled && <AmiWidget />}
     </div>
   );
 }

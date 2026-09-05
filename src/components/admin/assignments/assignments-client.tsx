@@ -87,6 +87,8 @@ interface AssignmentRow {
   dueDate: string | null;
   isOverdue: boolean;
   allowLate: boolean;
+  releaseAt: string | null;
+  maxAttempts: number;
   submissions: number;
   needsGrading: number;
 }
@@ -144,6 +146,8 @@ interface FormState {
   maxScore: string;
   dueDate: string;
   allowLate: boolean;
+  releaseAt: string;
+  maxAttempts: string;
   batchIds: string[];
   studentIds: string[];
 }
@@ -157,6 +161,8 @@ const EMPTY: FormState = {
   maxScore: "100",
   dueDate: "",
   allowLate: false,
+  releaseAt: "",
+  maxAttempts: "0",
   batchIds: [],
   studentIds: [],
 };
@@ -176,6 +182,8 @@ function fromRow(a: AssignmentRow): FormState {
     maxScore: String(a.maxScore),
     dueDate: a.dueDate ? toLocalInput(a.dueDate) : "",
     allowLate: a.allowLate,
+    releaseAt: a.releaseAt ? toLocalInput(a.releaseAt) : "",
+    maxAttempts: String(a.maxAttempts),
     batchIds: a.batchIds,
     studentIds: [],
   };
@@ -324,6 +332,8 @@ export function AssignmentsClient({
       maxScore: Number(form.maxScore) || 100,
       dueDate: form.dueDate || undefined,
       allowLate: form.allowLate,
+      releaseAt: form.releaseAt || undefined,
+      maxAttempts: Number(form.maxAttempts) || 0,
       batchIds: form.batchIds,
       studentIds: form.studentIds,
     };
@@ -869,6 +879,37 @@ export function AssignmentsClient({
                   value={form.dueDate}
                   onChange={(e) => set("dueDate", e.target.value)}
                 />
+              </div>
+            </div>
+
+            {/* Release and attempts — the assignment half of "students ko saare
+                assignment ek saath nhi denge". */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="a-rel">Opens on</Label>
+                <Input
+                  id="a-rel"
+                  type="datetime-local"
+                  value={form.releaseAt}
+                  onChange={(e) => set("releaseAt", e.target.value)}
+                />
+                <p className="text-muted-foreground text-xs">
+                  Blank shows it straight away.
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="a-att">Submissions allowed</Label>
+                <Input
+                  id="a-att"
+                  type="number"
+                  min={0}
+                  value={form.maxAttempts}
+                  onChange={(e) => set("maxAttempts", e.target.value)}
+                  placeholder="0 = platform default"
+                />
+                <p className="text-muted-foreground text-xs">
+                  0 uses the limit in Settings → Learning.
+                </p>
               </div>
             </div>
 

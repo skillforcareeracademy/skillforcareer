@@ -3,6 +3,8 @@ import { notify } from "./notification-service";
 import { AppError } from "@/lib/api/errors";
 import type { SubmitAssignmentInput } from "@/lib/validations/submission";
 import type { AssignmentAnswersInput } from "@/lib/validations/assignment";
+import { getSettings } from "./settings-service";
+import { ACTIVITY_ACTIONS, logActivity } from "./activity-service";
 
 export interface AssignmentQuestionForStudent {
   id: string;
@@ -66,6 +68,8 @@ export async function listStudentAssignments(userId: string): Promise<StudentAss
         ...(batchIds.length ? [{ batches: { some: { batchId: { in: batchIds } } } }] : []),
         { students: { some: { userId } } },
       ],
+      // Held back until its release moment, if one was set.
+      AND: [{ OR: [{ releaseAt: null }, { releaseAt: { lte: new Date() } }] }],
     },
     orderBy: [{ dueDate: "asc" }, { createdAt: "desc" }],
     include: {
@@ -127,12 +131,17 @@ export async function submitAssignment(
       courseId: true,
       dueDate: true,
       allowLate: true,
+      releaseAt: true,
+      maxAttempts: true,
       title: true,
       course: { select: { instructorId: true } },
     },
   });
   if (!assignment) throw AppError.notFound("Assignment not found.");
   if (!assignment.courseId) throw AppError.badRequest("This assignment isn't open for submissions.");
+  if (assignment.releaseAt && assignment.releaseAt.getTime() > Date.now()) {
+    throw AppError.badRequest("This assignment hasn't opened yet.");
+  }
 
   const enrolled = await prisma.enrollment.findUnique({
     where: { userId_courseId: { userId, courseId: assignment.courseId } },
@@ -142,10 +151,21 @@ export async function submitAssignment(
 
   const existing = await prisma.assignmentSubmission.findUnique({
     where: { assignmentId_studentId_attempt: { assignmentId, studentId: userId, attempt: 1 } },
-    select: { id: true, status: true },
+    select: { id: true, status: true, submitCount: true },
   });
   if (existing && existing.status === "GRADED") {
     throw AppError.badRequest("This assignment is already graded.");
+  }
+
+  // Submission cap — per assignment, else the platform default from
+  // Settings → Learning. 0 in both places means unlimited, which is how every
+  // assignment behaved before the client asked for a limit.
+  const { settings } = await getSettings();
+  const cap = assignment.maxAttempts || settings.assignmentAttemptLimit;
+  if (cap > 0 && existing && existing.submitCount >= cap) {
+    throw AppError.badRequest(
+      `You've used all ${cap} submission${cap === 1 ? "" : "s"} for this assignment.`,
+    );
   }
 
   const now = new Date();
@@ -171,12 +191,21 @@ export async function submitAssignment(
       content: input.content,
       fileUrl: input.fileUrl || null,
       submittedAt: now,
+      submitCount: { increment: 1 },
       // clear any prior grade if resubmitting after a resubmit request
       score: null,
       feedback: null,
       gradedById: null,
       gradedAt: null,
     },
+  });
+
+  void logActivity({
+    userId,
+    action: ACTIVITY_ACTIONS.ASSIGNMENT_SUBMIT,
+    entityType: "Assignment",
+    entityId: assignmentId,
+    description: `Submitted “${assignment.title}”`,
   });
 
   // Tell whoever has to grade it. Staff see it on the assignments page anyway;

@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CourseDetailsForm } from "./course-details-form";
 import { CurriculumBuilder } from "./curriculum-builder";
+import { ReleaseManager } from "./release-manager";
 import type { CourseEdit } from "@/server/services/course-service";
 
 export function CourseEditor({
@@ -105,12 +106,18 @@ export function CourseEditor({
               {course.chapters.reduce((n, c) => n + c.lessons.length, 0)}
             </Badge>
           </TabsTrigger>
+          <TabsTrigger value="access">Content access</TabsTrigger>
         </TabsList>
         <TabsContent value="details" className="mt-6">
           <CourseDetailsForm course={course} categories={categories} />
         </TabsContent>
         <TabsContent value="curriculum" className="mt-6">
           <CurriculumBuilder courseId={course.id} chapters={course.chapters} />
+        </TabsContent>
+        <TabsContent value="access" className="mt-6">
+          {/* Mounted lazily by the tab, so the board's three queries only run
+              when somebody actually opens it. */}
+          <ReleaseManager courseId={course.id} />
         </TabsContent>
       </Tabs>
     </div>

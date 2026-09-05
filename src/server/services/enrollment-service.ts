@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { notify } from "./notification-service";
 import { AppError } from "@/lib/api/errors";
 import { bumpCourseEnrollmentCount } from "@/server/repositories/counters";
+import { ACTIVITY_ACTIONS, logActivity } from "./activity-service";
 
 export async function isEnrolled(userId: string, courseId: string): Promise<boolean> {
   const e = await prisma.enrollment.findUnique({
@@ -11,14 +12,40 @@ export async function isEnrolled(userId: string, courseId: string): Promise<bool
   return Boolean(e);
 }
 
-/** Enroll the current user in a course. Returns the course slug to continue to. */
+/**
+ * Enroll the current user in a **free** course. Returns the slug to continue to.
+ *
+ * The price check is the point of this function, not a formality. This endpoint
+ * used to enrol anyone in anything: the learner panel's course cards called it
+ * for paid programmes too, so tapping "Enroll" handed out a ₹24,999 course for
+ * nothing — "enroll button pr click kre hi khud se bina payment ke hi enroll ho
+ * gya". Paid courses are only ever enrolled by `fulfillPaidCheckout`, which
+ * runs after the money has actually landed, or by staff adding learners to a
+ * batch (`batch-service.addBatchStudents`).
+ */
 export async function enrollInCourse(userId: string, courseId: string): Promise<{ slug: string }> {
   const course = await prisma.course.findUnique({
     where: { id: courseId },
-    select: { id: true, slug: true, status: true, title: true },
+    select: {
+      id: true,
+      slug: true,
+      status: true,
+      title: true,
+      pricingType: true,
+      price: true,
+      discountPrice: true,
+    },
   });
   if (!course) throw AppError.notFound("Course not found.");
   if (course.status !== "PUBLISHED") throw AppError.badRequest("This course isn't available yet.");
+
+  const payable = Number(course.discountPrice ?? course.price);
+  if (course.pricingType !== "FREE" && payable > 0) {
+    throw AppError.badRequest(
+      "This is a paid course — please complete the payment to enrol.",
+      { reason: "PAYMENT_REQUIRED", slug: course.slug, amount: payable },
+    );
+  }
 
   const existing = await prisma.enrollment.findUnique({
     where: { userId_courseId: { userId, courseId } },
@@ -30,9 +57,19 @@ export async function enrollInCourse(userId: string, courseId: string): Promise<
   // relationMode="prisma" that update fans out into a SELECT per relation and
   // on its own overran this transaction's 5 s budget.
   await prisma.$transaction([
-    prisma.enrollment.create({ data: { userId, courseId, status: "ACTIVE" } }),
+    prisma.enrollment.create({
+      data: { userId, courseId, status: "ACTIVE", source: "FREE" },
+    }),
     bumpCourseEnrollmentCount(courseId, 1),
   ]);
+
+  await logActivity({
+    userId,
+    action: ACTIVITY_ACTIONS.ENROLL,
+    entityType: "Course",
+    entityId: courseId,
+    description: `Enrolled in “${course.title}” (free)`,
+  });
 
   await notify({
     userIds: [userId],

@@ -1,7 +1,17 @@
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
 import { issueCertificate } from "@/server/services/certificate-service";
 import type { ProgressInput, NoteInput, BookmarkInput } from "@/lib/validations/learning";
+import {
+  assertLessonOpen,
+  learnerContext,
+  resolveLock,
+  OPEN_LESSON,
+  type LessonLock,
+  type ReleaseMode,
+} from "./release-service";
+import { ACTIVITY_ACTIONS, logActivity } from "./activity-service";
 
 // ── Player data ──────────────────────────────────────────────────────────────
 
@@ -39,10 +49,16 @@ export async function getCoursePlayer(userId: string, slug: string) {
   if (!enrollment) return { enrolled: false as const };
 
   const lessonIds = course.chapters.flatMap((c) => c.lessons.map((l) => l.id));
-  const progress = await prisma.lessonProgress.findMany({
-    where: { userId, lessonId: { in: lessonIds } },
-    select: { lessonId: true, completed: true, lastPositionSeconds: true },
-  });
+  // Three flat reads, stitched below — the release rules, the learner's grants
+  // and their counters all have to be in hand before a single lesson can be
+  // called open or shut.
+  const [progress, ctx] = await Promise.all([
+    prisma.lessonProgress.findMany({
+      where: { userId, lessonId: { in: lessonIds } },
+      select: { lessonId: true, completed: true, lastPositionSeconds: true },
+    }),
+    learnerContext(userId, lessonIds),
+  ]);
   const progMap = new Map(progress.map((p) => [p.lessonId, p]));
 
   const chapters = course.chapters.map((ch) => ({
@@ -50,18 +66,35 @@ export async function getCoursePlayer(userId: string, slug: string) {
     title: ch.title,
     lessons: ch.lessons.map((l) => {
       const p = progMap.get(l.id);
+      const lock: LessonLock = ctx
+        ? resolveLock(
+            l.id,
+            {
+              releaseMode: l.releaseMode as ReleaseMode,
+              releaseAt: l.releaseAt,
+              dripDays: l.dripDays,
+              viewLimit: l.viewLimit,
+              downloadLimit: l.downloadLimit,
+              isPreview: l.isPreview,
+            },
+            ctx,
+          )
+        : OPEN_LESSON;
       return {
         id: l.id,
         title: l.title,
         type: l.type,
         durationSeconds: l.video?.durationSeconds || l.durationSeconds,
         isPreview: l.isPreview,
-        content: l.content,
-        videoUrl: l.video?.url ?? null,
-        attachmentUrl: l.attachments[0]?.url ?? null,
-        attachmentName: l.attachments[0]?.name ?? null,
+        // A locked lesson ships no media at all. Hiding the play button while
+        // still sending the URL would put the video one devtools tab away.
+        content: lock.locked ? null : l.content,
+        videoUrl: lock.locked ? null : (l.video?.url ?? null),
+        attachmentUrl: lock.locked ? null : (l.attachments[0]?.url ?? null),
+        attachmentName: lock.locked ? null : (l.attachments[0]?.name ?? null),
         completed: p?.completed ?? false,
         lastPosition: p?.lastPositionSeconds ?? 0,
+        lock,
       };
     }),
   }));
@@ -69,7 +102,9 @@ export async function getCoursePlayer(userId: string, slug: string) {
   const flat = chapters.flatMap((c) => c.lessons);
   const total = flat.length;
   const completed = flat.filter((l) => l.completed).length;
-  const resume = flat.find((l) => !l.completed) ?? flat[0];
+  // Resume on the first lesson they can actually open, not the first unfinished
+  // one — otherwise a dripped course opens on a padlock every time.
+  const resume = flat.find((l) => !l.completed && !l.lock.locked) ?? flat.find((l) => !l.lock.locked) ?? flat[0];
 
   return {
     enrolled: true as const,
@@ -130,35 +165,64 @@ export async function updateLessonProgress(userId: string, lessonId: string, inp
   });
   if (!enrollment) throw AppError.forbidden("You're not enrolled in this course.");
 
+  // A lesson the release rules have shut records nothing — the player hides it,
+  // but the endpoint is the thing that actually has to say no.
+  await assertLessonOpen(userId, lessonId, { ignoreViewLimit: true });
+
   const markComplete = input.completed === true;
-  await prisma.lessonProgress.upsert({
-    where: { userId_lessonId: { userId, lessonId } },
-    create: {
-      userId,
-      lessonId,
-      enrollmentId: enrollment.id,
-      watchedSeconds: input.watched ?? 0,
-      lastPositionSeconds: input.position ?? 0,
-      completed: markComplete,
-      status: markComplete ? "COMPLETED" : "IN_PROGRESS",
-      completedAt: markComplete ? new Date() : null,
-    },
-    update: {
-      ...(input.position != null ? { lastPositionSeconds: input.position } : {}),
-      ...(input.watched != null ? { watchedSeconds: input.watched } : {}),
-      ...(input.completed !== undefined
-        ? {
-            completed: input.completed,
-            status: input.completed ? "COMPLETED" : "IN_PROGRESS",
-            completedAt: input.completed ? new Date() : null,
-          }
-        : { status: "IN_PROGRESS" }),
-    },
-  });
+  const changes = {
+    ...(input.position != null ? { lastPositionSeconds: input.position } : {}),
+    ...(input.watched != null ? { watchedSeconds: input.watched } : {}),
+    ...(input.completed !== undefined
+      ? {
+          completed: input.completed,
+          status: input.completed ? ("COMPLETED" as const) : ("IN_PROGRESS" as const),
+          completedAt: input.completed ? new Date() : null,
+        }
+      : { status: "IN_PROGRESS" as const }),
+  };
+
+  try {
+    await prisma.lessonProgress.upsert({
+      where: { userId_lessonId: { userId, lessonId } },
+      create: {
+        userId,
+        lessonId,
+        enrollmentId: enrollment.id,
+        watchedSeconds: input.watched ?? 0,
+        lastPositionSeconds: input.position ?? 0,
+        completed: markComplete,
+        status: markComplete ? "COMPLETED" : "IN_PROGRESS",
+        completedAt: markComplete ? new Date() : null,
+      },
+      update: changes,
+    });
+  } catch (error) {
+    // Prisma's upsert is a SELECT then an INSERT, not one atomic statement, so
+    // two writers for the same row can both decide to insert. That happens in
+    // normal use: the player spends a view the moment a lesson opens and saves
+    // its position seconds later. Losing that race means the row now exists,
+    // which is all this call wanted — so update it instead of 500ing.
+    const clash =
+      error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
+    if (!clash) throw error;
+    await prisma.lessonProgress.update({
+      where: { userId_lessonId: { userId, lessonId } },
+      data: changes,
+    });
+  }
 
   // Only recompute course progress when completion state changed (cheap path
   // for frequent position saves).
   if (input.completed !== undefined) {
+    if (markComplete) {
+      void logActivity({
+        userId,
+        action: ACTIVITY_ACTIONS.LESSON_COMPLETE,
+        entityType: "Lesson",
+        entityId: lessonId,
+      });
+    }
     return recompute(userId, courseId, enrollment.id);
   }
   return null;
