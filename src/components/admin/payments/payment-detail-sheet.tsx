@@ -53,6 +53,7 @@ interface Detail {
   invoiceNumber: string;
   student: { name: string; email: string; avatarUrl: string | null };
   courseTitle: string | null;
+  purpose: string | null;
   amount: number;
   discountAmount: number;
   taxAmount: number;
@@ -244,6 +245,7 @@ function DetailBody({ paymentId, onClosed }: { paymentId: string; onClosed: () =
         {/* Meta */}
         <dl className="space-y-2 text-sm">
           {data.courseTitle && <Line label="Course" value={data.courseTitle} />}
+          {!data.courseTitle && data.purpose && <Line label="For" value={data.purpose} />}
           {data.method && <Line label="Method" value={PAYMENT_METHOD_LABEL[data.method] ?? data.method} />}
           {data.account && <Line label="Received in" value={data.account.name} />}
           <Line label="Created" value={format(new Date(data.createdAt), "d MMM yyyy, h:mm a")} />

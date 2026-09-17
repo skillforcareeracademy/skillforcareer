@@ -11,8 +11,14 @@ import { ACTIVITY_ACTIONS, logActivity } from "@/server/services/activity-servic
 import {
   createRazorpayOrder,
   verifyCheckoutSignature,
+  razorpayConfigured,
   razorpayKeyId,
 } from "@/lib/razorpay";
+import {
+  watermarkPurchaseContext,
+  waiveRecordingWatermark,
+} from "@/server/services/recording-service";
+import type { PublicUser } from "@/server/services/auth-service";
 import type { RecordPaymentInput, RefundInput } from "@/lib/validations/payment";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -32,6 +38,33 @@ export async function uniqueInvoice(year: number): Promise<string> {
 }
 
 const num = (d: Prisma.Decimal) => d.toNumber();
+
+/**
+ * Not every payment buys a course seat. What it *did* buy rides along in
+ * `Payment.metadata` under `kind`, so fulfilment and the admin screens can tell
+ * a watermark removal from an admission without a second table.
+ */
+export const RECORDING_WATERMARK_PAYMENT = "RECORDING_WATERMARK";
+
+interface PurchaseMetadata {
+  kind?: string;
+  meetingId?: string;
+  meetingTitle?: string;
+}
+
+function readPurchaseMetadata(metadata: Prisma.JsonValue | null): PurchaseMetadata | null {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return null;
+  return metadata as PurchaseMetadata;
+}
+
+/** A one-line "what was this for?", for lists that have no course to show. */
+export function paymentPurpose(metadata: Prisma.JsonValue | null): string | null {
+  const meta = readPurchaseMetadata(metadata);
+  if (meta?.kind !== RECORDING_WATERMARK_PAYMENT) return null;
+  return meta.meetingTitle
+    ? `Watermark removal · ${meta.meetingTitle}`
+    : "Recording watermark removal";
+}
 
 // ── Reads ────────────────────────────────────────────────────────────────────
 
@@ -86,6 +119,7 @@ export async function listPaymentsAdmin(q: PaymentListQuery) {
       studentAvatar: p.user.avatarUrl,
       courseId: p.courseId,
       courseTitle: p.course?.title ?? null,
+      purpose: paymentPurpose(p.metadata),
       netAmount: num(p.netAmount),
       currency: p.currency,
       status: p.status,
@@ -138,6 +172,7 @@ export async function getPaymentDetail(id: string) {
     invoiceNumber: p.invoiceNumber,
     student: p.user,
     courseTitle: p.course?.title ?? null,
+    purpose: paymentPurpose(p.metadata),
     amount: num(p.amount),
     discountAmount: num(p.discountAmount),
     taxAmount: num(p.taxAmount),
@@ -457,6 +492,77 @@ export async function createCourseOrder(
 }
 
 /**
+ * "Watermark ko hide karwana hai to student ko extra charge dena hoga Razorpay
+ * ke through." One recording, one learner.
+ *
+ * Same order → verify → fulfil path as a course purchase, on purpose: the
+ * webhook, the invoice series, the receiving account and Admin → Payments all
+ * keep working, and only what fulfilment *does* differs. There is deliberately
+ * no `courseId` on the row — `fulfillPaidCheckout` enrols the payer when one is
+ * set, and buying a clean player is not buying the course.
+ */
+export async function createWatermarkOrder(
+  user: PublicUser,
+  meetingId: string,
+): Promise<CheckoutSession> {
+  const { title, price, alreadyPaid } = await watermarkPurchaseContext(user, meetingId);
+  if (alreadyPaid) {
+    throw AppError.badRequest("You've already removed the watermark from this recording.");
+  }
+  // Keys are often absent in development. Say so plainly instead of letting the
+  // Razorpay client throw and surface as a bare 500.
+  if (!razorpayConfigured()) {
+    throw AppError.badRequest(
+      "Online payments aren't set up yet. Please contact support to remove the watermark.",
+    );
+  }
+
+  const net = Math.max(1, Math.round(price * 100) / 100);
+  const amountPaise = Math.round(net * 100);
+  const [razorAccount, invoiceNumber] = await Promise.all([
+    getRazorpayAccount(),
+    uniqueInvoice(new Date().getFullYear()),
+  ]);
+
+  const order = await createRazorpayOrder({
+    amountPaise,
+    currency: "INR",
+    receipt: invoiceNumber,
+    notes: { kind: RECORDING_WATERMARK_PAYMENT, meetingId, userId: user.id },
+  });
+
+  const payment = await prisma.payment.create({
+    data: {
+      userId: user.id,
+      accountId: razorAccount?.id ?? null,
+      invoiceNumber,
+      amount: new Prisma.Decimal(net),
+      discountAmount: new Prisma.Decimal(0),
+      taxAmount: new Prisma.Decimal(0),
+      netAmount: new Prisma.Decimal(net),
+      currency: "INR",
+      status: "PENDING",
+      provider: "RAZORPAY",
+      type: "ONE_TIME",
+      method: "ONLINE",
+      providerOrderId: order.id,
+      metadata: { kind: RECORDING_WATERMARK_PAYMENT, meetingId, meetingTitle: title },
+    },
+    select: { id: true },
+  });
+
+  return {
+    paymentId: payment.id,
+    orderId: order.id,
+    amount: amountPaise,
+    currency: "INR",
+    keyId: razorpayKeyId(),
+    courseTitle: `Watermark-free recording — ${title}`,
+    prefill: { name: user.name, email: user.email },
+  };
+}
+
+/**
  * Mark a checkout payment PAID and enrol the learner — idempotently. The status
  * flip is an atomic conditional update; only the caller that actually flips it
  * (count === 1) runs the enrolment + counter + coupon + notifications, so the
@@ -481,6 +587,7 @@ export async function fulfillPaidCheckout(
       leadId: true,
       invoiceNumber: true,
       netAmount: true,
+      metadata: true,
       course: { select: { slug: true, title: true } },
       user: { select: { name: true } },
     },
@@ -505,6 +612,15 @@ export async function fulfillPaidCheckout(
   }
 
   // We own fulfilment for this payment.
+
+  // Some payments buy something other than a seat on a course. The kind is kept
+  // in `metadata` and read here rather than in the route, so the webhook — the
+  // only path that runs when the payer closes the tab — fulfils it too.
+  const purchase = readPurchaseMetadata(payment.metadata);
+  if (purchase?.kind === RECORDING_WATERMARK_PAYMENT && purchase.meetingId) {
+    await waiveRecordingWatermark(purchase.meetingId, payment.userId, payment.id);
+  }
+
   if (payment.courseId) {
     const existing = await prisma.enrollment.findUnique({
       where: { userId_courseId: { userId: payment.userId, courseId: payment.courseId } },

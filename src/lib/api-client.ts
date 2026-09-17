@@ -21,8 +21,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
     res = await fetch(path, {
-      headers: { "Content-Type": "application/json" },
       ...init,
+      // Merged rather than replaced, so a caller can add a header of its own
+      // (the recording player sends the device id) without losing this one.
+      headers: {
+        "Content-Type": "application/json",
+        ...(init?.headers as Record<string, string> | undefined),
+      },
     });
   } catch {
     throw new ApiError("Network error. Check your connection.", "NETWORK", 0);
@@ -44,9 +49,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   get: <T>(path: string) => request<T>(path, { method: "GET" }),
-  post: <T>(path: string, body?: unknown) =>
+  post: <T>(path: string, body?: unknown, headers?: Record<string, string>) =>
     request<T>(path, {
       method: "POST",
+      headers,
       body: body === undefined ? undefined : JSON.stringify(body),
     }),
   patch: <T>(path: string, body?: unknown) =>

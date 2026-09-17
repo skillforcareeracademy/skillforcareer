@@ -9,6 +9,10 @@ import type {
   OfflineClassInput,
   MarkAttendanceInput,
 } from "@/lib/validations/live";
+import {
+  learnerRecordingStates,
+  type RecordingState,
+} from "@/server/services/recording-service";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -120,7 +124,15 @@ export interface StudentMeeting {
   scheduledStart: string;
   scheduledEnd: string | null;
   isRecordingEnabled: boolean;
-  recordingUrl: string | null;
+  /**
+   * What this learner may do with the recording — never where it lives.
+   *
+   * `recordingUrl` used to ride along here, which meant every learner's page
+   * source contained a permanent, unauthenticated link to the class video that
+   * could be saved or forwarded. Playback now goes through
+   * GET /api/recordings/:id/stream and this is the grant that opens it.
+   */
+  recording: RecordingState;
 }
 
 /** Bucket a meeting into a lifecycle phase (computed server-side, off `now`). */
@@ -166,6 +178,11 @@ export async function listStudentMeetings(userId: string): Promise<StudentMeetin
     },
   });
 
+  // Resolved in one pass for the whole list — three queries, not three per row.
+  // `rows` is already narrowed to classes this learner could have attended,
+  // which is what lets an empty audience mean "everyone who could attend".
+  const recordings = await learnerRecordingStates(userId, rows, batchIds);
+
   const now = new Date();
   return rows.map((m) => ({
     id: m.id,
@@ -181,7 +198,7 @@ export async function listStudentMeetings(userId: string): Promise<StudentMeetin
     scheduledStart: m.scheduledStart.toISOString(),
     scheduledEnd: m.scheduledEnd ? m.scheduledEnd.toISOString() : null,
     isRecordingEnabled: m.isRecordingEnabled,
-    recordingUrl: m.recordingUrl,
+    recording: recordings.get(m.id)!,
   }));
 }
 
@@ -272,71 +289,6 @@ export async function getMeetingByRoomCode(code: string) {
     batchId: m.batchId,
     batchName: m.batch?.name ?? null,
   };
-}
-
-/**
- * Who may enter a live room: the host, any staff (instructor/admin), a learner
- * enrolled in the meeting's course or batch, or a learner individually added to
- * the class. That last case is what lets a hand-picked session — an offline
- * workshop with no course behind it — still hand out a working video link.
- */
-export async function checkRoomAccess(
-  userId: string,
-  role: string,
-  meeting: {
-    id: string;
-    host: { id: string };
-    courseId: string | null;
-    batchId: string | null;
-    provider?: string;
-    roomCode?: string;
-  },
-): Promise<boolean> {
-  if (meeting.host.id === userId) return true;
-  if (
-    role === ROLES.SUPER_ADMIN ||
-    role === ROLES.ADMIN ||
-    role === ROLES.INSTRUCTOR
-  ) {
-    return true;
-  }
-
-  const invited = await prisma.meetingParticipant.findFirst({
-    where: { meetingId: meeting.id, userId },
-    select: { id: true },
-  });
-  if (invited) return true;
-
-  // A webinar room has no course or batch behind it — registering for the
-  // webinar is what grants entry.
-  if (meeting.provider === "webinar" && meeting.roomCode) {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { email: true },
-    });
-    if (user) {
-      const registered = await prisma.webinarRegistration.findFirst({
-        where: {
-          webinar: { roomCode: meeting.roomCode },
-          OR: [{ userId }, { email: user.email.trim().toLowerCase() }],
-        },
-        select: { id: true },
-      });
-      if (registered) return true;
-    }
-    return false;
-  }
-
-  const or: Prisma.EnrollmentWhereInput[] = [];
-  if (meeting.courseId) or.push({ courseId: meeting.courseId });
-  if (meeting.batchId) or.push({ batchId: meeting.batchId });
-  if (or.length === 0) return false;
-
-  const enrollment = await prisma.enrollment.findFirst({
-    where: { userId, status: { in: ["ACTIVE", "COMPLETED"] }, OR: or },
-    select: { id: true },
-  });
-  return Boolean(enrollment);
 }
 
 /** Hosts (staff/instructors) who can lead a live class. */

@@ -370,6 +370,9 @@ model User {
   quizzesSet         QuizStudent[]          @relation("QuizAssignee")
   lessonAccess       LessonAccess[]         @relation("LessonAccessUser")
   chatMessages       ChatMessage[]          @relation("ChatMessageUser")
+  recordingAccess    RecordingAccess[]      @relation("RecordingAccessUser")
+  recordingViews     RecordingView[]        @relation("RecordingViewUser")
+  recordingDevices   RecordingDevice[]      @relation("RecordingDeviceUser")
 
   @@index([roleId])
   @@index([status])
@@ -549,14 +552,15 @@ model Batch {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  course      Course            @relation(fields: [courseId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  instructor  User?             @relation("BatchInstructor", fields: [instructorId], references: [id], onUpdate: NoAction)
-  enrollments Enrollment[]
-  meetings    Meeting[]
-  attendance  Attendance[]
-  assignments  AssignmentBatch[]
-  quizzes      QuizBatch[]
-  lessonAccess LessonAccess[]
+  course          Course            @relation(fields: [courseId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  instructor      User?             @relation("BatchInstructor", fields: [instructorId], references: [id], onUpdate: NoAction)
+  enrollments     Enrollment[]
+  meetings        Meeting[]
+  attendance      Attendance[]
+  assignments     AssignmentBatch[]
+  quizzes         QuizBatch[]
+  lessonAccess    LessonAccess[]
+  recordingAccess RecordingAccess[]
 
   @@index([courseId])
   @@index([instructorId])
@@ -845,9 +849,9 @@ model Assignment {
 
   /// Hidden from learners until this moment. Null = visible as soon as it is
   /// set for them, which is how every assignment behaved before release control.
-  releaseAt DateTime?
+  releaseAt   DateTime?
   /// How many times a learner may submit. 0 = unlimited (the shipped behaviour).
-  maxAttempts Int @default(0)
+  maxAttempts Int       @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1363,6 +1367,40 @@ model Meeting {
   isRecordingEnabled Boolean       @default(false)
   recordingUrl       String?
 
+  /// ── Recording playback control ─────────────────────────────────────────────
+  /// "Recording jahan save hoti hai admin panel mein control hona chahiye —
+  /// kaun kaun se student ko, kitne din ke liye recording dikhe, kitni baar
+  /// dekh sakta hai, kitne devices mein dekh sakta hai." So the file the host's
+  /// browser uploads is inert until staff publish it, and every allowance a
+  /// learner gets is set here rather than assumed.
+
+  /// Uploaded ≠ visible. A learner sees nothing until an admin publishes.
+  recordingPublished Boolean @default(false)
+
+  /// Stamped when `recordingPublished` first flips on — the clock that
+  /// `recordingAvailableDays` counts from. Kept separate from `updatedAt` so
+  /// editing any other field doesn't silently extend a learner's window.
+  recordingPublishedAt DateTime?
+
+  /// Days of access from publication. Null = no cut-off.
+  recordingAvailableDays Int?
+
+  /// A hard end date. When both are set this wins, because an admin who types
+  /// a date means that date.
+  recordingAvailableUntil DateTime?
+
+  /// Watches allowed per learner, and distinct devices per learner.
+  /// 0 = unlimited in both cases (the shipped behaviour before this existed).
+  recordingViewLimit   Int @default(0)
+  recordingDeviceLimit Int @default(0)
+
+  /// Whether the player carries the drifting "Skill For Career" overlay.
+  recordingWatermark Boolean @default(true)
+
+  /// What a learner pays to have the overlay taken off this one recording.
+  /// Null or 0 means it is not for sale, and no button is offered.
+  watermarkRemovalPrice Decimal? @db.Decimal(10, 2)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1372,6 +1410,10 @@ model Meeting {
   participants MeetingParticipant[]
   attendance   Attendance[]
   chatMessages LiveChatMessage[]
+
+  recordingAccess  RecordingAccess[]
+  recordingViews   RecordingView[]
+  recordingDevices RecordingDevice[]
 
   @@index([courseId])
   @@index([batchId])
@@ -1434,6 +1476,97 @@ model Attendance {
   @@index([userId])
   @@index([meetingId])
   @@index([batchId])
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// CLASS RECORDINGS — who may watch, how often, on how many devices
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// Who a published recording is open to. Exactly one of `batchId` / `userId` is
+/// set on a row, and **no rows at all means everyone who could have attended
+/// the class** — the same audience the live room itself lets in. That default
+/// keeps every recording already in the database working untouched.
+///
+/// Like `LessonAccess`, the service replaces the whole set on each save
+/// (deleteMany + createMany), so there is deliberately no unique index: a
+/// duplicate cannot arise, and `db push` would demand a data-loss flag for one.
+model RecordingAccess {
+  id        String  @id @default(cuid())
+  meetingId String
+  batchId   String?
+  userId    String?
+
+  /// Per-row overrides of the meeting's window and watch cap, for the learner
+  /// who missed the class and needs a fortnight longer than their cohort.
+  /// Null = inherit the meeting's setting.
+  expiresAt DateTime?
+  viewLimit Int?
+
+  createdAt DateTime @default(now())
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  batch   Batch?  @relation(fields: [batchId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user    User?   @relation("RecordingAccessUser", fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([meetingId])
+  @@index([batchId])
+  @@index([userId])
+}
+
+/// One learner's history with one recording: how many watches they have spent,
+/// roughly how long they watched, and whether they have paid the watermark off.
+///
+/// `viewCount` is bumped by `INSERT … ON DUPLICATE KEY UPDATE` rather than a
+/// Prisma upsert — see recording-service for why (an upsert is a SELECT then an
+/// INSERT here, so two tabs opening together race for the same row).
+model RecordingView {
+  id        String @id @default(cuid())
+  meetingId String
+  userId    String
+
+  viewCount      Int       @default(0)
+  firstViewedAt  DateTime?
+  lastViewedAt   DateTime?
+  /// Best-effort: the player reports on pause, end and close, so a tab killed
+  /// mid-playback loses its last stretch. Treat it as a hint, not a ledger.
+  secondsWatched Int       @default(0)
+
+  /// Set when this learner has bought the overlay off this one recording.
+  watermarkWaivedAt  DateTime?
+  watermarkPaymentId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user    User    @relation("RecordingViewUser", fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([meetingId, userId])
+  @@index([userId])
+}
+
+/// Devices a learner has watched a recording from. `deviceId` is a random id the
+/// browser keeps for itself (localStorage, cookie fallback) — a deterrent that
+/// makes "share your login with the whole batch" inconvenient, not DRM. Admins
+/// can drop a row when a learner changes phone.
+model RecordingDevice {
+  id        String @id @default(cuid())
+  meetingId String
+  userId    String
+  deviceId  String
+
+  /// A short, human summary of the user agent — "Chrome on Android" — so the
+  /// admin removing a device knows which one they are removing.
+  label String?
+
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user    User    @relation("RecordingDeviceUser", fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([meetingId, userId, deviceId])
+  @@index([userId])
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1903,29 +2036,29 @@ enum PostStatus {
 }
 
 model BlogPost {
-  id       String     @id @default(cuid())
+  id              String     @id @default(cuid())
   /// Unique — see scripts/add-blog-slug-index.ts for why the index is created
   /// with raw DDL rather than by `db push`.
-  slug     String     @unique @db.VarChar(191)
-  title    String
+  slug            String     @unique @db.VarChar(191)
+  title           String
   /// The card blurb and the meta description.
-  excerpt  String?    @db.Text
+  excerpt         String?    @db.Text
   /// The body, as HTML from the editor.
-  content  String     @db.LongText
-  coverUrl String?    @db.VarChar(512)
-  status   PostStatus @default(DRAFT)
+  content         String     @db.LongText
+  coverUrl        String?    @db.VarChar(512)
+  status          PostStatus @default(DRAFT)
   /// Free tags, stored as a JSON array of strings.
-  tags     Json?
+  tags            Json?
   /// Optional catalogue category, so a post can sit beside the courses it is about.
-  categoryId String?
-  authorId   String?
+  categoryId      String?
+  authorId        String?
   /// Shown on the card and used for ordering; set the first time it is published.
-  publishedAt DateTime?
-  readMinutes Int       @default(3)
-  views       Int       @default(0)
+  publishedAt     DateTime?
+  readMinutes     Int        @default(3)
+  views           Int        @default(0)
   /// Overrides for the page's <title> and description when set.
   metaTitle       String?
-  metaDescription String? @db.Text
+  metaDescription String?    @db.Text
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1949,23 +2082,23 @@ model BlogPost {
 /// keyword scoring over `question` + `patterns` (see lib/chatbot/match.ts), so
 /// an answer is only ever the words staff typed.
 model ChatIntent {
-  id       String @id @default(cuid())
+  id          String  @id @default(cuid())
   /// The canonical way a visitor asks this.
-  question String @db.Text
+  question    String  @db.Text
   /// Other phrasings and keywords, as a JSON array of strings.
-  patterns Json?
-  answer   String @db.Text
+  patterns    Json?
+  answer      String  @db.Text
   /// Optional button under the answer, e.g. "See courses" → /courses.
   actionLabel String?
   actionUrl   String? @db.VarChar(500)
   /// Grouping for the admin list ("Fees", "Placement", …).
-  category String?
+  category    String?
   /// Offered as a starter chip when the window opens.
   isSuggested Boolean @default(false)
   isActive    Boolean @default(true)
   /// How often this answer has been served — the admin list sorts by it, so
   /// the academy can see what people actually ask.
-  hits Int @default(0)
+  hits        Int     @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

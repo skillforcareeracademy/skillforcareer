@@ -26,6 +26,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { RecordingControl } from "@/components/admin/live/recording-control";
 import { cn } from "@/lib/utils";
 
 interface Participant {
@@ -255,6 +256,9 @@ function DetailBody({ meetingId }: { meetingId: string }) {
             {data.maxParticipants ? <span>Max: {data.maxParticipants}</span> : null}
           </div>
         </section>
+
+        {/* Recording — publish, window, caps, watermark, audience, register */}
+        <RecordingControl meetingId={meetingId} />
 
         {/* Participants */}
         <section>

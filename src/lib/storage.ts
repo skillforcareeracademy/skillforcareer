@@ -176,6 +176,46 @@ export async function saveUpload(
   }
 }
 
+/**
+ * The reverse of `saveUpload`: the storage key hiding behind a URL we produced,
+ * ready to hand to `readUpload`.
+ *
+ * Needed by anything that has to serve stored bytes through a route of its own
+ * instead of the public `/api/files/...` — the controlled recording player, for
+ * one. Returns null for a URL we did not store (a pasted YouTube link, say), so
+ * the caller can say so plainly rather than 404 on a key that never existed.
+ *
+ * Note the `S3_PUBLIC_BASE_URL` case: if that is configured, the object is also
+ * reachable directly from the bucket, and no amount of gatekeeping on our side
+ * changes that. Leave it unset for media that is meant to be access-controlled.
+ */
+export function storageKeyFromUrl(url: string): string | null {
+  const publicBase = env.S3_PUBLIC_BASE_URL?.replace(/\/$/, "");
+  let rest: string | null = null;
+  if (url.startsWith("/api/files/")) {
+    rest = url.slice("/api/files/".length);
+  } else if (publicBase && url.startsWith(`${publicBase}/`)) {
+    rest = url.slice(publicBase.length + 1);
+  }
+  if (!rest) return null;
+
+  // Drop any query/fragment, then undo the per-segment encoding `saveUpload`
+  // applies — Next decodes route params for `/api/files`, so this keeps the two
+  // paths reading the same key for the same file.
+  const key = rest
+    .split(/[?#]/)[0]
+    .split("/")
+    .map((segment) => {
+      try {
+        return decodeURIComponent(segment);
+      } catch {
+        return segment;
+      }
+    })
+    .join("/");
+  return key || null;
+}
+
 /** Read a stored file, guarding against path traversal. Returns null if absent. */
 export async function readUpload(relativePath: string): Promise<StoredFile | null> {
   const name = safeName(relativePath);

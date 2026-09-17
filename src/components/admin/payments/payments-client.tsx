@@ -80,6 +80,8 @@ interface PaymentRow {
   studentAvatar: string | null;
   courseId: string | null;
   courseTitle: string | null;
+  /** What a payment with no course behind it was for, e.g. watermark removal. */
+  purpose: string | null;
   netAmount: number;
   currency: string;
   status: string;
@@ -342,7 +344,7 @@ export function PaymentsClient({
             <p className="truncate font-medium">{p.studentName}</p>
             <p className="text-muted-foreground truncate text-xs">
               {p.invoiceNumber}
-              {p.courseTitle ? ` · ${p.courseTitle}` : ""}
+              {p.courseTitle ? ` · ${p.courseTitle}` : p.purpose ? ` · ${p.purpose}` : ""}
             </p>
           </div>
         </div>

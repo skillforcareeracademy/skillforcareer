@@ -11,6 +11,11 @@ import {
   CalendarPlus,
   Radio,
   Film,
+  Eye,
+  Lock,
+  MonitorSmartphone,
+  ShieldCheck,
+  Timer,
 } from "lucide-react";
 import type { StudentMeeting } from "@/server/services/live-service";
 import { PageHeader } from "@/components/shared/page-header";
@@ -27,6 +32,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { RecordingPlayer } from "@/components/student/recording-player";
 
 function initials(name: string): string {
   return name.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase();
@@ -267,16 +273,29 @@ function UpcomingRow({ m }: { m: StudentMeeting }) {
   );
 }
 
+/**
+ * A finished class. The recording, when there is one the learner may see, now
+ * comes with its allowances written on the card — how many watches are left,
+ * when access ends, how many devices are in use — because the alternative is a
+ * learner clicking Play and being refused with no warning.
+ *
+ * A recording they are not entitled to is shown as no recording at all. There is
+ * nothing they can do about not being in the audience, so saying so would only
+ * be a tease.
+ */
 function PastCard({ m }: { m: StudentMeeting }) {
-  const hasRecording = Boolean(m.recordingUrl);
+  const rec = m.recording;
   const isCancelled = m.phase === "cancelled";
   const [open, setOpen] = useState(false);
+
+  const until = rec.expiresAt ? new Date(rec.expiresAt) : null;
+  const canPlay = rec.available && rec.canWatch;
 
   return (
     <>
       <Card className="gap-0 overflow-hidden p-0">
-        {/* Thumbnail — click to play when a recording exists */}
-        {hasRecording ? (
+        {/* Thumbnail — click to play, but only when they actually may. */}
+        {canPlay ? (
           <button
             type="button"
             onClick={() => setOpen(true)}
@@ -294,12 +313,16 @@ function PastCard({ m }: { m: StudentMeeting }) {
           </button>
         ) : (
           <div className="bg-muted relative flex aspect-video items-center justify-center">
-            <Film className="text-muted-foreground/50 size-10" />
+            {rec.available ? (
+              <Lock className="text-muted-foreground/50 size-9" />
+            ) : (
+              <Film className="text-muted-foreground/50 size-10" />
+            )}
             <Badge
               variant="secondary"
               className="absolute top-2.5 left-2.5 bg-black/50 text-[10px] text-white backdrop-blur"
             >
-              {isCancelled ? "Cancelled" : "Ended"}
+              {rec.available ? "Unavailable" : isCancelled ? "Cancelled" : "Ended"}
             </Badge>
           </div>
         )}
@@ -308,21 +331,42 @@ function PastCard({ m }: { m: StudentMeeting }) {
           <h3 className="line-clamp-2 leading-snug font-semibold">{m.title}</h3>
           <div className="text-muted-foreground mt-1.5 space-y-1 text-xs">
             <p className="flex items-center gap-1.5">
-              <CalendarClock className="size-3.5" /> {format(new Date(m.scheduledStart), "d MMM yyyy")}
+              <CalendarClock className="size-3.5 shrink-0" />{" "}
+              {format(new Date(m.scheduledStart), "d MMM yyyy")}
             </p>
             {(m.courseTitle || m.batchName) && (
               <p className="flex items-center gap-1.5">
-                <BookOpen className="size-3.5" />
+                <BookOpen className="size-3.5 shrink-0" />
                 <span className="truncate">{m.courseTitle ?? m.batchName}</span>
               </p>
             )}
           </div>
 
+          {/* What's left of this recording, spelled out before they click. */}
+          {rec.available && (
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {rec.viewsLeft != null && (
+                <Chip icon={Eye}>
+                  {rec.viewsLeft} of {rec.viewLimit} views left
+                </Chip>
+              )}
+              {until && <Chip icon={Timer}>Available until {format(until, "d MMM")}</Chip>}
+              {rec.deviceLimit != null && (
+                <Chip icon={MonitorSmartphone}>
+                  {rec.devicesUsed} of {rec.deviceLimit} devices used
+                </Chip>
+              )}
+              {rec.watermarkPaid && <Chip icon={ShieldCheck}>Watermark removed</Chip>}
+            </div>
+          )}
+
           <div className="mt-4">
-            {hasRecording ? (
+            {canPlay ? (
               <Button size="sm" variant="outline" className="w-full" onClick={() => setOpen(true)}>
                 <PlayCircle className="size-4" /> Watch recording
               </Button>
+            ) : rec.message ? (
+              <p className="text-muted-foreground text-center text-xs">{rec.message}</p>
             ) : (
               <p className="text-muted-foreground text-center text-xs">
                 {isCancelled ? "This class was cancelled" : "No recording available"}
@@ -332,7 +376,7 @@ function PastCard({ m }: { m: StudentMeeting }) {
         </div>
       </Card>
 
-      {hasRecording && (
+      {canPlay && (
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogContent className="gap-3 p-4 sm:max-w-3xl sm:p-5">
             <DialogHeader className="text-left">
@@ -342,23 +386,27 @@ function PastCard({ m }: { m: StudentMeeting }) {
                 {m.courseTitle ? ` · ${m.courseTitle}` : ""}
               </DialogDescription>
             </DialogHeader>
-            {/* Only mount the player while open so it loads on demand and stops on close. */}
+            {/* Mounted only while open: mounting is what spends a watch, so a
+                page of past classes must not spend one per card. */}
             {open && (
-              <video
+              <RecordingPlayer
                 key={m.id}
-                src={m.recordingUrl!}
-                controls
-                autoPlay
-                playsInline
-                controlsList="nodownload"
-                className="aspect-video w-full rounded-lg bg-black"
-              >
-                <track kind="captions" />
-              </video>
+                meetingId={m.id}
+                watermarkPrice={rec.watermarkPrice}
+              />
             )}
           </DialogContent>
         </Dialog>
       )}
     </>
+  );
+}
+
+function Chip({ icon: Icon, children }: { icon: typeof Eye; children: React.ReactNode }) {
+  return (
+    <span className="bg-muted text-muted-foreground inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px]">
+      <Icon className="size-3 shrink-0" />
+      {children}
+    </span>
   );
 }
