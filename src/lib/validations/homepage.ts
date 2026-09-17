@@ -1271,7 +1271,7 @@ const authPanelSchema = z.object({
   subtitle: text(240),
   features: z
     .array(z.object({ icon: icon("Radio"), text: text(90) }))
-    .max(5)
+    .max(8)
     .default([]),
   showTestimonial: z.boolean().default(true),
   quote: text(320),
@@ -1291,8 +1291,8 @@ const authPanelFields: AnyField[] = [
     type: "list",
     itemLabel: "point",
     titleKey: "text",
-    max: 5,
-    hint: "The ticked list under the headline. Leave empty to drop it.",
+    max: 8,
+    hint: "The ticked list under the headline. Add, reorder or remove as you like; leave it empty to drop the list.",
     fields: [
       { name: "icon", label: "Icon", type: "icon" },
       { name: "text", label: "Text", type: "text", wide: true },
