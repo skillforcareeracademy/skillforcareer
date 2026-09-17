@@ -51,7 +51,9 @@ export async function MarketingHeader() {
           <MobileNav links={links} menus={menus} showSearch={showSearch} />
         )}
 
-        <Logo />
+        {/* Smaller on phones — at the full 42px the lockup crowded the row
+            ("logo size chhota kro phone view me, bahut bada lag raha hai"). */}
+        <Logo className="h-8 max-w-[150px] sm:h-[42px] sm:max-w-[220px]" />
 
         <HeaderNav links={links} menus={menus} />
 
