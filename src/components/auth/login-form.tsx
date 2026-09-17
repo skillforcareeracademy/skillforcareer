@@ -17,7 +17,16 @@ import { SubmitButton } from "./submit-button";
 import { ROUTES } from "@/lib/constants";
 import { destinationFor, safeNext } from "@/lib/auth/next-url";
 
-export function LoginForm({ next }: { next?: string }) {
+export function LoginForm({
+  next,
+  title = "Welcome back",
+  description = "Sign in to continue learning.",
+}: {
+  next?: string;
+  /** Both come from Admin → Homepage → Sign-in panel. */
+  title?: string;
+  description?: string;
+}) {
   const router = useRouter();
   // Carried on to the verify screen too, so an unverified buyer who has to
   // detour through OTP still lands back on the checkout they came from.
@@ -60,8 +69,8 @@ export function LoginForm({ next }: { next?: string }) {
 
   return (
     <AuthCard
-      title="Welcome back"
-      description="Sign in to continue learning."
+      title={title}
+      description={description}
       footer={
         <span className="text-muted-foreground">
           New here?{" "}

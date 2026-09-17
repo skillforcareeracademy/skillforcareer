@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { LoginForm } from "@/components/auth/login-form";
+import { getHomeSection } from "@/server/services/homepage-service";
 
 export const metadata: Metadata = { title: "Sign in" };
 
@@ -14,5 +15,6 @@ export default async function LoginPage({
   searchParams: Promise<{ next?: string }>;
 }) {
   const { next } = await searchParams;
-  return <LoginForm next={next} />;
+  const { data } = await getHomeSection("authPanel");
+  return <LoginForm next={next} title={data.signInTitle} description={data.signInSubtitle} />;
 }

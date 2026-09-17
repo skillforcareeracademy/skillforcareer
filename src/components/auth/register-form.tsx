@@ -16,7 +16,16 @@ import { SubmitButton } from "./submit-button";
 import { ROUTES } from "@/lib/constants";
 import { safeNext } from "@/lib/auth/next-url";
 
-export function RegisterForm({ next }: { next?: string }) {
+export function RegisterForm({
+  next,
+  title = "Create your account",
+  description = "Start learning in minutes.",
+}: {
+  next?: string;
+  /** Both come from Admin → Homepage → Sign-in panel. */
+  title?: string;
+  description?: string;
+}) {
   const router = useRouter();
   const nextQuery = safeNext(next) ? `&next=${encodeURIComponent(next!)}` : "";
   const {
@@ -41,8 +50,8 @@ export function RegisterForm({ next }: { next?: string }) {
 
   return (
     <AuthCard
-      title="Create your account"
-      description="Start learning in minutes."
+      title={title}
+      description={description}
       footer={
         <span className="text-muted-foreground">
           Already have an account?{" "}

@@ -1269,6 +1269,10 @@ const footerDefaults: z.infer<typeof footerSchema> = {
 const authPanelSchema = z.object({
   heading: text(90),
   subtitle: text(240),
+  signInTitle: text(60),
+  signInSubtitle: text(120),
+  signUpTitle: text(60),
+  signUpSubtitle: text(120),
   features: z
     .array(z.object({ icon: icon("Radio"), text: text(90) }))
     .max(8)
@@ -1285,6 +1289,20 @@ const authPanelSchema = z.object({
 const authPanelFields: AnyField[] = [
   { name: "heading", label: "Headline", type: "textarea", wide: true },
   { name: "subtitle", label: "Sub-heading", type: "textarea", wide: true },
+  {
+    name: "signInTitle",
+    label: "Sign-in card title",
+    type: "text",
+    hint: "The heading on the form itself, on the sign-in screen.",
+  },
+  { name: "signInSubtitle", label: "Sign-in card line below", type: "text" },
+  {
+    name: "signUpTitle",
+    label: "Sign-up card title",
+    type: "text",
+    hint: "The same, on the create-account screen.",
+  },
+  { name: "signUpSubtitle", label: "Sign-up card line below", type: "text" },
   {
     name: "features",
     label: "Selling points",
@@ -1320,6 +1338,10 @@ const authPanelFields: AnyField[] = [
 
 const authPanelDefaults: z.infer<typeof authPanelSchema> = {
   heading: "Learn the skills. Build the career.",
+  signInTitle: "Welcome back",
+  signInSubtitle: "Sign in to continue learning.",
+  signUpTitle: "Create your account",
+  signUpSubtitle: "Start learning in minutes.",
   subtitle:
     "Join 1,000+ learners upskilling with live classes, real-world projects and verified certificates.",
   features: [
