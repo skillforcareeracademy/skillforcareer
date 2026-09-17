@@ -17,14 +17,20 @@ import {
 } from "@/components/ui/sidebar";
 import { useBranding } from "@/components/providers/branding-provider";
 import { brandWordmark } from "@/lib/branding";
-import { navFor, isNavActive } from "@/config/navigation";
+import { navFor, isNavActive, type NavFeature } from "@/config/navigation";
 import { ROLE_HOME, type Role } from "@/config/roles";
 import { cn } from "@/lib/utils";
 
 /** Role-aware, collapsible dashboard sidebar. */
-export function DashboardSidebar({ role }: { role: Role }) {
+export function DashboardSidebar({
+  role,
+  features,
+}: {
+  role: Role;
+  features?: readonly NavFeature[];
+}) {
   const pathname = usePathname();
-  const sections = navFor(role);
+  const sections = navFor(role, features);
   const home = ROLE_HOME[role] ?? "/";
   const { logoUrl, siteName } = useBranding();
   const wordmark = brandWordmark(siteName);
@@ -89,7 +95,13 @@ export function DashboardSidebar({ role }: { role: Role }) {
                     <SidebarMenuButton
                       isActive={isNavActive(pathname, item.href)}
                       tooltip={item.title}
-                      render={<Link href={item.href} />}
+                      render={
+                        item.external ? (
+                          <a href={item.href} target="_blank" rel="noopener" />
+                        ) : (
+                          <Link href={item.href} />
+                        )
+                      }
                     >
                       <item.icon />
                       <span>{item.title}</span>

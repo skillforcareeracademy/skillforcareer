@@ -27,9 +27,13 @@ import {
   Image as ImageIcon,
   CalendarCheck,
   Bot,
+  Stethoscope,
   type LucideIcon,
 } from "lucide-react";
 import { ROLES, type Role } from "./roles";
+
+/** Nav items that only appear when something is switched on for the viewer. */
+export type NavFeature = "codingPractice";
 
 export interface NavItem {
   title: string;
@@ -37,6 +41,10 @@ export interface NavItem {
   icon: LucideIcon;
   /** Roles allowed to see this item. */
   roles: Role[];
+  /** The href is used as-is (not role-prefixed) and opens in a new tab. */
+  external?: boolean;
+  /** Hidden unless the shell passes this feature to `navFor`. */
+  feature?: NavFeature;
 }
 
 export interface NavSection {
@@ -88,6 +96,17 @@ export const NAV_SECTIONS: NavSection[] = [
       },
       { title: "Assignments", href: "/assignments", icon: ClipboardList, roles: ALL },
       { title: "Quizzes", href: "/quizzes", icon: FileQuestion, roles: ALL },
+      // The separate practice product, signed in through the LMS. Switched on
+      // and aimed at an audience under Settings → Coding Practice; the launch
+      // route re-checks both, so this is only about who sees the link.
+      {
+        title: "Coding Practice",
+        href: "/api/coding-practice/launch",
+        icon: Stethoscope,
+        roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.STUDENT],
+        external: true,
+        feature: "codingPractice",
+      },
       { title: "Notes", href: "/notes", icon: NotebookPen, roles: [ROLES.STUDENT] },
       { title: "Attendance", href: "/attendance", icon: CalendarCheck, roles: [ROLES.STUDENT] },
       { title: "Discussions", href: "/discussions", icon: MessageSquare, roles: ALL },
@@ -122,14 +141,19 @@ const ROLE_BASE: Record<Role, string> = {
   STUDENT: "/student",
 };
 
-/** Resolve the navigation for a role with absolute, role-prefixed hrefs. */
-export function navFor(role: Role): NavSection[] {
+/**
+ * Resolve the navigation for a role with absolute, role-prefixed hrefs.
+ * `features` lists what is switched on for this viewer; items gated on anything
+ * else are left out.
+ */
+export function navFor(role: Role, features: readonly NavFeature[] = []): NavSection[] {
   const base = ROLE_BASE[role];
   return NAV_SECTIONS.map((section) => ({
     label: section.label,
     items: section.items
       .filter((item) => item.roles.includes(role))
-      .map((item) => ({ ...item, href: `${base}${item.href}` })),
+      .filter((item) => !item.feature || features.includes(item.feature))
+      .map((item) => ({ ...item, href: item.external ? item.href : `${base}${item.href}` })),
   })).filter((section) => section.items.length > 0);
 }
 

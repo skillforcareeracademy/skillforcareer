@@ -86,6 +86,15 @@ const serverSchema = z.object({
 
   // Shared secret for the scheduled-reminder cron endpoint (Bearer token).
   CRON_SECRET: z.string().optional(),
+
+  // Single sign-on into the separate Coding Practice product. The "Coding
+  // Practice" link signs a one-minute token with this secret, and the product
+  // holds the same value (its LMS_SSO_SECRET). Both unset = the link shows a
+  // "not connected yet" page instead of failing. The address can also be set
+  // under Admin → Settings → Coding Practice, which wins over the env value.
+  // Empty strings are accepted so a copied .env.example still boots.
+  CODING_PRACTICE_SSO_SECRET: z.string().min(16).optional().or(z.literal("")),
+  CODING_PRACTICE_URL: z.string().url().optional().or(z.literal("")),
 });
 
 const clientSchema = z.object({

@@ -76,19 +76,20 @@ const SECTIONS: LegalSection[] = [
     ),
   },
   {
-    id: "refunds",
-    heading: "Refunds and cancellations",
-    body: (
-      <p>
-        Refunds are governed by the refund policy shared with you at the time of enrolment
-        and are processed only where the conditions in that policy are met. Once approved, a
-        refund is returned to the original payment method, and we will keep you updated on
-        its status. For any fee, receipt or refund question, contact us at{" "}
-        <a href={`mailto:${contact.email}`}>{contact.email}</a> or{" "}
-        <a href={`tel:${contact.phone}`}>{contact.phoneDisplay}</a>.
-      </p>
-    ),
-  },
+  id: "refunds",
+  heading: "Refunds and cancellations",
+  body: (
+    <p>
+      All fees paid to Skill For Career Academy are <strong>non-refundable</strong>, once
+      you enrol in a programme. Please review the course details, curriculum and schedule
+      carefully before making payment. We do not offer refunds or cancellations for any
+      reason, including but not limited to change of mind, missed classes, or discontinuation
+      of the programme by you. For any fee or receipt-related question, contact us at{" "}
+      <a href={`mailto:${contact.email}`}>{contact.email}</a> or{" "}
+      <a href={`tel:${contact.phone}`}>{contact.phoneDisplay}</a>.
+    </p>
+  ),
+},
   {
     id: "access",
     heading: "Course access and licence",

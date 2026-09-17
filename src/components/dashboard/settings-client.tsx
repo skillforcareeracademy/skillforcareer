@@ -17,6 +17,7 @@ import {
   Save,
   Share2,
   ShieldCheck,
+  Stethoscope,
   Store,
   Video,
 } from "lucide-react";
@@ -116,7 +117,30 @@ function ToggleRow({
 
 const TAB_TRIGGER = "gap-1.5 px-3";
 
-export function SettingsClient({ data }: { data: SettingsWithMeta }) {
+const CODING_PRACTICE_AUDIENCES: {
+  value: Settings["codingPracticeAudience"];
+  label: string;
+}[] = [
+  { value: "enrolled", label: "Enrolled learners and staff" },
+  { value: "everyone", label: "Everyone signed in" },
+  { value: "staff", label: "Staff only" },
+];
+
+/** What the server environment holds for Coding Practice — never the secret itself. */
+export interface CodingPracticeServerConfig {
+  /** CODING_PRACTICE_URL, used when the address field is left blank. */
+  url: string;
+  /** Whether CODING_PRACTICE_SSO_SECRET is set. */
+  secretSet: boolean;
+}
+
+export function SettingsClient({
+  data,
+  codingPracticeServer = { url: "", secretSet: false },
+}: {
+  data: SettingsWithMeta;
+  codingPracticeServer?: CodingPracticeServerConfig;
+}) {
   const router = useRouter();
   const initial = data.settings;
   const [form, setForm] = useState<Settings>(initial);
@@ -201,6 +225,9 @@ export function SettingsClient({ data }: { data: SettingsWithMeta }) {
           </TabsTrigger>
           <TabsTrigger value="assistant" className={TAB_TRIGGER}>
             Assistant
+          </TabsTrigger>
+          <TabsTrigger value="coding-practice" className={TAB_TRIGGER}>
+            <Stethoscope /> Coding Practice
           </TabsTrigger>
           <TabsTrigger value="certificates" className={TAB_TRIGGER}>
             <Award /> Certificates
@@ -612,6 +639,89 @@ export function SettingsClient({ data }: { data: SettingsWithMeta }) {
                   onChange={(e) => set("chatbotGreeting", e.target.value)}
                 />
               </Field>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── Coding Practice ─────────────────────────────────────────────── */}
+        <TabsContent value="coding-practice" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Coding Practice</CardTitle>
+              <CardDescription>
+                The medical-coding practice software. Its link in the panels
+                opens it in a new tab already signed in, so nobody needs a
+                second password.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="divide-y">
+                <ToggleRow
+                  label="Show Coding Practice"
+                  description="Adds a Coding Practice link to the learner and admin panels for the people chosen below."
+                  checked={form.codingPracticeEnabled}
+                  onChange={(v) => set("codingPracticeEnabled", v)}
+                />
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field
+                  label="Who can open it"
+                  hint="Staff means super admins and admins."
+                >
+                  <Select
+                    value={form.codingPracticeAudience}
+                    onValueChange={(v) =>
+                      v &&
+                      set("codingPracticeAudience", v as Settings["codingPracticeAudience"])
+                    }
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue>
+                        {(v: string) =>
+                          CODING_PRACTICE_AUDIENCES.find((a) => a.value === v)?.label ?? v
+                        }
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CODING_PRACTICE_AUDIENCES.map((a) => (
+                        <SelectItem key={a.value} value={a.value}>
+                          {a.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field
+                  label="Address"
+                  htmlFor="codingPracticeUrl"
+                  hint={
+                    codingPracticeServer.url
+                      ? `Leave blank to use the server's address, ${codingPracticeServer.url}.`
+                      : "Where Coding Practice runs, e.g. https://practice.skillforcareer.com."
+                  }
+                >
+                  <Input
+                    id="codingPracticeUrl"
+                    type="url"
+                    value={form.codingPracticeUrl}
+                    onChange={(e) => set("codingPracticeUrl", e.target.value)}
+                    placeholder={codingPracticeServer.url || "https://"}
+                  />
+                </Field>
+              </div>
+              <Separator />
+              {codingPracticeServer.secretSet ? (
+                <p className="text-muted-foreground text-xs">
+                  The sign-in secret is set on the server. It stays there and is
+                  never saved with these settings.
+                </p>
+              ) : (
+                <p className="text-destructive text-xs">
+                  The sign-in secret isn&apos;t set on the server yet
+                  (CODING_PRACTICE_SSO_SECRET). Until it is, the link shows a
+                  &ldquo;not connected yet&rdquo; page instead of signing anyone in.
+                </p>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

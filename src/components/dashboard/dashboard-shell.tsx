@@ -11,6 +11,7 @@ import { ImpersonationBanner } from "./impersonation-banner";
 import { PanelTour } from "./panel-tour";
 import { AmiWidget } from "@/components/chatbot/ami-widget";
 import type { SessionUser } from "@/stores/auth-store";
+import type { NavFeature } from "@/config/navigation";
 
 /** Composes the full authenticated app shell around the routed page content. */
 export function DashboardShell({
@@ -19,6 +20,7 @@ export function DashboardShell({
   tourEnabled = true,
   voiceGuideEnabled = true,
   assistantEnabled = true,
+  codingPractice = false,
   children,
 }: {
   user: SessionUser;
@@ -27,12 +29,15 @@ export function DashboardShell({
   tourEnabled?: boolean;
   voiceGuideEnabled?: boolean;
   assistantEnabled?: boolean;
+  /** Show the Coding Practice link — on, and this person is in its audience. */
+  codingPractice?: boolean;
   children: ReactNode;
 }) {
+  const navFeatures: NavFeature[] = codingPractice ? ["codingPractice"] : [];
   return (
     <SidebarProvider>
       <AuthHydrator user={user} />
-      <DashboardSidebar role={user.role} />
+      <DashboardSidebar role={user.role} features={navFeatures} />
       <SidebarInset>
         {impersonating && (
           <ImpersonationBanner name={user.name} email={user.email} />
@@ -40,7 +45,7 @@ export function DashboardShell({
         <DashboardHeader user={user} />
         <main className="min-w-0 flex-1 p-4 pb-24 sm:p-6 md:pb-6">{children}</main>
       </SidebarInset>
-      <CommandPalette role={user.role} />
+      <CommandPalette role={user.role} features={navFeatures} />
       <MobileNav role={user.role} />
       {/* The guided walkthrough — "jaise hi panel khule tour guide and also
           voice guide honi chahiye". It decides for itself whether this is a

@@ -90,6 +90,17 @@ export const settingsSchema = z.object({
   /// Whether that walkthrough can also read itself aloud.
   voiceGuideEnabled: z.boolean(),
 
+  // ── Coding Practice ──────────────────────────────────────────────────────
+  // The separate medical-coding practice product. Its link in the panels signs
+  // people straight in; the signing secret lives in the server environment
+  // (CODING_PRACTICE_SSO_SECRET) and is never stored here.
+  codingPracticeEnabled: z.boolean(),
+  /// Where the product runs. Blank uses CODING_PRACTICE_URL from the server.
+  codingPracticeUrl: optionalUrl,
+  /// Who gets the link: anyone signed in, staff only, or learners with an
+  /// active or completed enrolment (staff always count).
+  codingPracticeAudience: z.enum(["everyone", "staff", "enrolled"]),
+
   // ── Social links ─────────────────────────────────────────────────────────
   socialWebsite: optionalUrl,
   socialLinkedin: optionalUrl,
@@ -156,6 +167,11 @@ export const DEFAULT_SETTINGS: Settings = {
     "Hi! I'm Ami, your SkillForCareer assistant. Ask me about courses, fees, batches or placements.",
   tourEnabled: true,
   voiceGuideEnabled: true,
+
+  // Off until someone decides to switch it on.
+  codingPracticeEnabled: false,
+  codingPracticeUrl: "",
+  codingPracticeAudience: "enrolled",
 
   socialWebsite: "",
   socialLinkedin: "",
