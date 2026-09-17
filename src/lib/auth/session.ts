@@ -1,4 +1,4 @@
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { verifyToken, type AuthTokenPayload } from "./jwt";
 import { ACCESS_TOKEN_COOKIE, REFRESH_TOKEN_COOKIE } from "./cookies";
 import { accessTtlSeconds, refreshTtlSeconds } from "./duration";
@@ -44,14 +44,28 @@ export async function clearAuthCookies(): Promise<void> {
   store.delete(REFRESH_TOKEN_COOKIE);
 }
 
-/** Returns the verified access-token payload, or null if unauthenticated. */
+/**
+ * The verified access-token payload, or null if unauthenticated.
+ *
+ * The browser sends the token in an httpOnly cookie. The Android and iOS apps
+ * have no cookie jar to share with the website, so they send the same token as
+ * `Authorization: Bearer …` instead; both arrive here, so every existing guard
+ * works for the apps without being changed.
+ */
 export async function getCurrentSession(): Promise<AuthTokenPayload | null> {
   const store = await cookies();
-  const token = store.get(ACCESS_TOKEN_COOKIE)?.value;
+  const token = store.get(ACCESS_TOKEN_COOKIE)?.value ?? (await bearerToken());
   if (!token) return null;
   try {
     return await verifyToken(token, "access");
   } catch {
     return null;
   }
+}
+
+async function bearerToken(): Promise<string | null> {
+  const authorization = (await headers()).get("authorization");
+  if (!authorization) return null;
+  const [scheme, value] = authorization.split(" ");
+  return scheme?.toLowerCase() === "bearer" && value ? value.trim() : null;
 }
