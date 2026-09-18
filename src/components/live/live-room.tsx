@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { io, type Socket } from "socket.io-client";
 import {
   Mic,
   MicOff,
@@ -19,6 +18,12 @@ import {
   ArrowLeft,
   Link2,
   Disc,
+  ChevronDown,
+  Loader2,
+  WifiOff,
+  AlertTriangle,
+  Volume2,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ROLE_HOME } from "@/config/roles";
@@ -27,6 +32,26 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useLiveRoom, type PeerView } from "@/components/live/use-live-room";
 import { cn } from "@/lib/utils";
 
 interface Meeting {
@@ -47,30 +72,10 @@ interface Me {
   role: string;
   avatarUrl: string | null;
 }
-interface RoomUser {
-  id: string;
-  name: string;
-  avatarUrl: string | null;
-  isHost: boolean;
-}
-interface RemotePeer {
-  socketId: string;
-  user: RoomUser;
-  stream: MediaStream | null;
-}
-interface ChatMessage {
-  from: string;
-  text: string;
-  me: boolean;
-}
 
 /** How often a webinar room reports watch time. Often enough to survive a
  *  crashed tab, rare enough to stay out of the way of the call. */
 const PRESENCE_INTERVAL_MS = 60_000;
-
-const RTC_CONFIG: RTCConfiguration = {
-  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-};
 
 function initials(name: string): string {
   return name.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase();
@@ -81,6 +86,24 @@ function fmtElapsed(total: number): string {
   const s = total % 60;
   const pad = (n: number) => String(n).padStart(2, "0");
   return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+}
+
+/**
+ * Columns for a given number of tiles.
+ *
+ * The grid rows are `auto-rows-fr` inside a container that is exactly as tall as
+ * the space left over, so whatever this returns the tiles divide the room
+ * between them and nothing is ever pushed off-screen. Phones get fewer columns
+ * and taller tiles, because a 180px-wide face is not worth looking at.
+ */
+function gridColumns(count: number): string {
+  if (count <= 1) return "grid-cols-1";
+  if (count === 2) return "grid-cols-1 sm:grid-cols-2";
+  if (count === 3) return "grid-cols-1 sm:grid-cols-3";
+  if (count <= 4) return "grid-cols-2";
+  if (count <= 6) return "grid-cols-2 lg:grid-cols-3";
+  if (count <= 9) return "grid-cols-2 sm:grid-cols-3";
+  return "grid-cols-2 sm:grid-cols-3 xl:grid-cols-4";
 }
 
 export function LiveRoom({
@@ -97,56 +120,64 @@ export function LiveRoom({
   signalUrl: string;
 }) {
   const router = useRouter();
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const screenRef = useRef<MediaStream | null>(null);
-  const socketRef = useRef<Socket | null>(null);
-  const peersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
-  const pendingIceRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
+  const selfVideoRef = useRef<HTMLVideoElement>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
 
   const [joined, setJoined] = useState(false);
-  const [micOn, setMicOn] = useState(true);
-  const [camOn, setCamOn] = useState(true);
-  const [sharing, setSharing] = useState(false);
-  const [mediaError, setMediaError] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [panel, setPanel] = useState<"chat" | "people" | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [copied, setCopied] = useState(false);
-  const [remotePeers, setRemotePeers] = useState<RemotePeer[]>([]);
   const [recording, setRecording] = useState(false);
-  const [connected, setConnected] = useState(false);
+  const [confirmEnd, setConfirmEnd] = useState(false);
+  const [dismissedNotice, setDismissedNotice] = useState(false);
 
-  // Acquire camera + mic once.
-  useEffect(() => {
-    let cancelled = false;
-    navigator.mediaDevices
-      ?.getUserMedia({ video: { width: 1280, height: 720 }, audio: true })
-      .then((stream) => {
-        if (cancelled) {
-          stream.getTracks().forEach((t) => t.stop());
-          return;
-        }
-        streamRef.current = stream;
-        if (videoRef.current) videoRef.current.srcObject = stream;
-      })
-      .catch(() => !cancelled && setMediaError(true));
-    return () => {
-      cancelled = true;
-      streamRef.current?.getTracks().forEach((t) => t.stop());
-      screenRef.current?.getTracks().forEach((t) => t.stop());
-    };
-  }, []);
+  const room = useLiveRoom({
+    signalUrl,
+    token,
+    joined,
+    selfName: me.name,
+    isHost,
+  });
 
-  // Keep the visible <video> bound to the active stream across lobby↔room.
+  const {
+    localStream,
+    screenStream,
+    mediaStatus,
+    mediaMessage,
+    micOn,
+    camOn,
+    sharing,
+    speaking,
+    cameras,
+    microphones,
+    cameraId,
+    micId,
+    peers,
+    socketConnected,
+    signalError,
+    messages,
+    meshLimit,
+    participantCount,
+    overMeshLimit,
+    videoHeld,
+    endedBy,
+    sessionElsewhere,
+  } = room;
+
+  // Bind the self tile to whichever stream is being shown: the screen when
+  // sharing, the camera otherwise. Muted, always — an unmuted local tile is
+  // where classroom echo comes from.
   useEffect(() => {
-    if (videoRef.current) {
-      videoRef.current.srcObject = sharing ? screenRef.current : streamRef.current;
-    }
-  }, [joined, sharing, camOn]);
+    const el = selfVideoRef.current;
+    if (!el) return;
+    const next = sharing ? screenStream : localStream;
+    if (el.srcObject !== next) el.srcObject = next;
+    el.play().catch(() => {
+      /* a muted local preview is allowed to autoplay everywhere */
+    });
+  }, [joined, sharing, screenStream, localStream]);
 
   // Elapsed timer once joined.
   useEffect(() => {
@@ -195,160 +226,23 @@ export function LiveRoom({
     };
   }, [joined, meeting.provider, meeting.roomCode]);
 
-  // Signaling + WebRTC mesh once joined.
-  useEffect(() => {
-    if (!joined) return;
-    const socket = io(signalUrl, {
-      auth: { token },
-      path: "/socket.io",
-      transports: ["websocket", "polling"],
-    });
-    socketRef.current = socket;
-
-    const upsert = (socketId: string, user: RoomUser) =>
-      setRemotePeers((prev) =>
-        prev.some((p) => p.socketId === socketId)
-          ? prev.map((p) => (p.socketId === socketId && p.user.id === "" ? { ...p, user } : p))
-          : [...prev, { socketId, user, stream: null }],
-      );
-    const setStream = (socketId: string, stream: MediaStream) =>
-      setRemotePeers((prev) => prev.map((p) => (p.socketId === socketId ? { ...p, stream } : p)));
-    const drop = (socketId: string) => {
-      peersRef.current.get(socketId)?.close();
-      peersRef.current.delete(socketId);
-      pendingIceRef.current.delete(socketId);
-      setRemotePeers((prev) => prev.filter((p) => p.socketId !== socketId));
-    };
-
-    function makePeer(socketId: string, user: RoomUser, initiator: boolean) {
-      upsert(socketId, user);
-      const existing = peersRef.current.get(socketId);
-      if (existing) return existing;
-      const pc = new RTCPeerConnection(RTC_CONFIG);
-      peersRef.current.set(socketId, pc);
-      streamRef.current?.getTracks().forEach((t) => pc.addTrack(t, streamRef.current!));
-      pc.onicecandidate = (e) => {
-        if (e.candidate) socket.emit("signal", { to: socketId, candidate: e.candidate });
-      };
-      pc.ontrack = (e) => setStream(socketId, e.streams[0]);
-      if (initiator) {
-        pc.createOffer()
-          .then((o) => pc.setLocalDescription(o))
-          .then(() => socket.emit("signal", { to: socketId, description: pc.localDescription }))
-          .catch(() => {});
-      }
-      return pc;
+  function stopRecording() {
+    if (recorderRef.current && recorderRef.current.state !== "inactive") {
+      recorderRef.current.stop();
     }
-
-    socket.on("connect", () => setConnected(true));
-    socket.on("disconnect", () => setConnected(false));
-    socket.on("connect_error", () => setConnected(false));
-
-    socket.on("peers", (peers: { socketId: string; user: RoomUser }[]) => {
-      peers.forEach((p) => makePeer(p.socketId, p.user, true));
-    });
-    socket.on("peer-joined", ({ socketId, user }: { socketId: string; user: RoomUser }) => {
-      upsert(socketId, user);
-    });
-    socket.on(
-      "signal",
-      async ({
-        from,
-        description,
-        candidate,
-      }: {
-        from: string;
-        description?: RTCSessionDescriptionInit;
-        candidate?: RTCIceCandidateInit;
-      }) => {
-        const pc =
-          peersRef.current.get(from) ??
-          makePeer(from, { id: "", name: "Guest", avatarUrl: null, isHost: false }, false);
-        if (description) {
-          await pc.setRemoteDescription(description).catch(() => {});
-          const queued = pendingIceRef.current.get(from) ?? [];
-          for (const c of queued) await pc.addIceCandidate(c).catch(() => {});
-          pendingIceRef.current.delete(from);
-          if (description.type === "offer") {
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
-            socket.emit("signal", { to: from, description: pc.localDescription });
-          }
-        } else if (candidate) {
-          if (pc.remoteDescription?.type) {
-            await pc.addIceCandidate(candidate).catch(() => {});
-          } else {
-            const q = pendingIceRef.current.get(from) ?? [];
-            q.push(candidate);
-            pendingIceRef.current.set(from, q);
-          }
-        }
-      },
-    );
-    socket.on("peer-left", ({ socketId }: { socketId: string }) => drop(socketId));
-    socket.on("chat", (msg: { name: string; text: string }) =>
-      setMessages((m) => [...m, { from: msg.name, text: msg.text, me: false }]),
-    );
-
-    const peers = peersRef.current;
-    const pending = pendingIceRef.current;
-    return () => {
-      socket.disconnect();
-      peers.forEach((pc) => pc.close());
-      peers.clear();
-      pending.clear();
-      setRemotePeers([]);
-      setConnected(false);
-    };
-  }, [joined, signalUrl, token]);
-
-  function toggleMic() {
-    const next = !micOn;
-    streamRef.current?.getAudioTracks().forEach((t) => (t.enabled = next));
-    setMicOn(next);
-  }
-  function toggleCam() {
-    const next = !camOn;
-    streamRef.current?.getVideoTracks().forEach((t) => (t.enabled = next));
-    setCamOn(next);
-  }
-  function swapVideoTrackToPeers(track: MediaStreamTrack | undefined) {
-    if (!track) return;
-    peersRef.current.forEach((pc) => {
-      const sender = pc.getSenders().find((s) => s.track?.kind === "video");
-      sender?.replaceTrack(track).catch(() => {});
-    });
-  }
-  async function toggleShare() {
-    if (sharing) {
-      swapVideoTrackToPeers(streamRef.current?.getVideoTracks()[0]);
-      screenRef.current?.getTracks().forEach((t) => t.stop());
-      screenRef.current = null;
-      setSharing(false);
-      return;
-    }
-    try {
-      const s = await navigator.mediaDevices.getDisplayMedia({ video: true });
-      screenRef.current = s;
-      swapVideoTrackToPeers(s.getVideoTracks()[0]);
-      setSharing(true);
-      s.getVideoTracks()[0]?.addEventListener("ended", () => {
-        swapVideoTrackToPeers(streamRef.current?.getVideoTracks()[0]);
-        screenRef.current = null;
-        setSharing(false);
-      });
-    } catch {
-      /* user cancelled the picker */
-    }
+    recorderRef.current = null;
+    setRecording(false);
   }
 
   function startRecording() {
-    const base = streamRef.current;
+    const base = localStream;
     if (!base) {
       toast.error("No media available to record.");
       return;
     }
-    const videoTrack = sharing ? screenRef.current?.getVideoTracks()[0] : base.getVideoTracks()[0];
+    const videoTrack = sharing
+      ? screenStream?.getVideoTracks()[0]
+      : base.getVideoTracks()[0];
     const audioTrack = base.getAudioTracks()[0];
     const tracks = [videoTrack, audioTrack].filter(Boolean) as MediaStreamTrack[];
     const recStream = new MediaStream(tracks);
@@ -381,29 +275,30 @@ export function LiveRoom({
     setRecording(true);
     toast.success("Recording started.");
   }
-  function stopRecording() {
-    if (recorderRef.current && recorderRef.current.state !== "inactive") {
-      recorderRef.current.stop();
-    }
-    recorderRef.current = null;
-    setRecording(false);
-  }
 
-  function leave() {
-    stopRecording();
-    socketRef.current?.disconnect();
-    peersRef.current.forEach((pc) => pc.close());
-    peersRef.current.clear();
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    screenRef.current?.getTracks().forEach((t) => t.stop());
+  function goHome() {
     router.push(ROLE_HOME[me.role as keyof typeof ROLE_HOME] ?? "/");
   }
+  function leave() {
+    stopRecording();
+    room.teardown();
+    goHome();
+  }
+  function endForEveryone() {
+    room.endClass();
+    leave();
+  }
+
+  async function onToggleShare() {
+    const problem = await room.toggleShare();
+    if (problem) toast.error(problem);
+  }
+
   function sendMessage(e: FormEvent) {
     e.preventDefault();
     const text = draft.trim();
     if (!text) return;
-    socketRef.current?.emit("chat", { text });
-    setMessages((m) => [...m, { from: me.name, text, me: true }]);
+    room.sendChat(text);
     setDraft("");
   }
   async function copyLink() {
@@ -419,11 +314,32 @@ export function LiveRoom({
 
   const cancelled = meeting.status === "CANCELLED";
   const ended = meeting.status === "ENDED";
+  const showSelfVideo = sharing || (camOn && Boolean(localStream?.getVideoTracks().length));
+
+  // ── The class is over, or this person is in here twice ──────────────────────
+  if (joined && (endedBy || sessionElsewhere)) {
+    return (
+      <RoomMessage
+        icon={sessionElsewhere ? <Users className="size-7 text-rose-400" /> : <PhoneOff className="size-7 text-rose-400" />}
+        title={sessionElsewhere ? "You joined this class somewhere else" : `${endedBy} ended the class`}
+        body={
+          sessionElsewhere
+            ? "This class is now open in another tab or on another device. Two copies of the same microphone in one room is what causes echo, so this one stepped aside."
+            : "The host has closed the room for everyone. Any recording will appear under the class once it has been processed."
+        }
+        action={
+          <Button size="lg" onClick={goHome}>
+            Back to my classes
+          </Button>
+        }
+      />
+    );
+  }
 
   // ── Lobby ──────────────────────────────────────────────────────────────────
   if (!joined) {
     return (
-      <div className="fixed inset-0 flex flex-col overflow-hidden bg-neutral-950 text-white">
+      <div className="fixed inset-0 flex flex-col overflow-y-auto bg-neutral-950 text-white">
         {/* brand glow */}
         <div
           aria-hidden
@@ -446,18 +362,21 @@ export function LiveRoom({
         <div className="relative flex flex-1 items-center justify-center p-4 sm:p-6">
           <div className="grid w-full max-w-5xl items-center gap-8 lg:grid-cols-[1.5fr_1fr] lg:gap-12">
             {/* Preview */}
-            <div className="relative aspect-video overflow-hidden rounded-3xl bg-neutral-900 shadow-2xl ring-1 ring-white/10">
+            <div
+              className="relative aspect-video overflow-hidden rounded-3xl bg-neutral-900 shadow-2xl ring-1 ring-white/10"
+              data-tile="lobby"
+            >
               <video
-                ref={videoRef}
+                ref={selfVideoRef}
                 autoPlay
                 playsInline
                 muted
                 className={cn(
                   "size-full object-cover [transform:scaleX(-1)]",
-                  !camOn && "invisible",
+                  !showSelfVideo && "invisible",
                 )}
               />
-              {!camOn && (
+              {!showSelfVideo && (
                 <div className="absolute inset-0 grid place-items-center bg-gradient-to-br from-neutral-900 to-neutral-950">
                   <Avatar className="size-28 ring-4 ring-white/5">
                     {me.avatarUrl && <AvatarImage src={me.avatarUrl} alt={me.name} />}
@@ -467,17 +386,37 @@ export function LiveRoom({
                   </Avatar>
                 </div>
               )}
-              {mediaError && (
-                <div className="absolute inset-x-0 top-3 mx-auto w-fit rounded-full bg-black/60 px-3 py-1.5 text-center text-xs text-white/80 backdrop-blur">
-                  Camera & mic are blocked — you can still join
-                </div>
-              )}
+              <MediaNotice
+                status={mediaStatus}
+                message={mediaMessage}
+                onRetry={room.retryMedia}
+              />
               <div className="absolute bottom-3 left-3 rounded-md bg-black/45 px-2.5 py-1 text-xs backdrop-blur">
                 {me.name}
               </div>
               <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 gap-2.5">
-                <ControlButton on={micOn} onClick={toggleMic} label="mic" IconOn={Mic} IconOff={MicOff} />
-                <ControlButton on={camOn} onClick={toggleCam} label="camera" IconOn={VideoIcon} IconOff={VideoOff} />
+                <DeviceControl
+                  on={micOn}
+                  onToggle={room.toggleMic}
+                  label="mic"
+                  IconOn={Mic}
+                  IconOff={MicOff}
+                  devices={microphones}
+                  deviceId={micId}
+                  onSelect={room.selectMicrophone}
+                  pickerLabel="Microphone"
+                />
+                <DeviceControl
+                  on={camOn}
+                  onToggle={room.toggleCam}
+                  label="camera"
+                  IconOn={VideoIcon}
+                  IconOff={VideoOff}
+                  devices={cameras}
+                  deviceId={cameraId}
+                  onSelect={room.selectCamera}
+                  pickerLabel="Camera"
+                />
               </div>
             </div>
 
@@ -518,7 +457,12 @@ export function LiveRoom({
               ) : null}
 
               <div className="space-y-3">
-                <Button size="lg" onClick={() => setJoined(true)} className="w-full text-base">
+                <Button
+                  size="lg"
+                  onClick={() => setJoined(true)}
+                  className="w-full text-base"
+                  data-testid="join-now"
+                >
                   Join now
                 </Button>
                 <div className="flex items-center justify-center gap-4 text-xs text-white/50 lg:justify-start">
@@ -548,115 +492,144 @@ export function LiveRoom({
   }
 
   // ── In-room ────────────────────────────────────────────────────────────────
+  const tileCount = participantCount;
+
   return (
-    <div className="fixed inset-0 flex flex-col bg-neutral-950 text-white">
+    <div className="fixed inset-0 flex flex-col overflow-hidden bg-neutral-950 text-white">
       {/* Header */}
-      <header className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
-        <div className="flex min-w-0 items-center gap-3">
+      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 px-3 py-2.5 sm:px-4 sm:py-3">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
           <Logo href="/" showText={false} />
-          <span className="truncate font-semibold">{meeting.title}</span>
+          <span className="truncate text-sm font-semibold sm:text-base">{meeting.title}</span>
           {recording && (
-            <span className="flex items-center gap-1.5 text-xs text-rose-300">
+            <span className="flex shrink-0 items-center gap-1.5 text-xs text-rose-300">
               <Circle className="size-2 animate-pulse fill-current" /> REC
             </span>
           )}
         </div>
-        <div className="flex items-center gap-3 text-sm text-white/70">
+        <div className="flex shrink-0 items-center gap-2 text-sm text-white/70 sm:gap-3">
           <span
             className={cn(
               "flex items-center gap-1.5",
-              connected ? "text-emerald-300" : "text-white/40",
+              socketConnected ? "text-emerald-300" : "text-amber-300",
             )}
-            title={connected ? "Connected" : "Connecting…"}
+            title={socketConnected ? "Connected to the class server" : "Reconnecting to the class server…"}
+            data-testid="signal-state"
+            data-connected={socketConnected ? "true" : "false"}
           >
-            <Circle className="size-2 fill-current" />
-            <Users className="size-4" /> {1 + remotePeers.length}
+            {socketConnected ? (
+              <Circle className="size-2 fill-current" />
+            ) : (
+              <WifiOff className="size-3.5" />
+            )}
+            <Users className="size-4" />
+            <span data-testid="participant-count">{tileCount}</span>
           </span>
           <span className="tabular-nums">{fmtElapsed(elapsed)}</span>
           <span className="hidden font-mono text-xs sm:inline">{meeting.roomCode}</span>
         </div>
       </header>
 
+      {/* Notices that matter enough to sit above the faces */}
+      {signalError && (
+        <Notice tone="warn" icon={<WifiOff className="size-4" />} text={signalError} />
+      )}
+      {mediaStatus !== "ready" && mediaStatus !== "starting" && (
+        <Notice
+          tone={mediaStatus === "audio-only" ? "warn" : "error"}
+          icon={<AlertTriangle className="size-4" />}
+          text={mediaMessage ?? "Your camera and microphone aren't available."}
+          action={
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={room.retryMedia}
+              className="h-7 border-white/25 bg-transparent text-white hover:bg-white/10"
+            >
+              Retry
+            </Button>
+          }
+        />
+      )}
+      {overMeshLimit && !dismissedNotice && (
+        <Notice
+          tone="warn"
+          icon={<Users className="size-4" />}
+          text={
+            isHost
+              ? `${tileCount} people are in the room. Browser-to-browser video tops out around ${meshLimit} — everyone can still hear each other, but video is now limited to you and whoever is speaking.`
+              : `A big class: everyone can hear each other, but video is limited to the host and whoever is speaking${videoHeld ? ", so your camera is paused for now" : ""}.`
+          }
+          action={
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              onClick={() => setDismissedNotice(true)}
+              aria-label="Dismiss"
+              className="text-white/70 hover:bg-white/10 hover:text-white"
+            >
+              <X className="size-4" />
+            </Button>
+          }
+        />
+      )}
+
       {/* Body */}
-      <div className="flex min-h-0 flex-1">
-        <div className="flex flex-1 items-center justify-center p-3 sm:p-6">
+      <div className="relative flex min-h-0 flex-1">
+        <div className="flex min-h-0 min-w-0 flex-1 p-2 sm:p-4">
           <div
             className={cn(
-              "mx-auto grid w-full max-w-5xl gap-3",
-              remotePeers.length + 1 > 4
-                ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
-                : "grid-cols-1 sm:grid-cols-2",
+              "mx-auto grid h-full w-full auto-rows-fr gap-2 sm:gap-3",
+              tileCount <= 2 ? "max-w-6xl" : "max-w-7xl",
+              gridColumns(tileCount),
             )}
+            data-testid="tile-grid"
           >
             {/* Self tile */}
-            <div className="relative aspect-video overflow-hidden rounded-2xl bg-neutral-900 ring-1 ring-white/10">
+            <div
+              className={cn(
+                "relative min-h-0 overflow-hidden rounded-2xl bg-neutral-900 ring-1 ring-white/10",
+                speaking && micOn && "ring-2 ring-emerald-400",
+              )}
+              data-tile="self"
+            >
               <video
-                ref={videoRef}
+                ref={selfVideoRef}
                 autoPlay
                 playsInline
                 muted
                 className={cn(
                   "size-full object-cover",
                   !sharing && "[transform:scaleX(-1)]",
-                  !camOn && !sharing && "invisible",
+                  !showSelfVideo && "invisible",
                 )}
               />
-              {!camOn && !sharing && (
+              {!showSelfVideo && (
                 <div className="absolute inset-0 grid place-items-center">
-                  <Avatar className="size-20">
+                  <Avatar className="size-16 sm:size-20">
                     {me.avatarUrl && <AvatarImage src={me.avatarUrl} alt={me.name} />}
-                    <AvatarFallback className="bg-gradient-to-br from-rose-500 to-pink-600 text-2xl text-white">
+                    <AvatarFallback className="bg-gradient-to-br from-rose-500 to-pink-600 text-xl text-white sm:text-2xl">
                       {initials(me.name)}
                     </AvatarFallback>
                   </Avatar>
                 </div>
               )}
-              <div className="absolute bottom-2 left-2 flex items-center gap-1.5 rounded-md bg-black/50 px-2 py-1 text-xs backdrop-blur">
-                {!micOn && <MicOff className="size-3.5 text-rose-300" />}
-                You {isHost ? "(Host)" : ""}
-                {sharing && " · sharing screen"}
-              </div>
+              <TileLabel
+                name={`You${isHost ? " (Host)" : ""}`}
+                micOn={micOn}
+                sharing={sharing}
+                videoHeld={videoHeld}
+              />
             </div>
 
             {/* Remote peer tiles */}
-            {remotePeers.map((peer) => (
-              <div
-                key={peer.socketId}
-                className="relative aspect-video overflow-hidden rounded-2xl bg-neutral-900 ring-1 ring-white/10"
-              >
-                {peer.stream ? (
-                  <video
-                    autoPlay
-                    playsInline
-                    ref={(el) => {
-                      if (el && peer.stream && el.srcObject !== peer.stream) {
-                        el.srcObject = peer.stream;
-                      }
-                    }}
-                    className="size-full object-cover"
-                  />
-                ) : (
-                  <div className="absolute inset-0 grid place-items-center">
-                    <Avatar className="size-20">
-                      {peer.user.avatarUrl && (
-                        <AvatarImage src={peer.user.avatarUrl} alt={peer.user.name} />
-                      )}
-                      <AvatarFallback className="bg-white/10 text-2xl text-white">
-                        {initials(peer.user.name || "?")}
-                      </AvatarFallback>
-                    </Avatar>
-                  </div>
-                )}
-                <div className="absolute bottom-2 left-2 rounded-md bg-black/50 px-2 py-1 text-xs backdrop-blur">
-                  {peer.user.name || "Guest"}
-                  {peer.user.isHost ? " (Host)" : ""}
-                </div>
-              </div>
+            {peers.map((peer) => (
+              <PeerTile key={peer.socketId} peer={peer} />
             ))}
 
             {/* Invite tile — shown only while you're alone */}
-            {remotePeers.length === 0 && (
-              <div className="flex aspect-video flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-white/15 bg-white/[0.03] p-6 text-center">
+            {peers.length === 0 && (
+              <div className="flex min-h-0 flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-white/15 bg-white/[0.03] p-4 text-center">
                 <Users className="size-8 text-white/40" />
                 <div>
                   <p className="text-sm font-medium">Waiting for others to join</p>
@@ -676,27 +649,47 @@ export function LiveRoom({
           </div>
         </div>
 
-        {/* Side panel */}
+        {/* Side panel — an overlay on a phone, a column from md up */}
         {panel && (
-          <aside className="flex w-full max-w-xs flex-col border-l border-white/10 bg-neutral-900">
+          <aside className="absolute inset-y-0 right-0 z-20 flex w-full max-w-sm flex-col border-l border-white/10 bg-neutral-900 md:static md:z-auto md:max-w-xs">
             <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
               <span className="text-sm font-semibold">
-                {panel === "chat" ? "Chat" : "Participants"}
+                {panel === "chat" ? "Chat" : `Participants (${tileCount})`}
               </span>
-              <Button variant="ghost" size="icon-sm" onClick={() => setPanel(null)} className="text-white hover:bg-white/10">
-                <ArrowLeft className="size-4" />
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => setPanel(null)}
+                className="text-white hover:bg-white/10"
+                aria-label="Close panel"
+              >
+                <X className="size-4" />
               </Button>
             </div>
 
             {panel === "people" ? (
               <div className="flex-1 space-y-1 overflow-y-auto p-2">
-                <PersonRow name={`${me.name} (You)`} sub={isHost ? "Host" : "Attendee"} avatarUrl={me.avatarUrl} muted={!micOn} />
-                {remotePeers.map((peer) => (
+                <PersonRow
+                  name={`${me.name} (You)`}
+                  sub={isHost ? "Host" : "Attendee"}
+                  avatarUrl={me.avatarUrl}
+                  muted={!micOn}
+                />
+                {peers.map((peer) => (
                   <PersonRow
                     key={peer.socketId}
                     name={peer.user.name || "Guest"}
-                    sub={peer.user.isHost ? "Host" : "Attendee"}
+                    sub={
+                      peer.status === "connected"
+                        ? peer.user.isHost
+                          ? "Host"
+                          : "Attendee"
+                        : peer.status === "failed"
+                          ? "Can't connect"
+                          : "Connecting…"
+                    }
                     avatarUrl={peer.user.avatarUrl}
+                    muted={!peer.state.micOn}
                   />
                 ))}
               </div>
@@ -706,8 +699,8 @@ export function LiveRoom({
                   {messages.length === 0 ? (
                     <p className="text-center text-xs text-white/40">No messages yet. Say hello 👋</p>
                   ) : (
-                    messages.map((m, i) => (
-                      <div key={i} className={cn("text-sm", m.me && "text-right")}>
+                    messages.map((m) => (
+                      <div key={m.id} className={cn("text-sm", m.me && "text-right")}>
                         <p className="text-xs text-white/40">{m.from}</p>
                         <p className={cn("inline-block rounded-lg px-3 py-1.5", m.me ? "bg-primary text-white" : "bg-white/10")}>
                           {m.text}
@@ -734,16 +727,44 @@ export function LiveRoom({
       </div>
 
       {/* Controls */}
-      <footer className="flex items-center justify-center gap-2 border-t border-white/10 px-4 py-4 sm:gap-3">
-        <ControlButton on={micOn} onClick={toggleMic} label="mic" IconOn={Mic} IconOff={MicOff} />
-        <ControlButton on={camOn} onClick={toggleCam} label="camera" IconOn={VideoIcon} IconOff={VideoOff} />
-        <RoundButton active={sharing} onClick={toggleShare} label="Share screen">
+      <footer className="flex shrink-0 items-center justify-center gap-1.5 border-t border-white/10 px-2 py-3 sm:gap-3 sm:px-4 sm:py-4">
+        <DeviceControl
+          on={micOn}
+          onToggle={room.toggleMic}
+          label="mic"
+          IconOn={Mic}
+          IconOff={MicOff}
+          devices={microphones}
+          deviceId={micId}
+          onSelect={room.selectMicrophone}
+          pickerLabel="Microphone"
+        />
+        <DeviceControl
+          on={camOn}
+          onToggle={room.toggleCam}
+          label="camera"
+          IconOn={VideoIcon}
+          IconOff={VideoOff}
+          devices={cameras}
+          deviceId={cameraId}
+          onSelect={room.selectCamera}
+          pickerLabel="Camera"
+        />
+        <RoundButton active={sharing} onClick={onToggleShare} label="Share screen">
           <MonitorUp className="size-5" />
         </RoundButton>
-        <RoundButton active={panel === "chat"} onClick={() => setPanel(panel === "chat" ? null : "chat")} label="Chat">
+        <RoundButton
+          active={panel === "chat"}
+          onClick={() => setPanel(panel === "chat" ? null : "chat")}
+          label="Chat"
+        >
           <MessageSquare className="size-5" />
         </RoundButton>
-        <RoundButton active={panel === "people"} onClick={() => setPanel(panel === "people" ? null : "people")} label="Participants">
+        <RoundButton
+          active={panel === "people"}
+          onClick={() => setPanel(panel === "people" ? null : "people")}
+          label="Participants"
+        >
           <Users className="size-5" />
         </RoundButton>
         {isHost && (
@@ -762,43 +783,214 @@ export function LiveRoom({
         )}
         <button
           type="button"
-          onClick={leave}
-          aria-label="Leave"
-          className="ml-1 flex h-11 items-center gap-2 rounded-full bg-rose-600 px-5 font-medium text-white transition-colors hover:bg-rose-700"
+          onClick={() => (isHost ? setConfirmEnd(true) : leave())}
+          aria-label={isHost ? "End class" : "Leave"}
+          className="ml-1 flex h-11 items-center gap-2 rounded-full bg-rose-600 px-4 font-medium text-white transition-colors hover:bg-rose-700 sm:px-5"
         >
-          <PhoneOff className="size-5" /> Leave
+          <PhoneOff className="size-5" />
+          <span className="hidden sm:inline">{isHost ? "End" : "Leave"}</span>
         </button>
       </footer>
+
+      <AlertDialog open={confirmEnd} onOpenChange={setConfirmEnd}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>End this class for everyone?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Everyone still in the room will be told you ended it and returned to their
+              dashboard. Choose &ldquo;Just leave&rdquo; if the class should carry on without you.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Stay</AlertDialogCancel>
+            <Button variant="outline" onClick={leave}>
+              Just leave
+            </Button>
+            <AlertDialogAction
+              onClick={endForEveryone}
+              className="bg-destructive text-white hover:bg-destructive/90"
+            >
+              End for everyone
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
 
-function ControlButton({
+/**
+ * One remote participant.
+ *
+ * The <video> is bound in an effect and explicitly asked to play: iOS Safari
+ * will not start a stream with sound on its own, and when it refuses the tile
+ * offers a tap rather than sitting there silently. It is never muted — muting
+ * the remote tiles is exactly how a "nobody can hear anyone" class happens.
+ */
+function PeerTile({ peer }: { peer: PeerView }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  const [needsTap, setNeedsTap] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !peer.stream) return;
+    if (el.srcObject !== peer.stream) el.srcObject = peer.stream;
+    el.play()
+      .then(() => setNeedsTap(false))
+      .catch(() => setNeedsTap(true));
+  }, [peer.stream]);
+
+  const showVideo = peer.hasVideo && (peer.state.camOn || peer.state.sharing);
+
+  return (
+    <div
+      className={cn(
+        "relative min-h-0 overflow-hidden rounded-2xl bg-neutral-900 ring-1 ring-white/10",
+        peer.state.speaking && peer.state.micOn && "ring-2 ring-emerald-400",
+      )}
+      data-tile="remote"
+      data-peer-id={peer.socketId}
+      data-peer-status={peer.status}
+      data-peer-video={showVideo ? "on" : "off"}
+    >
+      <video
+        ref={ref}
+        autoPlay
+        playsInline
+        data-peer-video-el={peer.socketId}
+        className={cn("size-full object-cover", !showVideo && "invisible")}
+      />
+      {!showVideo && (
+        <div className="absolute inset-0 grid place-items-center">
+          <Avatar className="size-16 sm:size-20">
+            {peer.user.avatarUrl && <AvatarImage src={peer.user.avatarUrl} alt={peer.user.name} />}
+            <AvatarFallback className="bg-white/10 text-xl text-white sm:text-2xl">
+              {initials(peer.user.name || "?")}
+            </AvatarFallback>
+          </Avatar>
+        </div>
+      )}
+
+      {(peer.status === "connecting" || peer.status === "reconnecting") && (
+        <div className="absolute inset-0 grid place-items-center bg-neutral-950/60 backdrop-blur-sm">
+          <span className="flex items-center gap-2 text-xs text-white/80">
+            <Loader2 className="size-4 animate-spin" />
+            {peer.status === "reconnecting" ? "Reconnecting…" : "Connecting…"}
+          </span>
+        </div>
+      )}
+      {peer.status === "failed" && (
+        <div className="absolute inset-0 grid place-items-center bg-neutral-950/70 p-3 text-center backdrop-blur-sm">
+          <span className="text-xs text-white/80">
+            <AlertTriangle className="mx-auto mb-1 size-4 text-amber-300" />
+            Couldn&apos;t connect to {peer.user.name || "this person"}. Their network is
+            blocking the call.
+          </span>
+        </div>
+      )}
+      {needsTap && (
+        <button
+          type="button"
+          onClick={() => ref.current?.play().then(() => setNeedsTap(false)).catch(() => {})}
+          className="absolute inset-x-2 top-2 flex items-center justify-center gap-1.5 rounded-full bg-black/70 px-3 py-1.5 text-xs backdrop-blur"
+        >
+          <Volume2 className="size-3.5" /> Tap to hear {peer.user.name || "them"}
+        </button>
+      )}
+
+      <TileLabel
+        name={`${peer.user.name || "Guest"}${peer.user.isHost ? " (Host)" : ""}`}
+        micOn={peer.state.micOn}
+        sharing={peer.state.sharing}
+        videoHeld={peer.state.videoHeld}
+      />
+    </div>
+  );
+}
+
+function TileLabel({
+  name,
+  micOn,
+  sharing,
+  videoHeld,
+}: {
+  name: string;
+  micOn: boolean;
+  sharing: boolean;
+  videoHeld: boolean;
+}) {
+  return (
+    <div className="absolute bottom-2 left-2 flex max-w-[calc(100%-1rem)] items-center gap-1.5 rounded-md bg-black/55 px-2 py-1 text-xs backdrop-blur">
+      {!micOn && <MicOff className="size-3.5 shrink-0 text-rose-300" data-testid="muted-badge" />}
+      <span className="truncate">{name}</span>
+      {sharing && <span className="shrink-0 text-white/60">· sharing</span>}
+      {videoHeld && <span className="shrink-0 text-white/60">· video paused</span>}
+    </div>
+  );
+}
+
+/** Mic or camera button, with the device list hanging off its own little chevron. */
+function DeviceControl({
   on,
-  onClick,
+  onToggle,
   label,
   IconOn,
   IconOff,
+  devices,
+  deviceId,
+  onSelect,
+  pickerLabel,
 }: {
   on: boolean;
-  onClick: () => void;
+  onToggle: () => void;
   label: string;
   IconOn: typeof Mic;
   IconOff: typeof Mic;
+  devices: { deviceId: string; label: string }[];
+  deviceId: string | undefined;
+  onSelect: (id: string) => void | Promise<void>;
+  pickerLabel: string;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={`${on ? "Turn off" : "Turn on"} ${label}`}
-      aria-pressed={!on}
-      className={cn(
-        "grid size-11 place-items-center rounded-full transition-colors",
-        on ? "bg-white/10 text-white hover:bg-white/20" : "bg-rose-600 text-white hover:bg-rose-700",
+    <div className="relative">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-label={`${on ? "Turn off" : "Turn on"} ${label}`}
+        aria-pressed={!on}
+        data-testid={`toggle-${label}`}
+        className={cn(
+          "grid size-11 place-items-center rounded-full transition-colors",
+          on ? "bg-white/10 text-white hover:bg-white/20" : "bg-rose-600 text-white hover:bg-rose-700",
+        )}
+      >
+        {on ? <IconOn className="size-5" /> : <IconOff className="size-5" />}
+      </button>
+      {devices.length > 1 && (
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            aria-label={`Choose ${pickerLabel.toLowerCase()}`}
+            className="absolute -top-1 -right-1 grid size-5 place-items-center rounded-full bg-neutral-800 text-white ring-1 ring-white/20 hover:bg-neutral-700"
+          >
+            <ChevronDown className="size-3" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="max-w-[18rem]">
+            <DropdownMenuLabel>{pickerLabel}</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuRadioGroup
+              value={deviceId ?? ""}
+              onValueChange={(v) => void onSelect(String(v))}
+            >
+              {devices.map((d) => (
+                <DropdownMenuRadioItem key={d.deviceId} value={d.deviceId}>
+                  <span className="truncate">{d.label}</span>
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
       )}
-    >
-      {on ? <IconOn className="size-5" /> : <IconOff className="size-5" />}
-    </button>
+    </div>
   );
 }
 
@@ -826,6 +1018,90 @@ function RoundButton({
     >
       {children}
     </button>
+  );
+}
+
+function Notice({
+  tone,
+  icon,
+  text,
+  action,
+}: {
+  tone: "warn" | "error";
+  icon: React.ReactNode;
+  text: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div
+      role="status"
+      data-testid="room-notice"
+      className={cn(
+        "flex shrink-0 items-center justify-center gap-2 px-3 py-2 text-center text-xs",
+        tone === "error" ? "bg-rose-950/70 text-rose-100" : "bg-amber-950/60 text-amber-100",
+      )}
+    >
+      <span className="shrink-0">{icon}</span>
+      <span className="max-w-3xl">{text}</span>
+      {action}
+    </div>
+  );
+}
+
+/** The lobby's version of the same message, laid over the preview. */
+function MediaNotice({
+  status,
+  message,
+  onRetry,
+}: {
+  status: string;
+  message: string | null;
+  onRetry: () => void | Promise<void>;
+}) {
+  if (status === "ready" || status === "starting" || !message) return null;
+  return (
+    <div
+      className="absolute inset-x-3 top-3 flex flex-col items-center gap-2 rounded-xl bg-black/70 px-3 py-2.5 text-center text-xs text-white/85 backdrop-blur"
+      data-testid="media-notice"
+    >
+      <span>{message}</span>
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={() => void onRetry()}
+        className="h-7 border-white/25 bg-transparent text-white hover:bg-white/10"
+        data-testid="retry-media"
+      >
+        Retry
+      </Button>
+    </div>
+  );
+}
+
+function RoomMessage({
+  icon,
+  title,
+  body,
+  action,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  body: string;
+  action: React.ReactNode;
+}) {
+  return (
+    <div
+      className="fixed inset-0 flex flex-col items-center justify-center gap-6 bg-neutral-950 px-4 text-center text-white"
+      data-testid="room-message"
+    >
+      <Logo />
+      <span className="flex size-14 items-center justify-center rounded-2xl bg-white/10">{icon}</span>
+      <div className="max-w-md space-y-3">
+        <h1 className="text-2xl font-semibold">{title}</h1>
+        <p className="text-sm text-white/70">{body}</p>
+      </div>
+      {action}
+    </div>
   );
 }
 

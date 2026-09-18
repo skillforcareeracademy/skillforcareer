@@ -3,7 +3,7 @@ import type { PoolConfig } from "mariadb";
 /**
  * TiDB Cloud Serverless connection tuning for the mariadb driver adapter.
  *
- * Two TiDB-specific gotchas are handled here (both fail at a different layer
+ * Three connection gotchas are handled here (each fails at a different layer
  * with a misleading error, so they are documented in one place):
  *
  *   1. TLS must be enabled *explicitly* in the driver config. The `?ssl=...` /
@@ -99,6 +99,16 @@ export function getMariaDbConfig(connectionUrl?: string): PoolConfig {
     // instead of giving up on the first failure while a caller is still waiting.
     initializationTimeout: ACQUIRE_TIMEOUT_MS,
     connectionLimit: POOL_CONNECTION_LIMIT,
+    // (3) A pooled connection whose TCP path has silently died — a NAT or the
+    //     TiDB gateway dropping it — otherwise hangs its next query until the
+    //     OS gives up on retransmits, measured at ~15 minutes on macOS. Recycle
+    //     idle connections before they go stale, and fail a socket that has been
+    //     silent too long so the request errors in a couple of minutes instead
+    //     of hanging. Keep that ceiling well above the slowest real statement —
+    //     an update on User fans out into ~30 queries here — or it cuts off work
+    //     that was going to finish.
+    socketTimeout: 120_000,
+    keepAliveDelay: 15_000,
     // TiDB is MySQL-compatible; keep BigInt/decimal as strings to avoid
     // precision loss, and normalise timezone handling.
     bigIntAsNumber: false,

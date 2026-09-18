@@ -78,6 +78,17 @@ const serverSchema = z.object({
   SIGNAL_PORT: z.coerce.number().int().positive().default(4001),
   ALLOWED_ORIGINS: z.string().default(""),
 
+  // ICE for the live rooms. Media is peer-to-peer, so the two browsers have to
+  // find a route to each other; on mobile data and behind most office/campus
+  // firewalls there isn't one, and only a TURN relay gets the class connected.
+  // All optional — unset means public STUN, which works on friendly networks.
+  // See src/lib/live/ice.ts for how these combine.
+  TURN_URLS: z.string().optional(),
+  TURN_USERNAME: z.string().optional(),
+  TURN_PASSWORD: z.string().optional(),
+  TURN_SHARED_SECRET: z.string().optional(),
+  STUN_URLS: z.string().optional(),
+
   RAZORPAY_KEY_ID: z.string().optional(),
   RAZORPAY_KEY_SECRET: z.string().optional(),
   RAZORPAY_WEBHOOK_SECRET: z.string().optional(),
@@ -100,6 +111,12 @@ const serverSchema = z.object({
 const clientSchema = z.object({
   NEXT_PUBLIC_APP_NAME: z.string().default("SkillForCareer"),
   NEXT_PUBLIC_APP_URL: z.string().url().default("http://localhost:3000"),
+
+  // How many people a live room carries at full video before it starts holding
+  // video back. Every extra participant in a mesh costs every other participant
+  // another upload, so past this many the room keeps audio for everyone and
+  // shows video for the host and whoever is speaking. See src/lib/live/ice.ts.
+  NEXT_PUBLIC_LIVE_MESH_LIMIT: z.coerce.number().int().min(2).max(50).default(6),
 });
 
 function formatIssues(issues: z.ZodIssue[]): string {
@@ -123,6 +140,7 @@ function parseClientEnv() {
   const parsed = clientSchema.safeParse({
     NEXT_PUBLIC_APP_NAME: process.env.NEXT_PUBLIC_APP_NAME,
     NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
+    NEXT_PUBLIC_LIVE_MESH_LIMIT: process.env.NEXT_PUBLIC_LIVE_MESH_LIMIT,
   });
   if (!parsed.success) {
     throw new Error(
