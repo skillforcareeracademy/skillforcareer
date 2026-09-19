@@ -6,6 +6,7 @@ import { getMeetingByRoomCode } from "@/server/services/live-service";
 import { checkRoomAccess } from "@/server/services/live-access";
 import { signRoomToken } from "@/lib/live/room-token";
 import { LiveRoom } from "@/components/live/live-room";
+import { WakeSignalling } from "@/components/live/wake-signalling";
 import { Logo } from "@/components/shared/logo";
 import { ButtonLink } from "@/components/shared/button-link";
 
@@ -55,13 +56,18 @@ export default async function LiveRoomPage({
   const signalUrl = process.env.SIGNAL_URL || "http://localhost:4001";
 
   return (
-    <LiveRoom
-      meeting={meeting}
-      me={{ id: user.id, name: user.name, role: user.role, avatarUrl: user.avatarUrl }}
-      isHost={isHost}
-      token={token}
-      signalUrl={signalUrl}
-    />
+    <>
+      {/* A room link opened straight from a message skips the dashboard, which
+          is where the server is normally woken; the lobby buys it the time. */}
+      <WakeSignalling url={signalUrl} />
+      <LiveRoom
+        meeting={meeting}
+        me={{ id: user.id, name: user.name, role: user.role, avatarUrl: user.avatarUrl }}
+        isHost={isHost}
+        token={token}
+        signalUrl={signalUrl}
+      />
+    </>
   );
 }
 

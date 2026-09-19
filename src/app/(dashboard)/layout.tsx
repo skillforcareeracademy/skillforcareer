@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { requireUser } from "@/lib/auth/require";
 import { readImpersonator } from "@/lib/auth/impersonation";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
+import { WakeSignalling } from "@/components/live/wake-signalling";
 import { getSettings } from "@/server/services/settings-service";
 import { showsCodingPractice } from "@/server/services/coding-practice-service";
 
@@ -32,6 +33,8 @@ export default async function DashboardLayout({
       assistantEnabled={settings.chatbotEnabled}
       codingPractice={codingPractice}
     >
+      {/* Read at request time, like the live room page does. */}
+      <WakeSignalling url={process.env.SIGNAL_URL || "http://localhost:4001"} />
       {children}
     </DashboardShell>
   );
