@@ -30,6 +30,7 @@ import { StepList, type Step } from "@/components/marketing/step-list";
 import { IconGlyph } from "@/components/shared/icon-glyph";
 import { siteConfig } from "@/config/site";
 import { cn } from "@/lib/utils";
+import { imageProps } from "@/lib/image-sizes";
 
 export const metadata: Metadata = {
   title: "Live classes",
@@ -212,7 +213,9 @@ export default async function LiveClassesPage() {
                       {b.courseThumbnailUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
-                          src={b.courseThumbnailUrl}
+                          {...imageProps(b.courseThumbnailUrl, 400)}
+                          loading="lazy"
+                          decoding="async"
                           alt={b.courseTitle}
                           className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
                         />

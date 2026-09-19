@@ -6,6 +6,7 @@ import { listPublicWebinars } from "@/server/services/webinar-service";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/shared/empty-state";
+import { imageProps } from "@/lib/image-sizes";
 
 export const metadata: Metadata = {
   title: "Webinars & masterclasses",
@@ -68,7 +69,7 @@ function WebinarGrid({
               <div className="relative aspect-video overflow-hidden bg-gradient-to-br from-rose-500 to-pink-600">
                 {w.coverImageUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={w.coverImageUrl} alt={w.title} className="size-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                  <img {...imageProps(w.coverImageUrl, 400)} loading="lazy" decoding="async" alt={w.title} className="size-full object-cover transition-transform duration-500 group-hover:scale-105" />
                 ) : (
                   <div className="flex size-full items-center justify-center text-white/90">
                     <Presentation className="size-10" />

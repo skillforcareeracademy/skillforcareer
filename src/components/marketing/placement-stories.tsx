@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import type { HomeData } from "@/lib/validations/homepage";
+import { imageProps } from "@/lib/image-sizes";
 
 /** Must match the `gap-6` on the scroll track (1.5rem). */
 const CARD_GAP_PX = 24;
@@ -107,7 +108,7 @@ export function PlacementStories({ data }: { data: HomeData<"placementStories"> 
             <div className="bg-muted relative aspect-[4/5] overflow-hidden">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={story.photo}
+                {...imageProps(story.photo, 320)}
                 alt={story.name}
                 loading="lazy"
                 className="size-full object-cover object-top"

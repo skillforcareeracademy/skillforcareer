@@ -33,6 +33,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { imageProps } from "@/lib/image-sizes";
 
 type Course = CatalogCourse & { categorySlug: string };
 
@@ -195,7 +196,9 @@ function CourseCard({ course, isEnrolled }: { course: Course; isEnrolled: boolea
           {course.thumbnailUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={course.thumbnailUrl}
+              {...imageProps(course.thumbnailUrl, 400)}
+              loading="lazy"
+              decoding="async"
               alt={course.title}
               className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
             />

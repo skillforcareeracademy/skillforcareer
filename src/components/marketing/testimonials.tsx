@@ -1,6 +1,7 @@
 import { Quote, Star } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import type { HomeData } from "@/lib/validations/homepage";
+import { imageProps } from "@/lib/image-sizes";
 
 export function Testimonials({ data }: { data: HomeData<"testimonials"> }) {
   if (data.items.length === 0) return null;
@@ -26,7 +27,7 @@ export function Testimonials({ data }: { data: HomeData<"testimonials"> }) {
                 {t.avatar && (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={t.avatar}
+                    {...imageProps(t.avatar, 44)}
                     alt={t.name}
                     loading="lazy"
                     className="ring-background size-11 shrink-0 rounded-full object-cover object-top ring-2"

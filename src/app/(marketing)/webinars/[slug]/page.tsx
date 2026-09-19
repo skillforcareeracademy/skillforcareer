@@ -13,6 +13,7 @@ import { format } from "date-fns";
 import { getPublicWebinarBySlug } from "@/server/services/webinar-service";
 import { Card } from "@/components/ui/card";
 import { WebinarRegisterForm } from "@/components/marketing/webinar-register-form";
+import { imageProps } from "@/lib/image-sizes";
 
 export const dynamic = "force-dynamic";
 
@@ -88,7 +89,7 @@ export default async function WebinarDetailPage({
           {w.coverImageUrl && (
             <div className="mt-6 overflow-hidden rounded-2xl border">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={w.coverImageUrl} alt={w.title} className="aspect-video w-full object-cover" />
+              <img {...imageProps(w.coverImageUrl, 828)} alt={w.title} className="aspect-video w-full object-cover" />
             </div>
           )}
 

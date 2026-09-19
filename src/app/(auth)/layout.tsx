@@ -6,6 +6,7 @@ import { ThemeToggle } from "@/components/shared/theme-toggle";
 import { ButtonLink } from "@/components/shared/button-link";
 import { IconGlyph } from "@/components/shared/icon-glyph";
 import { getHomeSection } from "@/server/services/homepage-service";
+import { imageProps } from "@/lib/image-sizes";
 
 export const dynamic = "force-dynamic";
 
@@ -92,7 +93,7 @@ export default async function AuthLayout({ children }: { children: ReactNode }) 
                     // and intrinsic size aren't known at build time.
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
-                      src={data.authorPhoto}
+                      {...imageProps(data.authorPhoto, 36)}
                       alt={data.authorName || "Learner"}
                       className="size-9 rounded-full object-cover ring-2 ring-white/40"
                     />

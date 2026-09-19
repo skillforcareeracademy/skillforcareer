@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { ButtonLink } from "@/components/shared/button-link";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { imageProps } from "@/lib/image-sizes";
 
 export const metadata: Metadata = { title: "My Learning" };
 export const dynamic = "force-dynamic";
@@ -50,7 +51,9 @@ export default async function MyLearningPage() {
                     {c.thumbnailUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
-                        src={c.thumbnailUrl}
+                        {...imageProps(c.thumbnailUrl, 400)}
+                        loading="lazy"
+                        decoding="async"
                         alt=""
                         className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
                       />

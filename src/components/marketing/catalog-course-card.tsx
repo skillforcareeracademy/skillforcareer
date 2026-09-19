@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/shared/button-link";
 import { ProgramEnquiryDialog } from "./program-enquiry-dialog";
+import { imageProps } from "@/lib/image-sizes";
 
 export interface CatalogCourse {
   id: string;
@@ -45,7 +46,9 @@ export function PublicCourseCard({ course }: { course: CatalogCourse }) {
           {course.thumbnailUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={course.thumbnailUrl}
+              {...imageProps(course.thumbnailUrl, 400)}
+              loading="lazy"
+              decoding="async"
               alt={course.title}
               className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
             />

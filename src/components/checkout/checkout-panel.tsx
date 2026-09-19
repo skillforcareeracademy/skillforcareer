@@ -33,6 +33,7 @@ import { PasswordInput } from "@/components/auth/password-input";
 import { OtpInput } from "@/components/auth/otp-input";
 import { PhoneInput } from "@/components/shared/phone-input";
 import { cn } from "@/lib/utils";
+import { imageProps } from "@/lib/image-sizes";
 
 const inr = (n: number) => `₹${n.toLocaleString("en-IN")}`;
 
@@ -496,7 +497,7 @@ export function CheckoutPanel({
                 // Not next/image: thumbnails come from arbitrary hosts.
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
-                  src={course.thumbnailUrl}
+                  {...imageProps(course.thumbnailUrl, 96)}
                   alt={course.title}
                   className="size-full object-cover"
                 />

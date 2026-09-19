@@ -4,6 +4,7 @@ import { iconFor, toneFor } from "@/config/icons";
 import { listPopularCourses } from "@/server/services/course-service";
 import type { HomeData } from "@/lib/validations/homepage";
 import { cn } from "@/lib/utils";
+import { imageProps } from "@/lib/image-sizes";
 
 /** "Complete Data Science Bootcamp: Python" → "Complete Data Science Bootcamp" */
 function chipLabel(title: string): string {
@@ -36,7 +37,7 @@ export async function Hero({ data }: { data: HomeData<"hero"> }) {
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                       key={`${avatar.url}-${i}`}
-                      src={avatar.url}
+                      {...imageProps(avatar.url, 24)}
                       alt=""
                       width={24}
                       height={24}

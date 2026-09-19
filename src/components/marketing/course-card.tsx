@@ -5,6 +5,7 @@ import { ButtonLink } from "@/components/shared/button-link";
 import { ProgramEnquiryDialog } from "./program-enquiry-dialog";
 import type { TrendingProgram } from "@/server/services/course-service";
 import { cn } from "@/lib/utils";
+import { imageProps } from "@/lib/image-sizes";
 
 const LEVEL_LABEL: Record<string, string> = {
   BEGINNER: "Beginner",
@@ -47,7 +48,9 @@ export function CourseCard({ program }: { program: TrendingProgram }) {
              next/image would reject every domain not listed in next.config. */
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={program.thumbnailUrl}
+            {...imageProps(program.thumbnailUrl, 400)}
+            loading="lazy"
+            decoding="async"
             alt={program.title}
             className="size-full object-cover object-top transition-transform duration-500 group-hover:scale-105"
           />

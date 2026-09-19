@@ -15,6 +15,7 @@ import { api } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import type { CourseSuggestion } from "@/server/services/course-service";
 import { cn } from "@/lib/utils";
+import { imageProps } from "@/lib/image-sizes";
 
 const MIN_CHARS = 2;
 const DEBOUNCE_MS = 250;
@@ -214,7 +215,7 @@ export function CourseSearch({
                     {course.thumbnailUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
-                        src={course.thumbnailUrl}
+                        {...imageProps(course.thumbnailUrl, 44)}
                         alt=""
                         className="size-full object-cover"
                       />

@@ -20,6 +20,7 @@ import { brandWordmark } from "@/lib/branding";
 import { navFor, isNavActive, type NavFeature } from "@/config/navigation";
 import { ROLE_HOME, type Role } from "@/config/roles";
 import { cn } from "@/lib/utils";
+import { imageProps } from "@/lib/image-sizes";
 
 /** Role-aware, collapsible dashboard sidebar. */
 export function DashboardSidebar({
@@ -61,7 +62,7 @@ export function DashboardSidebar({
               intrinsic size aren't known at build time. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={logoUrl}
+            {...imageProps(logoUrl, 256)}
             alt={wordmark}
             onLoad={(e) => {
               const img = e.currentTarget;

@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import type { HomeData } from "@/lib/validations/homepage";
+import { imageProps } from "@/lib/image-sizes";
 
 type Reel = HomeData<"learnerVideos">["items"][number];
 
@@ -96,7 +97,7 @@ export function LearnerVideos({ data }: { data: HomeData<"learnerVideos"> }) {
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={r.poster}
+                  {...imageProps(r.poster, 320)}
                   alt={r.name}
                   loading="lazy"
                   className="size-full object-cover transition-transform duration-500 group-hover:scale-105"

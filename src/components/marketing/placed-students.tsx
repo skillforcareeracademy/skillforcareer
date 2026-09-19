@@ -1,4 +1,5 @@
 import type { HomeData } from "@/lib/validations/homepage";
+import { imageProps } from "@/lib/image-sizes";
 
 type PlacedStudent = HomeData<"placedStudents">["items"][number];
 
@@ -26,7 +27,7 @@ function StudentCard({ student }: { student: PlacedStudent }) {
           cache. Plain <img> because the photo is whatever an admin uploaded. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src={student.photo}
+        {...imageProps(student.photo, 150)}
         alt={`${student.name}, ${student.course} learner`}
         width={150}
         height={139}

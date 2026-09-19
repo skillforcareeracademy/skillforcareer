@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { useBranding } from "@/components/providers/branding-provider";
+import { imageProps } from "@/lib/image-sizes";
 
 interface LogoProps {
   href?: string;
@@ -33,7 +34,7 @@ export function Logo({ href = "/", showText = false, className }: LogoProps) {
   const image = (
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src={logoUrl}
+      {...imageProps(logoUrl, 256)}
       alt={siteName}
       // cn() merges through tailwind-merge, so a caller passing `h-14` wins.
       className={cn(

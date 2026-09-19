@@ -20,6 +20,7 @@ import { Card } from "@/components/ui/card";
 import { ButtonLink } from "@/components/shared/button-link";
 import type { StudentWebinar } from "@/server/services/webinar-service";
 import { cn } from "@/lib/utils";
+import { imageProps } from "@/lib/image-sizes";
 
 /**
  * The learner's webinar tab — "enrolled webinar, all webinar, upcoming webinar,
@@ -139,7 +140,9 @@ function WebinarCard({ webinar: w }: { webinar: StudentWebinar }) {
             // Not next/image: covers come from arbitrary hosts.
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={w.coverImageUrl}
+              {...imageProps(w.coverImageUrl, 400)}
+              loading="lazy"
+              decoding="async"
               alt={w.title}
               className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
             />

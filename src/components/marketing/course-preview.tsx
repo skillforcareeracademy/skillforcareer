@@ -9,6 +9,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { resolveEmbed } from "@/lib/media";
+import { imageProps } from "@/lib/image-sizes";
 
 /**
  * Course media preview for the detail sidebar: the thumbnail, with a play
@@ -41,7 +42,9 @@ export function CoursePreview({
         {thumbnailUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={thumbnailUrl}
+            {...imageProps(thumbnailUrl, 400)}
+            loading="lazy"
+            decoding="async"
             alt={title}
             className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
           />

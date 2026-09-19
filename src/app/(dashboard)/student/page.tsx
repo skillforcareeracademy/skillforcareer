@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ButtonLink } from "@/components/shared/button-link";
+import { imageProps } from "@/lib/image-sizes";
 
 export const metadata: Metadata = { title: "My learning" };
 export const dynamic = "force-dynamic";
@@ -64,7 +65,7 @@ export default async function StudentHome() {
                   <div className="ring-border relative h-12 w-20 shrink-0 overflow-hidden rounded-md bg-gradient-to-br from-rose-500/15 to-pink-600/15 ring-1">
                     {c.thumbnailUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={c.thumbnailUrl} alt="" className="size-full object-cover" />
+                      <img {...imageProps(c.thumbnailUrl, 80)} alt="" className="size-full object-cover" />
                     ) : (
                       <span className="grid size-full place-items-center">
                         <PlayCircle className="size-5 text-rose-500/60" />

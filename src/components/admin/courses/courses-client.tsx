@@ -55,6 +55,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { imageProps } from "@/lib/image-sizes";
 
 interface CourseRow {
   id: string;
@@ -225,7 +226,7 @@ export function CoursesClient({
             {c.thumbnailUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={c.thumbnailUrl}
+                {...imageProps(c.thumbnailUrl, 64)}
                 alt=""
                 className="h-full w-full object-cover"
                 loading="lazy"
