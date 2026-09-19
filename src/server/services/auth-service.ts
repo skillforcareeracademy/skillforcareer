@@ -462,6 +462,70 @@ async function touchLogin(userId: string, passwordHash?: string): Promise<void> 
   `;
 }
 
+/** A second sign-in code for the same address inside this window is not sent. */
+const LOGIN_CODE_COOLDOWN_MS = 5 * 60_000;
+
+/**
+ * Email a one-time sign-in code — the "Email code" option on the apps'
+ * sign-in screen, for anyone who has forgotten their password or never set
+ * one. Says nothing about who has an account: an unknown or suspended address
+ * gets the same answer and no email. A repeat request within five minutes is
+ * ignored too (the code stays valid for ten), so the button can't be used to
+ * flood someone's inbox.
+ *
+ * `code` is returned only for the caller to expose in development.
+ */
+export async function requestLoginCode(emailInput: string): Promise<{ email: string; code: string | null }> {
+  const email = emailInput.trim().toLowerCase();
+  const user = await loadAuthUserByEmail(email);
+  if (!user || user.status === "SUSPENDED") return { email, code: null };
+
+  const recent = await prisma.otpToken.findFirst({
+    where: {
+      email: user.email,
+      purpose: PURPOSE_DB.login,
+      consumedAt: null,
+      createdAt: { gt: new Date(Date.now() - LOGIN_CODE_COOLDOWN_MS) },
+    },
+    select: { id: true },
+  });
+  if (recent) return { email, code: null };
+
+  const code = await createAndSendOtp(user.id, user.email, "login", user.name);
+  return { email, code };
+}
+
+/** The second step: the code from that email signs the person in, as a password would. */
+export async function loginWithCode(input: {
+  email: string;
+  code: string;
+}): Promise<{ user: PublicUser; tokens: AuthTokens }> {
+  const email = input.email.trim().toLowerCase();
+  await consumeOtp(email, input.code, "login");
+  let user = await loadAuthUserByEmail(email);
+  if (!user) throw AppError.unauthorized("Invalid email or code.");
+  if (user.status === "SUSPENDED") {
+    throw AppError.forbidden("Your account has been suspended.");
+  }
+
+  // The code reached this inbox, which is exactly what verifying the address
+  // proves — so an account still waiting on that is verified on the way in.
+  // Raw for the same reason as `touchLogin` below.
+  if (!user.emailVerified || user.status === "PENDING") {
+    const now = new Date();
+    await prisma.$executeRaw`
+      UPDATE \`User\`
+      SET emailVerified = COALESCE(emailVerified, ${now}),
+          status = IF(status = 'PENDING', 'ACTIVE', status),
+          updatedAt = ${now}
+      WHERE id = ${user.id}`;
+    user = (await loadAuthUserById(user.id)) ?? user;
+  }
+
+  const [tokens] = await Promise.all([issueTokens(user), recordLogin(user.id)]);
+  return { user: toPublicUser(user), tokens };
+}
+
 export async function resendOtp(input: {
   email: string;
   purpose: OtpPurpose;
