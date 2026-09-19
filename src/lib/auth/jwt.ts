@@ -53,6 +53,11 @@ export async function signToken(
 ): Promise<string> {
   return new SignJWT({ ...payload, type })
     .setProtectedHeader({ alg: "HS256" })
+    // A unique id per token. Without it two tokens for the same person signed
+    // in the same second (a double-tapped Sign in, two tabs refreshing at once)
+    // came out byte-identical, and the second one's refresh-token row broke the
+    // unique hash index — a 500 on sign-in.
+    .setJti(crypto.randomUUID())
     .setIssuedAt()
     .setExpirationTime(expiryFor(type))
     .setSubject(payload.sub)
