@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { Lock } from "lucide-react";
+import { CalendarClock, CalendarX, Lock } from "lucide-react";
 import { requireUser } from "@/lib/auth/require";
 import { getMeetingByRoomCode } from "@/server/services/live-service";
 import { checkRoomAccess } from "@/server/services/live-access";
@@ -9,6 +9,11 @@ import { LiveRoom } from "@/components/live/live-room";
 import { WakeSignalling } from "@/components/live/wake-signalling";
 import { Logo } from "@/components/shared/logo";
 import { ButtonLink } from "@/components/shared/button-link";
+import { ROLES } from "@/config/roles";
+import { isStaffRole } from "@/lib/auth/api-guard";
+import { isBatchTeachingTeam } from "@/lib/auth/class-guard";
+import { isJoinLinkOpen, joinLinkOpensAt, JOIN_LINK_LEAD_HOURS } from "@/lib/class-link";
+import { formatIstSlot } from "@/lib/ist";
 
 export const dynamic = "force-dynamic";
 
@@ -43,7 +48,46 @@ export default async function LiveRoomPage({
     );
   }
 
-  const isHost = meeting.host.id === user.id;
+  // The batch's lead and associate instructors run its classes together, so
+  // any of them gets the host's controls — not only the one set as host.
+  const isHost =
+    meeting.host.id === user.id ||
+    (meeting.batchId !== null &&
+      !isStaffRole(user.role) &&
+      (await isBatchTeachingTeam(user, meeting.batchId)));
+
+  // Learners get a class's link 24 hours before it starts, and not at all once
+  // it is cancelled. The teaching team and staff can always open the room.
+  const isTeam =
+    isHost ||
+    user.role === ROLES.SUPER_ADMIN ||
+    user.role === ROLES.ADMIN ||
+    user.role === ROLES.INSTRUCTOR;
+  if (!isTeam && meeting.provider !== "webinar") {
+    if (meeting.status === "CANCELLED") {
+      return (
+        <RoomNotOpen
+          icon="cancelled"
+          heading="This class was cancelled"
+          title={meeting.title}
+          when={formatIstSlot(meeting.scheduledStart, meeting.scheduledEnd)}
+          detail={meeting.cancelReason ? `Reason: ${meeting.cancelReason}` : null}
+        />
+      );
+    }
+    if (meeting.status === "SCHEDULED" && !isJoinLinkOpen(meeting.scheduledStart)) {
+      return (
+        <RoomNotOpen
+          icon="early"
+          heading={`The link opens ${JOIN_LINK_LEAD_HOURS} hours before class`}
+          title={meeting.title}
+          when={formatIstSlot(meeting.scheduledStart, meeting.scheduledEnd)}
+          detail={`Come back from ${formatIstSlot(joinLinkOpensAt(meeting.scheduledStart))} — we'll email you the link the day before.`}
+        />
+      );
+    }
+  }
+
   const token = await signRoomToken({
     sub: user.id,
     name: user.name,
@@ -68,6 +112,49 @@ export default async function LiveRoomPage({
         signalUrl={signalUrl}
       />
     </>
+  );
+}
+
+function RoomNotOpen({
+  icon,
+  heading,
+  title,
+  when,
+  detail,
+}: {
+  icon: "early" | "cancelled";
+  heading: string;
+  title: string;
+  when: string;
+  detail: string | null;
+}) {
+  const Icon = icon === "early" ? CalendarClock : CalendarX;
+  return (
+    <div className="flex min-h-svh flex-col items-center justify-center gap-8 bg-neutral-950 px-4 text-center text-white">
+      <Logo />
+      <div className="max-w-md space-y-4">
+        <span className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-white/10">
+          <Icon className={icon === "early" ? "size-7 text-sky-300" : "size-7 text-rose-400"} />
+        </span>
+        <h1 className="text-2xl font-semibold">{heading}</h1>
+        <p className="text-white/70">
+          <span className="font-medium text-white">&ldquo;{title}&rdquo;</span>
+          <br />
+          {when}
+        </p>
+        {detail && <p className="text-sm text-white/60">{detail}</p>}
+        <div className="flex justify-center pt-2">
+          <ButtonLink
+            href="/student/live"
+            size="lg"
+            variant="outline"
+            className="border-white/20 bg-transparent text-white hover:bg-white/10"
+          >
+            Back to live classes
+          </ButtonLink>
+        </div>
+      </div>
+    </div>
   );
 }
 

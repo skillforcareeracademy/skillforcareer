@@ -286,6 +286,17 @@ export function LiveRoom({
   }
   function endForEveryone() {
     room.endClass();
+    // Mark the class ended too — otherwise it stays "Live" in every list and
+    // its learners never get the "class ended" email. `keepalive` lets the
+    // request finish while the page navigates away. Webinars end their own way.
+    if (meeting.provider !== "webinar" && meeting.status !== "ENDED") {
+      void fetch(`/api/meetings/${meeting.id}/status`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "ENDED" }),
+        keepalive: true,
+      }).catch(() => {});
+    }
     leave();
   }
 

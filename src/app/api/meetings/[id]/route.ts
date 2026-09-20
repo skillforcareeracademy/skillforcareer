@@ -19,15 +19,15 @@ export const GET = withRoute(async (_req, { params }) => {
 
 export const PATCH = withRoute(async (req, { params }) => {
   const id = String((await params).id);
-  await requireMeetingWrite(id);
+  const user = await requireMeetingWrite(id);
   const input = updateMeetingSchema.parse(await req.json().catch(() => ({})));
-  await updateMeeting(id, input);
+  await updateMeeting(id, input, user.id);
   return ok({ message: "Live class saved." });
 });
 
 export const DELETE = withRoute(async (_req, { params }) => {
   const id = String((await params).id);
-  await requireMeetingWrite(id);
-  await deleteMeeting(id);
+  const user = await requireMeetingWrite(id);
+  await deleteMeeting(id, user.id);
   return ok({ message: "Live class deleted." });
 });

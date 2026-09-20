@@ -5,6 +5,7 @@ import { requireApiPermission, isStaffRole, userOwnsCourse } from "@/lib/auth/ap
 import { PERMISSIONS } from "@/config/roles";
 import { createBatchSchema } from "@/lib/validations/batch";
 import { createBatch } from "@/server/services/batch-service";
+import { refreshBatchTimetable } from "@/server/services/class-schedule-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,5 +21,6 @@ export const POST = withRoute(async (req) => {
     input.instructorId = user.id;
   }
   const id = await createBatch(input);
+  await refreshBatchTimetable(id, "created");
   return created({ id, message: "Batch created." });
 });

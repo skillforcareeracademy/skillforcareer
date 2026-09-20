@@ -3,6 +3,7 @@ import { ok } from "@/lib/api/response";
 import { requireBatchWrite } from "@/lib/auth/api-guard";
 import { updateBatchSchema } from "@/lib/validations/batch";
 import { updateBatch, deleteBatch, getBatchDetail } from "@/server/services/batch-service";
+import { refreshBatchTimetable } from "@/server/services/class-schedule-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,6 +19,7 @@ export const PATCH = withRoute(async (req, { params }) => {
   await requireBatchWrite(id);
   const input = updateBatchSchema.parse(await req.json().catch(() => ({})));
   await updateBatch(id, input);
+  await refreshBatchTimetable(id, "updated");
   return ok({ message: "Batch saved." });
 });
 

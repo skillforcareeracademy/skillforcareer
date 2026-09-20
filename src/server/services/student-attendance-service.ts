@@ -58,7 +58,13 @@ export async function getStudentAttendance(
   const [meetings, rows] = await Promise.all([
     batchIds.length
       ? prisma.meeting.findMany({
-          where: { batchId: { in: batchIds } },
+          // Timetables are generated months ahead; without a horizon the
+          // newest-first page of 200 could be all future classes and push
+          // every attended one off the report.
+          where: {
+            batchId: { in: batchIds },
+            scheduledStart: { lte: new Date(Date.now() + 7 * 86_400_000) },
+          },
           orderBy: { scheduledStart: "desc" },
           take: 200,
           select: {

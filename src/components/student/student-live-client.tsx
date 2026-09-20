@@ -16,6 +16,7 @@ import {
   MonitorSmartphone,
   ShieldCheck,
   Timer,
+  PartyPopper,
 } from "lucide-react";
 import type { StudentMeeting } from "@/server/services/live-service";
 import { PageHeader } from "@/components/shared/page-header";
@@ -33,6 +34,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { RecordingPlayer } from "@/components/student/recording-player";
+import { formatIstSlot } from "@/lib/ist";
 
 function initials(name: string): string {
   return name.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase();
@@ -53,14 +55,18 @@ function addToCalendar(m: StudentMeeting) {
   const stamp = (d: Date) => `${d.toISOString().replace(/[-:]/g, "").split(".")[0]}Z`;
   const start = new Date(m.scheduledStart);
   const end = m.scheduledEnd ? new Date(m.scheduledEnd) : new Date(start.getTime() + 60 * 60 * 1000);
-  const url = `${window.location.origin}/live/room/${m.roomCode}`;
+  // The room link isn't handed out until 24 hours before class; until then the
+  // invite points at this page, where it will appear.
+  const url = m.joinLinkOpen
+    ? `${window.location.origin}/live/room/${m.roomCode}`
+    : `${window.location.origin}/student/live`;
   const esc = (s: string) => s.replace(/([,;\\])/g, "\\$1").replace(/\n/g, "\\n");
   const ics = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
     "PRODID:-//SkillForCareer//Live//EN",
     "BEGIN:VEVENT",
-    `UID:${m.roomCode}@skillforcareer`,
+    `UID:${m.id}@skillforcareer`,
     `DTSTAMP:${stamp(new Date())}`,
     `DTSTART:${stamp(start)}`,
     `DTEND:${stamp(end)}`,
@@ -74,12 +80,26 @@ function addToCalendar(m: StudentMeeting) {
   const href = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = href;
-  a.download = `${m.roomCode}.ics`;
+  a.download = `class-${m.id}.ics`;
   a.click();
   URL.revokeObjectURL(href);
 }
 
-export function StudentLiveClient({ meetings }: { meetings: StudentMeeting[] }) {
+export interface HolidayBanner {
+  name: string;
+  message: string | null;
+  noClasses: boolean;
+  /** The learner still has a class today (one added by hand on the holiday). */
+  classToday: boolean;
+}
+
+export function StudentLiveClient({
+  meetings,
+  holidayToday = null,
+}: {
+  meetings: StudentMeeting[];
+  holidayToday?: HolidayBanner | null;
+}) {
   const { live, upcoming, past } = useMemo(() => {
     const live = meetings.filter((m) => m.phase === "live");
     const upcoming = meetings
@@ -111,6 +131,8 @@ export function StudentLiveClient({ meetings }: { meetings: StudentMeeting[] }) 
           ) : undefined
         }
       />
+
+      {holidayToday && <HolidayBannerCard holiday={holidayToday} />}
 
       {meetings.length === 0 ? (
         <EmptyState
@@ -264,12 +286,42 @@ function UpcomingRow({ m }: { m: StudentMeeting }) {
         </div>
       </div>
 
-      <div className="flex shrink-0 gap-2">
-        <Button variant="outline" size="sm" onClick={() => addToCalendar(m)}>
-          <CalendarPlus className="size-4" /> Add to calendar
-        </Button>
+      <div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => addToCalendar(m)}>
+            <CalendarPlus className="size-4" /> Add to calendar
+          </Button>
+          {m.joinLinkOpen && (
+            <ButtonLink href={`/live/room/${m.roomCode}`} size="sm">
+              <Video className="size-4" /> Class link
+            </ButtonLink>
+          )}
+        </div>
+        {!m.joinLinkOpen && (
+          <span className="text-muted-foreground inline-flex items-center gap-1 text-xs">
+            <Lock className="size-3" /> Link opens {formatIstSlot(m.joinLinkOpensAt)}
+          </span>
+        )}
       </div>
     </Card>
+  );
+}
+
+/** "Happy Diwali — enjoy your holiday", on the day itself. */
+function HolidayBannerCard({ holiday }: { holiday: HolidayBanner }) {
+  return (
+    <div className="flex items-start gap-3 rounded-2xl border border-amber-500/30 bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-rose-500/10 p-4 sm:p-5">
+      <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400">
+        <PartyPopper className="size-5" />
+      </span>
+      <div className="min-w-0 space-y-1">
+        <p className="font-semibold">{holiday.name} greetings from all of us!</p>
+        {holiday.message && <p className="text-muted-foreground text-sm">{holiday.message}</p>}
+        {holiday.noClasses && !holiday.classToday && (
+          <p className="text-sm font-medium">Enjoy your holiday as there is no class scheduled for today.</p>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -369,7 +421,11 @@ function PastCard({ m }: { m: StudentMeeting }) {
               <p className="text-muted-foreground text-center text-xs">{rec.message}</p>
             ) : (
               <p className="text-muted-foreground text-center text-xs">
-                {isCancelled ? "This class was cancelled" : "No recording available"}
+                {isCancelled
+                  ? m.cancelReason
+                    ? `Cancelled — ${m.cancelReason}`
+                    : "This class was cancelled"
+                  : "No recording available"}
               </p>
             )}
           </div>

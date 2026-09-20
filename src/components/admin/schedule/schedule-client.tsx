@@ -69,9 +69,12 @@ function dayLabel(d: Date): string {
 export function ScheduleClient({
   events,
   stats,
+  batchProgress,
 }: {
   events: ScheduleEvent[];
   stats: ScheduleStats;
+  /** Completed-vs-pending classes per running batch, rendered by the page. */
+  batchProgress?: React.ReactNode;
 }) {
   const [type, setType] = useState<"all" | ScheduleEventType>("all");
   const [selected, setSelected] = useState<Date | undefined>(undefined);
@@ -170,6 +173,8 @@ export function ScheduleClient({
           </Card>
         ))}
       </div>
+
+      {batchProgress}
 
       {/* Type filter */}
       <div className="flex flex-wrap gap-2">

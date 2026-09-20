@@ -9,6 +9,10 @@
     {
       "path": "/api/cron/lead-reminders",
       "schedule": "30 3 * * *"
+    },
+    {
+      "path": "/api/cron/classes",
+      "schedule": "0 2 * * *"
     }
   ]
 }

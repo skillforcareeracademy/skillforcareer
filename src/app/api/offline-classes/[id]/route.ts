@@ -18,15 +18,15 @@ export const dynamic = "force-dynamic";
 
 export const PATCH = withRoute(async (req, { params }) => {
   const id = String((await params).id);
-  await requireMeetingWrite(id);
+  const user = await requireMeetingWrite(id);
   const input = offlineClassSchema.parse(await req.json().catch(() => ({})));
-  await updateOfflineClass(id, input);
+  await updateOfflineClass(id, input, user.id);
   return ok({ message: "Offline class saved." });
 });
 
 export const DELETE = withRoute(async (_req, { params }) => {
   const id = String((await params).id);
-  await requireMeetingWrite(id);
-  await deleteOfflineClass(id);
+  const user = await requireMeetingWrite(id);
+  await deleteOfflineClass(id, user.id);
   return ok({ message: "Offline class deleted." });
 });
