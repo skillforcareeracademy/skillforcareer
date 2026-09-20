@@ -33,6 +33,7 @@ export type ActivityAction = (typeof ACTIVITY_ACTIONS)[keyof typeof ACTIVITY_ACT
 /** Human labels for the same set — used by the admin table and the timeline. */
 export const ACTIVITY_LABELS: Record<string, string> = {
   "auth.login": "Signed in",
+  "careers.candidate.update": "Updated a job applicant",
   "auth.logout": "Signed out",
   "auth.register": "Created an account",
   "course.enroll": "Enrolled in a course",

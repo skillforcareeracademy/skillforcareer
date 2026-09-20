@@ -1,27 +1,33 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import {
   ArrowRight,
   BadgeCheck,
   Briefcase,
+  Building2,
   ClipboardList,
   Code2,
+  FileText,
   GraduationCap,
   Handshake,
   HeartHandshake,
-  Mail,
+  IndianRupee,
+  MapPin,
   Megaphone,
   MessageSquare,
   PhoneCall,
   Rocket,
+  Send,
   Sparkles,
   TrendingUp,
   Users,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ButtonLink } from "@/components/shared/button-link";
 import { StepList, type Step } from "@/components/marketing/step-list";
 import { siteConfig } from "@/config/site";
+import { listOpenRoles } from "@/server/services/careers-service";
+import { EXPERIENCE_LEVEL_LABELS, JOB_MODE_LABELS } from "@/lib/validations/careers";
 
 export const metadata: Metadata = {
   title: "Careers",
@@ -29,15 +35,20 @@ export const metadata: Metadata = {
     "Work at Skill For Career Academy — teaching, counselling, marketing, engineering and student success roles across Faridabad, Greater Noida and remote.",
 };
 
+// The open-roles band below reads hiring partners' posts live.
+export const dynamic = "force-dynamic";
+
 const { contact } = siteConfig;
 
-/** mailto: with the role pre-filled, so an application lands already labelled. */
+/**
+ * Every CV on this page goes through the application form, not a mailto: the
+ * client asked for CVs to "receive in our system", where the placement team
+ * tracks them (Admin → Careers). A role, when there is one, rides along so the
+ * form opens with "job you're looking for" already filled in.
+ */
+const APPLY_HREF = "/careers/apply";
 function applyHref(role: string): string {
-  const subject = encodeURIComponent(`Application — ${role}`);
-  const body = encodeURIComponent(
-    `Hi Skill For Career team,\n\nI'd like to apply for a ${role} role.\n\nName:\nPhone:\nCurrent city:\nYears of experience:\n\n(Please attach your CV to this email.)`,
-  );
-  return `mailto:${contact.email}?subject=${subject}&body=${body}`;
+  return `${APPLY_HREF}?role=${encodeURIComponent(role)}`;
 }
 
 const TEAMS = [
@@ -104,9 +115,9 @@ const PERKS = [
 
 const HIRING: Step[] = [
   {
-    icon: Mail,
+    icon: FileText,
     title: "Send your CV",
-    body: "Email us with the team you're aiming for. We read everything that arrives.",
+    body: "Fill in a short form and attach your CV. We read everything that arrives.",
   },
   {
     icon: MessageSquare,
@@ -125,7 +136,9 @@ const HIRING: Step[] = [
   },
 ];
 
-export default function CareersPage() {
+export default async function CareersPage() {
+  const openRoles = await listOpenRoles();
+
   return (
     <>
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
@@ -155,17 +168,12 @@ export default function CareersPage() {
               <ButtonLink href="#teams" size="lg">
                 See where we hire <ArrowRight className="size-4" />
               </ButtonLink>
-              <Button
-                size="lg"
-                variant="outline"
-                nativeButton={false}
-                render={<a href={applyHref("general")} />}
-              >
-                <Mail className="size-4" /> Send your CV
-              </Button>
+              <ButtonLink href={APPLY_HREF} size="lg" variant="outline">
+                <Send className="size-4" /> Send your CV
+              </ButtonLink>
             </div>
             <p className="text-muted-foreground mt-5 text-sm">
-              No live vacancy that fits? Write in anyway — we keep good CVs on file and
+              No live vacancy that fits? Send your CV anyway — we keep good CVs on file and
               come back when a matching role opens.
             </p>
           </div>
@@ -224,17 +232,90 @@ export default function CareersPage() {
                   ))}
                 </div>
 
-                <a
+                <Link
                   href={applyHref(title)}
                   className="text-primary mt-5 inline-flex items-center gap-1 text-sm font-semibold hover:underline"
                 >
                   Apply for this team <ArrowRight className="size-4" />
-                </a>
+                </Link>
               </Card>
             ))}
           </div>
         </div>
       </section>
+
+      {/* ── Open roles with hiring partners ───────────────────────────────── */}
+      {openRoles.length > 0 && (
+        <section id="open-roles" className="container-page scroll-mt-20 py-16 sm:py-20">
+          <div className="mx-auto mb-10 max-w-2xl text-center">
+            <h2 className="text-3xl sm:text-4xl">Open roles with our hiring partners</h2>
+            <p className="text-muted-foreground mt-3">
+              Companies that hire our learners are filling these now. Apply here and
+              our placement team puts you forward.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {openRoles.map((role) => (
+              <Card key={role.id} className="flex h-full flex-col gap-0 p-6">
+                <div className="flex items-start justify-between gap-3">
+                  <span className="bg-primary/10 text-primary grid size-11 shrink-0 place-items-center rounded-xl">
+                    <Briefcase className="size-5" />
+                  </span>
+                  <span
+                    className={
+                      role.level === "FRESHER"
+                        ? "rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-400"
+                        : "rounded-full bg-violet-500/10 px-2.5 py-0.5 text-xs font-medium text-violet-700 dark:text-violet-400"
+                    }
+                  >
+                    {EXPERIENCE_LEVEL_LABELS[role.level]}
+                  </span>
+                </div>
+                <h3 className="mt-4 font-semibold">{role.title}</h3>
+                <p className="text-muted-foreground mt-1 flex items-center gap-1.5 text-sm">
+                  <Building2 className="size-3.5 shrink-0" /> {role.company}
+                </p>
+                {role.description && (
+                  <p className="text-muted-foreground mt-3 line-clamp-3 text-sm">
+                    {role.description}
+                  </p>
+                )}
+
+                <div className="mt-4 flex flex-wrap gap-1.5">
+                  {role.location && (
+                    <span className="bg-muted text-muted-foreground inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium">
+                      <MapPin className="size-3" /> {role.location}
+                    </span>
+                  )}
+                  {role.mode && (
+                    <span className="bg-muted text-muted-foreground rounded-full px-2.5 py-0.5 text-xs font-medium">
+                      {JOB_MODE_LABELS[role.mode]}
+                    </span>
+                  )}
+                  {role.salary && (
+                    <span className="bg-muted text-muted-foreground inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium">
+                      <IndianRupee className="size-3" /> {role.salary}
+                    </span>
+                  )}
+                  {role.openings != null && role.openings > 0 && (
+                    <span className="bg-muted text-muted-foreground rounded-full px-2.5 py-0.5 text-xs font-medium">
+                      {role.openings} {role.openings === 1 ? "opening" : "openings"}
+                    </span>
+                  )}
+                </div>
+
+                <Link
+                  href={`${APPLY_HREF}?post=${encodeURIComponent(role.id)}`}
+                  className="text-primary mt-auto inline-flex items-center gap-1 pt-5 text-sm font-semibold hover:underline"
+                >
+                  Apply for this role <ArrowRight className="size-4" />
+                </Link>
+              </Card>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* ── Hiring process ───────────────────────────────────────────────── */}
       <section className="container-page py-16 sm:py-20">
@@ -264,19 +345,18 @@ export default function CareersPage() {
               Ready to apply?
             </h2>
             <p className="mt-4 text-lg text-white/90">
-              Email your CV with the team you&apos;re interested in. Mention the city you can
-              work from and when you can start.
+              Send your CV with the role you&apos;re after, the city you can work from and
+              when you can start. It goes straight to our team.
             </p>
             <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-              <Button
+              <ButtonLink
+                href={APPLY_HREF}
                 size="lg"
                 variant="secondary"
                 className="bg-white text-rose-700 hover:bg-white/90"
-                nativeButton={false}
-                render={<a href={applyHref("general")} />}
               >
-                <Mail className="size-4" /> {contact.email}
-              </Button>
+                <Send className="size-4" /> Send your CV
+              </ButtonLink>
               <ButtonLink
                 href={`tel:${contact.phone}`}
                 size="lg"
