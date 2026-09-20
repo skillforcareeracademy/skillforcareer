@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { format } from "date-fns";
 import {
+  ArrowRight,
   BookOpen,
   CalendarClock,
   Clock,
@@ -21,6 +23,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ButtonLink } from "@/components/shared/button-link";
 import { cn } from "@/lib/utils";
 
 interface Student {
@@ -44,6 +47,7 @@ interface Detail {
   schedule: { days: string[]; startTime: string; endTime: string } | null;
   course: { title: string; slug: string };
   instructor: { name: string; avatarUrl: string | null; headline: string | null } | null;
+  associates: { id: string; name: string; avatarUrl: string | null }[];
   students: Student[];
 }
 
@@ -75,6 +79,9 @@ export function BatchDetailSheet({
 }
 
 function DetailBody({ batchId }: { batchId: string }) {
+  // "/admin/batches" or "/instructor/batches" — the profile lives underneath.
+  const pathname = usePathname();
+  const profileHref = `${pathname.replace(/\/$/, "")}/${batchId}`;
   const [data, setData] = useState<Detail | null>(null);
   const [now, setNow] = useState(0);
   const [error, setError] = useState(false);
@@ -156,6 +163,9 @@ function DetailBody({ batchId }: { batchId: string }) {
           </Badge>
         </div>
         <SheetDescription className="font-mono text-xs">{data.code}</SheetDescription>
+        <ButtonLink href={profileHref} size="sm" className="mt-2 w-fit">
+          Open batch profile <ArrowRight className="size-4" />
+        </ButtonLink>
       </SheetHeader>
 
       <div className="space-y-6 p-6">
@@ -186,6 +196,26 @@ function DetailBody({ batchId }: { batchId: string }) {
               </p>
             </div>
           </div>
+          {data.associates.length > 0 && (
+            <div className="flex items-center gap-3">
+              <div className="flex shrink-0 -space-x-2">
+                {data.associates.slice(0, 3).map((a) => (
+                  <Avatar key={a.id} className="ring-background size-9 ring-2">
+                    {a.avatarUrl && <AvatarImage src={a.avatarUrl} alt={a.name} />}
+                    <AvatarFallback className="text-xs">{initials(a.name)}</AvatarFallback>
+                  </Avatar>
+                ))}
+              </div>
+              <div className="min-w-0">
+                <p className="text-muted-foreground text-xs">
+                  Associate instructor{data.associates.length === 1 ? "" : "s"}
+                </p>
+                <p className="truncate text-sm font-medium">
+                  {data.associates.map((a) => a.name).join(", ")}
+                </p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Timeline */}

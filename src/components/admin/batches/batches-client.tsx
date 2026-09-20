@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState, type FormEvent } from "react";
+import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { format } from "date-fns";
 import {
@@ -18,6 +19,7 @@ import {
   CalendarDays,
   Eye,
   Download,
+  ArrowUpRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
@@ -85,6 +87,7 @@ interface BatchRow {
   courseTitle: string;
   instructorId: string | null;
   instructorName: string | null;
+  associates: { id: string; name: string }[];
   capacity: number | null;
   enrolledCount: number;
   startDate: string | null;
@@ -132,6 +135,7 @@ interface FormState {
   days: string[];
   startTime: string;
   endTime: string;
+  associateIds: string[];
 }
 const EMPTY: FormState = {
   name: "",
@@ -145,6 +149,7 @@ const EMPTY: FormState = {
   days: [],
   startTime: "",
   endTime: "",
+  associateIds: [],
 };
 
 function fromBatch(b: BatchRow): FormState {
@@ -160,7 +165,32 @@ function fromBatch(b: BatchRow): FormState {
     days: b.schedule?.days ?? [],
     startTime: b.schedule?.startTime ?? "",
     endTime: b.schedule?.endTime ?? "",
+    associateIds: b.associates.map((a) => a.id),
   };
+}
+
+/** "Rahul Verma + 2 associates" — the lead, and how many co-teach with them. */
+function teachersLabel(b: BatchRow): string {
+  const extra = b.associates.length;
+  if (!b.instructorName && !extra) return "";
+  const more = extra ? `${extra} associate${extra === 1 ? "" : "s"}` : "";
+  return b.instructorName ? [b.instructorName, more].filter(Boolean).join(" + ") : more;
+}
+
+/**
+ * Associate instructors live in their own table and have their own endpoints,
+ * so the form saves the batch first and then brings its associates in line.
+ * A failure here leaves the batch saved and says so.
+ */
+async function syncAssociates(batchId: string, before: string[], after: string[]) {
+  const added = after.filter((id) => !before.includes(id));
+  const removed = before.filter((id) => !after.includes(id));
+  if (added.length) {
+    await api.post(`/api/batches/${batchId}/associates`, { userIds: added });
+  }
+  for (const id of removed) {
+    await api.del(`/api/batches/${batchId}/associates/${id}`);
+  }
 }
 
 function fmtDate(iso: string | null): string {
@@ -174,6 +204,8 @@ export function BatchesClient({
   stats,
   courses,
   instructors,
+  associateOptions = [],
+  viewerId,
 }: {
   batches: BatchRow[];
   total: number;
@@ -181,6 +213,13 @@ export function BatchesClient({
   stats: Stats;
   courses: Opt[];
   instructors: Opt[];
+  /** Instructors who can co-teach a batch, for the associate picker. */
+  associateOptions?: Opt[];
+  /**
+   * Set on the instructor panel. Batches this person only assists on are
+   * listed too, but only the lead (or staff) may edit them.
+   */
+  viewerId?: string;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -196,6 +235,10 @@ export function BatchesClient({
   function manageStudents(b: BatchRow) {
     setManaging({ id: b.id, name: b.name, capacity: b.capacity });
   }
+
+  /** An associate on the instructor panel: may open the batch, not edit it. */
+  const assistsOnly = (b: BatchRow) => Boolean(viewerId && b.instructorId !== viewerId);
+  const profileHref = (b: BatchRow) => `${pathname.replace(/\/$/, "")}/${b.id}`;
 
   const totalPages = Math.max(1, Math.ceil(total / query.pageSize));
   const hasFilters = Boolean(query.search || query.status || query.courseId);
@@ -272,12 +315,25 @@ export function BatchesClient({
       schedule: { days: form.days, startTime: form.startTime, endTime: form.endTime },
     };
     try {
+      let batchId: string;
       if (editing) {
         await api.patch(`/api/batches/${editing.id}`, payload);
-        toast.success("Batch updated.");
+        batchId = editing.id;
       } else {
-        await api.post("/api/batches", payload);
-        toast.success("Batch created.");
+        batchId = (await api.post<{ id: string }>("/api/batches", payload)).id;
+      }
+      const lead = editing || !viewerId ? form.instructorId : viewerId;
+      try {
+        await syncAssociates(
+          batchId,
+          editing?.associates.map((a) => a.id) ?? [],
+          form.associateIds.filter((id) => id !== lead),
+        );
+        toast.success(editing ? "Batch updated." : "Batch created.");
+      } catch (err) {
+        toast.warning(
+          `Batch saved, but the associate instructors weren't: ${err instanceof ApiError ? err.message : "try again from the batch profile."}`,
+        );
       }
       setDialogOpen(false);
       router.refresh();
@@ -316,10 +372,13 @@ export function BatchesClient({
       header: "Batch",
       cell: (b) => (
         <div className="min-w-0">
-          <p className="truncate font-medium">{b.name}</p>
+          <Link href={profileHref(b)} className="block truncate font-medium hover:underline">
+            {b.name}
+          </Link>
           <p className="text-muted-foreground truncate text-xs">
             {b.code}
-            {b.instructorName ? ` · ${b.instructorName}` : ""}
+            {teachersLabel(b) ? ` · ${teachersLabel(b)}` : ""}
+            {assistsOnly(b) ? " · you assist" : ""}
           </p>
         </div>
       ),
@@ -411,21 +470,28 @@ export function BatchesClient({
           <MoreHorizontal className="size-4" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={() => setDetailId(b.id)}>
-            <Eye className="size-4" /> View details
+          <DropdownMenuItem onClick={() => router.push(profileHref(b))}>
+            <ArrowUpRight className="size-4" /> Open batch profile
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => openEdit(b)}>
-            <Pencil className="size-4" /> Edit
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => manageStudents(b)}>
-            <UserPlus className="size-4" /> Manage students
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            className="text-destructive focus:text-destructive"
-            onClick={() => setDeleting(b)}
-          >
-            <Trash2 className="size-4" /> Delete
-          </DropdownMenuItem>
+          {!assistsOnly(b) && (
+            <>
+              <DropdownMenuItem onClick={() => setDetailId(b.id)}>
+                <Eye className="size-4" /> View details
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => openEdit(b)}>
+                <Pencil className="size-4" /> Edit
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => manageStudents(b)}>
+                <UserPlus className="size-4" /> Manage students
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                onClick={() => setDeleting(b)}
+              >
+                <Trash2 className="size-4" /> Delete
+              </DropdownMenuItem>
+            </>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
     );
@@ -437,17 +503,14 @@ export function BatchesClient({
     return (
       <div className="rounded-xl border p-4">
         <div className="flex items-start justify-between gap-2">
-          <button
-            type="button"
-            onClick={() => setDetailId(b.id)}
-            className="min-w-0 flex-1 text-left"
-          >
+          <Link href={profileHref(b)} className="min-w-0 flex-1 text-left">
             <p className="truncate font-medium">{b.name}</p>
             <p className="text-muted-foreground truncate text-xs">
               {b.code}
-              {b.instructorName ? ` · ${b.instructorName}` : ""}
+              {teachersLabel(b) ? ` · ${teachersLabel(b)}` : ""}
+              {assistsOnly(b) ? " · you assist" : ""}
             </p>
-          </button>
+          </Link>
           <div className="flex shrink-0 items-center gap-1">
             <Badge variant="secondary" className={STATUS_BADGE[b.status]}>
               {BATCH_STATUS_LABEL[b.status] ?? b.status}
@@ -690,6 +753,16 @@ export function BatchesClient({
               </div>
             </div>
 
+            {associateOptions.length > 0 && (
+              <AssociatesField
+                options={associateOptions.filter(
+                  (o) => o.id !== (form.instructorId || (!editing ? viewerId : undefined)),
+                )}
+                value={form.associateIds}
+                onChange={(ids) => set("associateIds", ids)}
+              />
+            )}
+
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-1.5">
                 <Label>Status</Label>
@@ -827,6 +900,75 @@ export function BatchesClient({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </div>
+  );
+}
+
+/**
+ * Pick any number of associate instructors: chosen ones show as removable
+ * chips, and the select below adds another.
+ */
+function AssociatesField({
+  options,
+  value,
+  onChange,
+}: {
+  options: Opt[];
+  value: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  const nameOf = (id: string) => options.find((o) => o.id === id)?.name ?? "Instructor";
+  const remaining = options.filter((o) => !value.includes(o.id));
+  const shown = value.filter((id) => options.some((o) => o.id === id));
+
+  return (
+    <div className="space-y-1.5">
+      <Label>Associate instructors</Label>
+      {shown.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {shown.map((id) => (
+            <span
+              key={id}
+              className="bg-muted inline-flex items-center gap-1 rounded-md py-0.5 pr-1 pl-2 text-xs"
+            >
+              {nameOf(id)}
+              <button
+                type="button"
+                aria-label={`Remove ${nameOf(id)}`}
+                className="hover:bg-background rounded p-0.5"
+                onClick={() => onChange(value.filter((v) => v !== id))}
+              >
+                <X className="size-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <Select
+        value={NONE}
+        onValueChange={(v) => {
+          if (v && v !== NONE && !value.includes(String(v))) onChange([...value, String(v)]);
+        }}
+      >
+        <SelectTrigger className="w-full" disabled={remaining.length === 0}>
+          <SelectValue>
+            {() => (remaining.length ? "Add an associate instructor…" : "No more instructors to add")}
+          </SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={NONE} className="hidden">
+            Add an associate instructor…
+          </SelectItem>
+          {remaining.map((o) => (
+            <SelectItem key={o.id} value={o.id}>
+              {o.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <p className="text-muted-foreground text-xs">
+        They co-teach the batch and see it under their own batches.
+      </p>
     </div>
   );
 }

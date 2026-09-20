@@ -4,12 +4,14 @@ import { PlayCircle, CheckCircle2, GraduationCap } from "lucide-react";
 import { requireRole } from "@/lib/auth/require";
 import { ROLES } from "@/config/roles";
 import { getMyLearning } from "@/server/services/enrollment-service";
+import { listStudentBatchNotes } from "@/server/services/batch-note-service";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ButtonLink } from "@/components/shared/button-link";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { imageProps } from "@/lib/image-sizes";
+import { BatchNotesSection } from "@/components/student/batch-notes-section";
 
 export const metadata: Metadata = { title: "My Learning" };
 export const dynamic = "force-dynamic";
@@ -23,7 +25,10 @@ const LEVEL_LABEL: Record<string, string> = {
 
 export default async function MyLearningPage() {
   const user = await requireRole([ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.STUDENT]);
-  const courses = await getMyLearning(user.id);
+  const [courses, batchNotes] = await Promise.all([
+    getMyLearning(user.id),
+    listStudentBatchNotes(user.id),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -114,6 +119,8 @@ export default async function MyLearningPage() {
           })}
         </div>
       )}
+
+      <BatchNotesSection notes={batchNotes} />
     </div>
   );
 }

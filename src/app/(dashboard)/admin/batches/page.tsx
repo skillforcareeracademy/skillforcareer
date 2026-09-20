@@ -7,6 +7,7 @@ import {
   listCoursesForBatch,
   listInstructors,
 } from "@/server/services/batch-service";
+import { listAssociateOptions } from "@/server/services/batch-associate-service";
 import { BatchesClient } from "@/components/admin/batches/batches-client";
 
 export const metadata: Metadata = { title: "Batches" };
@@ -30,11 +31,12 @@ export default async function BatchesPage({
     courseId: str(sp.course),
   };
 
-  const [{ batches, total }, stats, courses, instructors] = await Promise.all([
+  const [{ batches, total }, stats, courses, instructors, associateOptions] = await Promise.all([
     listBatchesAdmin(query),
     batchStats(),
     listCoursesForBatch(),
     listInstructors(),
+    listAssociateOptions(),
   ]);
 
   return (
@@ -45,6 +47,7 @@ export default async function BatchesPage({
       stats={stats}
       courses={courses}
       instructors={instructors}
+      associateOptions={associateOptions}
     />
   );
 }

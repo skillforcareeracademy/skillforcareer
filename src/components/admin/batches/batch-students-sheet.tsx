@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2, Search, UserPlus, X, Users } from "lucide-react";
+import { FileUp, Loader2, Search, UserPlus, X, Users } from "lucide-react";
 import { api, ApiError } from "@/lib/api-client";
 import {
   Sheet,
@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
+import { BatchImportDialog } from "./batch-import-dialog";
 
 interface Student {
   userId: string;
@@ -59,6 +60,7 @@ function Body({ batch }: { batch: BatchStudentsTarget }) {
   const [searching, setSearching] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   /** Re-read the roster after an add/remove. Called from handlers, not effects. */
   const loadAdded = useCallback(async () => {
@@ -158,9 +160,29 @@ function Body({ batch }: { batch: BatchStudentsTarget }) {
         <SheetTitle className="leading-snug">Students · {batch.name}</SheetTitle>
         <SheetDescription>
           Add learners who signed up offline. They&apos;re enrolled in this
-          batch&apos;s course right away and appear on its roster.
+          batch&apos;s course right away, appear on its roster, and get an email
+          with their batch details.
         </SheetDescription>
+        <Button
+          variant="outline"
+          size="sm"
+          className="mt-2 w-fit"
+          onClick={() => setImporting(true)}
+        >
+          <FileUp className="size-4" /> Import from CSV
+        </Button>
       </SheetHeader>
+
+      <BatchImportDialog
+        batchId={batch.id}
+        batchName={batch.name}
+        open={importing}
+        onOpenChange={(o) => {
+          setImporting(o);
+          // Whatever the import added should show in the roster above.
+          if (!o) void loadAdded();
+        }}
+      />
 
       {/* Already on the batch */}
       <div className="border-b px-6 py-4">
