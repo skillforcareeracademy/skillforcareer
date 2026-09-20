@@ -14,15 +14,12 @@ import {
   Trash2,
   Loader2,
   Phone as PhoneIcon,
-  Sparkles,
-  UserCheck,
-  TrendingUp,
-  XCircle,
   MessageSquare,
   Paperclip,
   SlidersHorizontal,
   CopyCheck,
   FileBarChart,
+  UserRound,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
@@ -37,17 +34,24 @@ import {
   LEAD_QUALITY_LABELS,
   LEAD_SUB_STATUSES,
   LEAD_CONTACT_CHANNEL_LABELS,
+  LEAD_FILTER_KEYS,
+  LEAD_SORTS,
+  LEAD_SORT_LABELS,
+  DEFAULT_LEAD_SORT,
   type LeadStage,
   type LeadClassMode,
   type LeadContactChannel,
   type LeadQuality,
+  type LeadSort,
+  type LeadStatCard,
+  type LeadViewParams,
 } from "@/lib/validations/lead";
+import type { Role } from "@/config/roles";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -80,20 +84,31 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  STAGE_BADGE,
-  SUB_STATUS_BADGE,
-  QUALITY_BADGE,
   SOURCE_LABEL,
   CLASS_MODE_LABEL,
+  inIST,
 } from "@/components/admin/leads/lead-badges";
 import { LeadContactActions } from "@/components/admin/leads/lead-contact-actions";
 import { LeadDetailSheet } from "@/components/admin/leads/lead-detail-sheet";
 import { LeadImportDialog } from "@/components/admin/leads/lead-import-dialog";
 import { LeadDuplicatesDialog } from "@/components/admin/leads/lead-duplicates-dialog";
+import { LeadStatCards } from "@/components/admin/leads/lead-stat-cards";
 import {
+  AssigneeEditor,
+  ClassModeEditor,
+  FeesEditor,
+  FollowUpEditor,
+  QualityEditor,
+  StageEditor,
+  VisitEditor,
+  type SaveLead,
+} from "@/components/admin/leads/lead-inline-edit";
+import {
+  AssigneeLabel,
   LeadFormFields,
   blankLeadForm,
   leadFormPayload,
+  type AssigneeOption,
   type CourseOption,
   type LeadFormState,
 } from "@/components/admin/leads/lead-form";
@@ -121,57 +136,56 @@ interface LeadRow {
   followUpTime: string | null;
   feesOffered: number | null;
   finalFees: number | null;
+  assignedToId: string | null;
   assignedToName: string | null;
   followUps: number;
   documents: number;
   createdAt: string;
 }
-interface Stats {
-  total: number;
-  fresh: number;
-  inProgress: number;
-  converted: number;
-  dropped: number;
-}
-interface Query {
-  page: number;
-  pageSize: number;
-  search?: string;
-  stage?: string;
-  subStatus?: string;
-  source?: string;
-  classMode?: string;
-  courseId?: string;
-  assignedToId?: string;
-  quality?: string;
-  minScore?: string;
-  due?: string;
-  from?: string;
-  to?: string;
-}
+type Query = { page: number; pageSize: number } & LeadViewParams;
 
 const ALL = "all";
+const VIEW_KEYS = [...LEAD_FILTER_KEYS, "sort"] as const;
 const inr = (n: number | null) =>
   n == null ? null : `₹${n.toLocaleString("en-IN")}`;
+
+function errorMessage(err: unknown, fallback: string): string {
+  const d =
+    err instanceof ApiError
+      ? (err.details as { issues?: { message: string }[] })
+      : undefined;
+  return (
+    d?.issues?.[0]?.message ??
+    (err instanceof ApiError ? err.message : fallback)
+  );
+}
 
 export function LeadsClient({
   leads,
   total,
   query,
   stats,
+  cards,
+  viewer,
   assignees,
   courses,
 }: {
   leads: LeadRow[];
   total: number;
   query: Query;
-  stats: Stats;
-  assignees: { id: string; name: string }[];
+  stats: Record<LeadStatCard, number>;
+  cards: LeadStatCard[];
+  viewer: { id: string; name: string; role: Role };
+  assignees: AssigneeOption[];
   courses: CourseOption[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
+  // Deleting and de-duplicating can't be undone, so they're admin-only (the
+  // API refuses sales agents too); everything else is open to the sheet's workers.
+  const isLeadAdmin = viewer.role === "SUPER_ADMIN" || viewer.role === "ADMIN";
   const [search, setSearch] = useState(query.search ?? "");
+  const [minScore, setMinScore] = useState(query.minScore ?? "");
   const [showFilters, setShowFilters] = useState(
     Boolean(
       query.classMode ||
@@ -182,7 +196,9 @@ export function LeadsClient({
       query.minScore ||
       query.due ||
       query.from ||
-      query.to,
+      query.to ||
+      query.uploadedFrom ||
+      query.uploadedTo,
     ),
   );
   const [createOpen, setCreateOpen] = useState(false);
@@ -190,72 +206,89 @@ export function LeadsClient({
   const [duplicatesOpen, setDuplicatesOpen] = useState(false);
   const [form, setForm] = useState<LeadFormState>(blankLeadForm);
   const [creating, setCreating] = useState(false);
-  const [detailId, setDetailId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<LeadRow | null>(null);
+  /** The open lead and where it sits in the filtered, sorted list (0-based). */
+  const [detail, setDetail] = useState<{ id: string; index: number } | null>(
+    null,
+  );
+  const [navBusy, setNavBusy] = useState(false);
+  /** Other pages' ids, fetched as previous / next crosses into them. */
+  const [idPages, setIdPages] = useState<{
+    key: string;
+    pages: Record<number, string[]>;
+  }>({ key: "", pages: {} });
+  /**
+   * Inline edits shown before the server confirms. Tied to the `leads` array
+   * they were made against: once `router.refresh()` hands back a new one, the
+   * real values have landed and the overlay is dropped.
+   */
+  const [patches, setPatches] = useState<{
+    base: LeadRow[];
+    byId: Record<string, Partial<LeadRow>>;
+  }>({ base: leads, byId: {} });
+
+  const live = patches.base === leads ? patches.byId : {};
+  const rows = leads.map((l) => (live[l.id] ? { ...l, ...live[l.id] } : l));
 
   const totalPages = Math.max(1, Math.ceil(total / query.pageSize));
-  const hasFilters = Boolean(
-    query.search ||
-    query.stage ||
-    query.subStatus ||
-    query.source ||
-    query.classMode ||
-    query.courseId ||
-    query.assignedToId ||
-    query.quality ||
-    query.minScore ||
-    query.due ||
-    query.from ||
-    query.to,
-  );
+  const hasFilters = LEAD_FILTER_KEYS.some((k) => query[k]);
+  const sort = (query.sort ?? DEFAULT_LEAD_SORT) as LeadSort;
 
-  const FILTER_KEYS = [
-    "search",
-    "stage",
-    "subStatus",
-    "source",
-    "classMode",
-    "courseId",
-    "assignedToId",
-    "quality",
-    "minScore",
-    "due",
-    "from",
-    "to",
-  ] as const;
-
-  const setParams = useCallback(
-    (next: Record<string, string | number | undefined>) => {
-      const merged: Record<string, string | number | undefined> = {
-        ...Object.fromEntries(FILTER_KEYS.map((k) => [k, query[k]])),
-        page: query.page,
-        ...next,
-      };
+  /** The list's filters and sort as a query string, with `overrides` applied. */
+  const viewQuery = useCallback(
+    (overrides: LeadViewParams = {}) => {
+      const merged: LeadViewParams = { ...query, ...overrides };
       const p = new URLSearchParams();
-      for (const key of FILTER_KEYS) {
+      for (const key of VIEW_KEYS) {
         if (merged[key]) p.set(key, String(merged[key]));
       }
-      if (merged.page && Number(merged.page) > 1)
-        p.set("page", String(merged.page));
-      const qs = p.toString();
-      router.push(qs ? `${pathname}?${qs}` : pathname);
+      return p.toString();
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [router, pathname, query],
+    [query],
   );
 
-  /** Both downloads carry the list's current filters, so what you see is what
-   *  you get — the client asked for reports "as per filters and statuses". */
-  const filterQuery = (() => {
-    const p = new URLSearchParams();
-    for (const key of FILTER_KEYS) {
-      if (query[key]) p.set(key, String(query[key]));
-    }
-    const qs = p.toString();
+  const setParams = useCallback(
+    (
+      next: LeadViewParams & { page?: number },
+      opts: { scroll?: boolean } = {},
+    ) => {
+      const { page = query.page, ...view } = next;
+      const p = new URLSearchParams(viewQuery(view));
+      if (page > 1) p.set("page", String(page));
+      const qs = p.toString();
+      router.push(qs ? `${pathname}?${qs}` : pathname, opts);
+    },
+    [router, pathname, query.page, viewQuery],
+  );
+
+  /**
+   * Both downloads carry the list's filters and sort, so what you see is what
+   * you get. The search and score boxes are read as typed, so a download
+   * clicked before they're applied still matches what's in them.
+   */
+  const downloadQuery = (() => {
+    const qs = viewQuery({
+      search: search.trim() || undefined,
+      minScore: minScore.trim() || undefined,
+    });
     return qs ? `?${qs}` : "";
   })();
-  const exportHref = `/api/leads/export${filterQuery}`;
-  const reportHref = `/api/leads/report${filterQuery}`;
+  const exportHref = `/api/leads/export${downloadQuery}`;
+  const reportHref = `/api/leads/report${downloadQuery}`;
+
+  function applySearch() {
+    const value = search.trim();
+    if (value !== (query.search ?? "")) {
+      setParams({ search: value || undefined, page: 1 });
+    }
+  }
+
+  function applyMinScore() {
+    const value = minScore.trim();
+    if (value !== (query.minScore ?? "")) {
+      setParams({ minScore: value || undefined, page: 1 });
+    }
+  }
 
   async function onCreate(e: FormEvent) {
     e.preventDefault();
@@ -267,14 +300,7 @@ export function LeadsClient({
       setForm(blankLeadForm());
       router.refresh();
     } catch (err) {
-      const d =
-        err instanceof ApiError
-          ? (err.details as { issues?: { message: string }[] })
-          : undefined;
-      toast.error(
-        d?.issues?.[0]?.message ??
-          (err instanceof ApiError ? err.message : "Couldn't add lead."),
-      );
+      toast.error(errorMessage(err, "Couldn't add lead."));
     } finally {
       setCreating(false);
     }
@@ -292,52 +318,80 @@ export function LeadsClient({
     }
   }
 
-  const statCards = [
-    {
-      label: "Total leads",
-      value: stats.total,
-      icon: Target,
-      tone: "text-rose-500",
-    },
-    {
-      label: "Fresh",
-      value: stats.fresh,
-      icon: Sparkles,
-      tone: "text-sky-500",
-    },
-    {
-      label: "In progress",
-      value: stats.inProgress,
-      icon: UserCheck,
-      tone: "text-amber-500",
-    },
-    {
-      label: "Converted",
-      value: stats.converted,
-      icon: TrendingUp,
-      tone: "text-emerald-500",
-    },
-    {
-      label: "Not interested",
-      value: stats.dropped,
-      icon: XCircle,
-      tone: "text-muted-foreground",
-    },
-  ];
+  /** Inline table edits: show the change at once, undo it if the save fails. */
+  const saveLead: SaveLead = async (lead, payload, optimistic) => {
+    const before = live[lead.id];
+    const put = (patch: Partial<LeadRow> | undefined) =>
+      setPatches((p) => {
+        const byId = { ...(p.base === leads ? p.byId : {}) };
+        if (patch) byId[lead.id] = patch;
+        else delete byId[lead.id];
+        return { base: leads, byId };
+      });
 
-  /** A call-back whose day has already passed reads as overdue. */
-  function isOverdue(iso: string): boolean {
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
-    return new Date(iso) < start;
+    put({ ...before, ...optimistic });
+    try {
+      await api.patch(`/api/leads/${lead.id}`, payload);
+      router.refresh();
+      return true;
+    } catch (err) {
+      put(before);
+      toast.error(errorMessage(err, "Couldn't save that change."));
+      return false;
+    }
+  };
+
+  // ── Detail sheet: previous / next through the whole filtered list ────────
+
+  const offset = (query.page - 1) * query.pageSize;
+  const listKey = viewQuery();
+
+  function openDetail(l: LeadRow) {
+    const i = leads.findIndex((r) => r.id === l.id);
+    setDetail({ id: l.id, index: offset + Math.max(0, i) });
   }
 
-  /** "29 Aug, 16:30" / "This Saturday" / "—" — whatever the counsellor captured. */
-  function visitLabel(l: LeadRow): string {
-    if (l.visitDate) {
-      return `${format(new Date(l.visitDate), "d MMM")}${l.visitTime ? `, ${l.visitTime}` : ""}`;
+  async function goTo(index: number) {
+    if (navBusy || index < 0 || index >= total) return;
+    const page = Math.floor(index / query.pageSize) + 1;
+    const cached = idPages.key === listKey ? idPages.pages : {};
+    let ids = page === query.page ? leads.map((l) => l.id) : cached[page];
+
+    if (!ids) {
+      setNavBusy(true);
+      try {
+        const qs = new URLSearchParams(listKey);
+        qs.set("page", String(page));
+        qs.set("pageSize", String(query.pageSize));
+        const res = await api.get<{ ids: string[]; total: number }>(
+          `/api/leads/ids?${qs}`,
+        );
+        ids = res.ids;
+        const fetched = res.ids;
+        setIdPages((p) => ({
+          key: listKey,
+          pages: {
+            ...(p.key === listKey ? p.pages : {}),
+            [query.page]: leads.map((l) => l.id),
+            [page]: fetched,
+          },
+        }));
+      } catch (err) {
+        toast.error(
+          err instanceof ApiError ? err.message : "Couldn't open that lead.",
+        );
+        return;
+      } finally {
+        setNavBusy(false);
+      }
     }
-    return l.expectedVisit ?? "—";
+
+    const id = ids[index % query.pageSize];
+    if (!id) return; // the list shrank since the count was taken
+    setDetail({ id, index });
+    // The table follows the sheet onto the page the lead sits on, so closing
+    // it lands you where you were working.
+    if (page !== query.page) setParams({ page }, { scroll: false });
   }
 
   function rowActions(l: LeadRow) {
@@ -350,15 +404,17 @@ export function LeadsClient({
           <MoreHorizontal className="size-4" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={() => setDetailId(l.id)}>
+          <DropdownMenuItem onClick={() => openDetail(l)}>
             <Eye className="size-4" /> View &amp; follow up
           </DropdownMenuItem>
-          <DropdownMenuItem
-            className="text-destructive focus:text-destructive"
-            onClick={() => setDeleting(l)}
-          >
-            <Trash2 className="size-4" /> Delete
-          </DropdownMenuItem>
+          {isLeadAdmin && (
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive"
+              onClick={() => setDeleting(l)}
+            >
+              <Trash2 className="size-4" /> Delete
+            </DropdownMenuItem>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
     );
@@ -383,7 +439,7 @@ export function LeadsClient({
       cell: (l) => (
         <button
           type="button"
-          onClick={() => setDetailId(l.id)}
+          onClick={() => openDetail(l)}
           className="min-w-0 text-left"
         >
           <p className="hover:text-primary truncate font-medium transition-colors">
@@ -407,7 +463,9 @@ export function LeadsClient({
               {LEAD_CONTACT_CHANNEL_LABELS[
                 l.lastContact.channel as LeadContactChannel
               ] ?? l.lastContact.channel}{" "}
-              {formatDistanceToNow(new Date(l.lastContact.at), { addSuffix: true })}
+              {formatDistanceToNow(new Date(l.lastContact.at), {
+                addSuffix: true,
+              })}
             </p>
           )}
         </div>
@@ -421,77 +479,60 @@ export function LeadsClient({
     {
       key: "stage",
       header: "Stage / status",
-      cell: (l) => (
-        <div className="flex flex-wrap items-center gap-1.5">
-          {STAGE_BADGE(l.stage)}
-          {SUB_STATUS_BADGE(l.subStatus)}
-        </div>
-      ),
+      cell: (l) => <StageEditor lead={l} onSave={saveLead} />,
     },
     {
       key: "quality",
       header: "Quality",
-      cell: (l) => (
-        <div className="flex items-center gap-1.5">
-          {QUALITY_BADGE(l.quality) ?? dash}
-          {l.leadScore != null && (
-            <span className="text-muted-foreground text-xs tabular-nums">
-              {l.leadScore}
-            </span>
-          )}
-        </div>
-      ),
+      cell: (l) => <QualityEditor lead={l} onSave={saveLead} />,
     },
     {
       key: "mode",
       header: "Mode",
-      cell: (l) => (
-        <span className="text-sm">{CLASS_MODE_LABEL(l.classMode)}</span>
-      ),
+      cell: (l) => <ClassModeEditor lead={l} onSave={saveLead} />,
     },
     {
       key: "visit",
       header: "Visit",
-      cell: (l) => (
-        <span className="text-sm whitespace-nowrap">{visitLabel(l)}</span>
-      ),
+      cell: (l) => <VisitEditor lead={l} onSave={saveLead} />,
     },
     {
       key: "followUp",
       header: "Follow-up",
-      cell: (l) => {
-        if (!l.followUpDate) return dash;
-        const overdue = isOverdue(l.followUpDate);
-        return (
-          <span
-            className={`text-sm whitespace-nowrap ${overdue ? "text-destructive font-medium" : ""}`}
-          >
-            {format(new Date(l.followUpDate), "d MMM")}
-            {l.followUpTime ? `, ${l.followUpTime}` : ""}
-          </span>
-        );
-      },
+      cell: (l) => <FollowUpEditor lead={l} onSave={saveLead} />,
     },
     {
       key: "fees",
       header: "Fees",
-      cell: (l) => (
-        <span className="text-sm whitespace-nowrap tabular-nums">
-          {inr(l.finalFees ?? l.feesOffered) ?? dash}
-        </span>
-      ),
+      cell: (l) => <FeesEditor lead={l} onSave={saveLead} />,
     },
     {
       key: "assigned",
       header: "Assigned",
-      cell: (l) => <span className="text-sm">{l.assignedToName ?? dash}</span>,
+      cell: (l) => (
+        <AssigneeEditor
+          lead={l}
+          onSave={saveLead}
+          assignees={assignees}
+          viewerId={viewer.id}
+        />
+      ),
     },
     {
-      key: "created",
-      header: "Received",
+      key: "received",
+      header: "Lead received",
+      cell: (l) => (
+        <span className="text-sm whitespace-nowrap">
+          {format(inIST(l.leadDate), "d MMM yyyy")}
+        </span>
+      ),
+    },
+    {
+      key: "uploaded",
+      header: "Uploaded",
       cell: (l) => (
         <span className="text-muted-foreground text-sm whitespace-nowrap">
-          {formatDistanceToNow(new Date(l.leadDate), { addSuffix: true })}
+          {format(inIST(l.createdAt), "d MMM, h:mm a")}
         </span>
       ),
     },
@@ -509,7 +550,7 @@ export function LeadsClient({
         <div className="flex items-start justify-between gap-2">
           <button
             type="button"
-            onClick={() => setDetailId(l.id)}
+            onClick={() => openDetail(l)}
             className="min-w-0 text-left"
           >
             <p className="truncate font-medium">
@@ -538,13 +579,14 @@ export function LeadsClient({
               l.lastContact.channel as LeadContactChannel
             ] ?? l.lastContact.channel}{" "}
             by {l.lastContact.by}{" "}
-            {formatDistanceToNow(new Date(l.lastContact.at), { addSuffix: true })}
+            {formatDistanceToNow(new Date(l.lastContact.at), {
+              addSuffix: true,
+            })}
           </p>
         )}
-        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
-          {STAGE_BADGE(l.stage)}
-          {SUB_STATUS_BADGE(l.subStatus)}
-          {QUALITY_BADGE(l.quality)}
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 pl-1.5 text-xs">
+          <StageEditor lead={l} onSave={saveLead} />
+          <QualityEditor lead={l} onSave={saveLead} />
         </div>
         <div className="text-muted-foreground mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
           <span>{SOURCE_LABEL(l.source)}</span>
@@ -552,6 +594,7 @@ export function LeadsClient({
           {inr(l.finalFees ?? l.feesOffered) && (
             <span>{inr(l.finalFees ?? l.feesOffered)}</span>
           )}
+          {l.assignedToName && <span>{l.assignedToName}</span>}
           {l.followUps > 0 && (
             <span className="flex items-center gap-1">
               <MessageSquare className="size-3" /> {l.followUps}
@@ -568,14 +611,13 @@ export function LeadsClient({
             Course: {l.course}
           </p>
         )}
-        {l.followUpDate && (
-          <p
-            className={`mt-1 text-xs ${isOverdue(l.followUpDate) ? "text-destructive font-medium" : "text-muted-foreground"}`}
-          >
-            Follow-up: {format(new Date(l.followUpDate), "d MMM")}
-            {l.followUpTime ? `, ${l.followUpTime}` : ""}
-          </p>
-        )}
+        <div className="mt-1 pl-1.5">
+          <FollowUpEditor lead={l} onSave={saveLead} prefix="Follow-up: " />
+        </div>
+        <p className="text-muted-foreground mt-1 text-xs">
+          Received {format(inIST(l.leadDate), "d MMM yyyy")} · Uploaded{" "}
+          {format(inIST(l.createdAt), "d MMM, h:mm a")}
+        </p>
       </div>
     );
   }
@@ -590,6 +632,37 @@ export function LeadsClient({
     form.expectedVisit.trim().length > 0 &&
     form.feesOffered.trim().length > 0;
 
+  const mine = query.assignedToId === "me";
+
+  function assignedFilterLabel(v: string | null): string {
+    if (!v || v === ALL) return "Anyone";
+    if (v === "me") return "Assigned to me";
+    if (v === "unassigned") return "Unassigned";
+    return assignees.find((a) => a.id === v)?.name ?? "Anyone";
+  }
+
+  function dateFilter(
+    id: string,
+    label: string,
+    key: "from" | "to" | "uploadedFrom" | "uploadedTo",
+  ) {
+    return (
+      <div className="space-y-1.5">
+        <Label className="text-xs" htmlFor={id}>
+          {label}
+        </Label>
+        <Input
+          id={id}
+          type="date"
+          value={query[key] ?? ""}
+          onChange={(e) =>
+            setParams({ [key]: e.target.value || undefined, page: 1 })
+          }
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -597,9 +670,11 @@ export function LeadsClient({
         description="Enquiries from the website, walk-ins and imported sheets — track and follow up."
         actions={
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={() => setDuplicatesOpen(true)}>
-              <CopyCheck className="size-4" /> Duplicates
-            </Button>
+            {isLeadAdmin && (
+              <Button variant="outline" onClick={() => setDuplicatesOpen(true)}>
+                <CopyCheck className="size-4" /> Duplicates
+              </Button>
+            )}
             <Button variant="outline" onClick={() => setImportOpen(true)}>
               <Upload className="size-4" /> Import
             </Button>
@@ -607,6 +682,11 @@ export function LeadsClient({
               variant="outline"
               nativeButton={false}
               render={<a href={reportHref} />}
+              title={
+                hasFilters
+                  ? "Summary of the leads matching your filters"
+                  : "Summary of every lead"
+              }
             >
               <FileBarChart className="size-4" /> Report
             </Button>
@@ -614,6 +694,11 @@ export function LeadsClient({
               variant="outline"
               nativeButton={false}
               render={<a href={exportHref} />}
+              title={
+                hasFilters
+                  ? "The leads matching your filters, as a sheet"
+                  : "Every lead, as a sheet"
+              }
             >
               <Download className="size-4" /> Export
             </Button>
@@ -624,48 +709,35 @@ export function LeadsClient({
         }
       />
 
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
-        {statCards.map((s) => (
-          <Card key={s.label}>
-            <CardContent className="flex items-center gap-3 py-4">
-              <div className="bg-muted grid size-10 shrink-0 place-items-center rounded-lg">
-                <s.icon className={`size-5 ${s.tone}`} />
-              </div>
-              <div className="min-w-0">
-                <p className="text-2xl leading-none font-semibold tabular-nums">
-                  {s.value}
-                </p>
-                <p className="text-muted-foreground mt-1 truncate text-xs">
-                  {s.label}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      <LeadStatCards stats={stats} cards={cards} />
 
       <DataTable
-        data={leads}
+        data={rows}
         columns={columns}
         rowKey={(l) => l.id}
         renderCard={renderCard}
         emptyIcon={Target}
-        emptyTitle="No leads yet"
-        emptyDescription="Website enquiries, walk-ins and imported sheets will show up here."
+        emptyTitle={hasFilters ? "No leads match" : "No leads yet"}
+        emptyDescription={
+          hasFilters
+            ? "Try clearing a filter or two."
+            : "Website enquiries, walk-ins and imported sheets will show up here."
+        }
         toolbar={
           <div className="space-y-3">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
-                  setParams({ search: search || undefined, page: 1 });
+                  applySearch();
                 }}
-                className="relative flex-1"
+                className="relative flex-1 sm:min-w-56"
               >
                 <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
                 <Input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
+                  onBlur={applySearch}
                   placeholder="Search lead no., name, phone, email…"
                   className="pl-9"
                 />
@@ -727,6 +799,39 @@ export function LeadsClient({
                   ))}
                 </SelectContent>
               </Select>
+              <Select
+                value={sort}
+                onValueChange={(v) =>
+                  setParams({
+                    sort: !v || v === DEFAULT_LEAD_SORT ? undefined : String(v),
+                    page: 1,
+                  })
+                }
+              >
+                <SelectTrigger className="w-full sm:w-48" aria-label="Sort">
+                  <SelectValue>
+                    {(v) =>
+                      LEAD_SORT_LABELS[(v as LeadSort) ?? DEFAULT_LEAD_SORT]
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {LEAD_SORTS.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {LEAD_SORT_LABELS[s]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                variant={mine ? "secondary" : "ghost"}
+                aria-pressed={mine}
+                onClick={() =>
+                  setParams({ assignedToId: mine ? undefined : "me", page: 1 })
+                }
+              >
+                <UserRound className="size-4" /> My leads
+              </Button>
               <Button
                 variant={showFilters ? "secondary" : "ghost"}
                 onClick={() => setShowFilters((v) => !v)}
@@ -738,12 +843,13 @@ export function LeadsClient({
                   variant="ghost"
                   onClick={() => {
                     setSearch("");
-                    setParams(
-                      Object.fromEntries([
-                        ...FILTER_KEYS.map((k) => [k, undefined]),
-                        ["page", 1],
-                      ]),
-                    );
+                    setMinScore("");
+                    setParams({
+                      ...Object.fromEntries(
+                        LEAD_FILTER_KEYS.map((k) => [k, undefined]),
+                      ),
+                      page: 1,
+                    });
                   }}
                 >
                   Clear
@@ -852,23 +958,15 @@ export function LeadsClient({
                     }
                   >
                     <SelectTrigger className="w-full">
-                      <SelectValue>
-                        {(v) =>
-                          !v || v === ALL
-                            ? "Anyone"
-                            : v === "unassigned"
-                              ? "Unassigned"
-                              : (assignees.find((a) => a.id === v)?.name ??
-                                "Anyone")
-                        }
-                      </SelectValue>
+                      <SelectValue>{(v) => assignedFilterLabel(v)}</SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value={ALL}>Anyone</SelectItem>
+                      <SelectItem value="me">Assigned to me</SelectItem>
                       <SelectItem value="unassigned">Unassigned</SelectItem>
                       {assignees.map((a) => (
                         <SelectItem key={a.id} value={a.id}>
-                          {a.name}
+                          <AssigneeLabel person={a} />
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -944,48 +1042,29 @@ export function LeadsClient({
                     id="f-score"
                     inputMode="numeric"
                     placeholder="e.g. 60"
-                    defaultValue={query.minScore ?? ""}
-                    onBlur={(e) => {
-                      const value = e.target.value.trim();
-                      if (value !== (query.minScore ?? "")) {
-                        setParams({ minScore: value || undefined, page: 1 });
-                      }
+                    value={minScore}
+                    onChange={(e) => setMinScore(e.target.value)}
+                    onBlur={applyMinScore}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") applyMinScore();
                     }}
                   />
                 </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs" htmlFor="f-from">
-                    Lead date from
-                  </Label>
-                  <Input
-                    id="f-from"
-                    type="date"
-                    value={query.from ?? ""}
-                    onChange={(e) =>
-                      setParams({ from: e.target.value || undefined, page: 1 })
-                    }
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs" htmlFor="f-to">
-                    Lead date to
-                  </Label>
-                  <Input
-                    id="f-to"
-                    type="date"
-                    value={query.to ?? ""}
-                    onChange={(e) =>
-                      setParams({ to: e.target.value || undefined, page: 1 })
-                    }
-                  />
-                </div>
+                {dateFilter("f-from", "Lead received from", "from")}
+                {dateFilter("f-to", "Lead received to", "to")}
+                {dateFilter("f-up-from", "Lead uploaded from", "uploadedFrom")}
+                {dateFilter("f-up-to", "Lead uploaded to", "uploadedTo")}
               </div>
             )}
           </div>
         }
         footer={
-          <div className="flex items-center justify-between">
-            <span className="text-muted-foreground text-sm">{total} leads</span>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-muted-foreground text-sm">
+              {hasFilters
+                ? `${total} matching lead${total === 1 ? "" : "s"} — Report and Export download just these`
+                : `${total} leads`}
+            </span>
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"
@@ -1052,10 +1131,27 @@ export function LeadsClient({
       />
 
       <LeadDetailSheet
-        leadId={detailId}
+        leadId={detail?.id ?? null}
         assignees={assignees}
         courses={courses}
-        onOpenChange={(o) => !o && setDetailId(null)}
+        nav={
+          detail
+            ? {
+                position: detail.index + 1,
+                total,
+                busy: navBusy,
+                onPrev:
+                  detail.index > 0
+                    ? () => void goTo(detail.index - 1)
+                    : undefined,
+                onNext:
+                  detail.index + 1 < total
+                    ? () => void goTo(detail.index + 1)
+                    : undefined,
+              }
+            : undefined
+        }
+        onOpenChange={(o) => !o && setDetail(null)}
       />
 
       <AlertDialog

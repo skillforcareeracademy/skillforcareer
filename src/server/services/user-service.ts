@@ -2,6 +2,10 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
 import { hashPassword } from "@/lib/auth/password";
+import { env } from "@/lib/env";
+import { sendMail } from "@/lib/mail/mailer";
+import { emailLayout } from "@/lib/mail/templates/layout";
+import { logger } from "@/lib/logger";
 import type {
   ListUsersQuery,
   UpdateUserAdminInput,
@@ -16,6 +20,8 @@ export interface UserRow {
   status: string;
   role: string;
   roleLabel: string;
+  /** Roles held besides the primary one — an instructor who also studies. */
+  extraRoles: { slug: string; label: string }[];
   emailVerified: boolean;
   /** Settled fees, so the list answers "have they paid?" without a drill-down. */
   paidTotal: number;
@@ -37,7 +43,11 @@ export async function listUsers(q: ListUsersQuery): Promise<UserListResult> {
       ],
     });
   }
-  if (q.role) and.push({ role: { slug: q.role } });
+  // A role filter matches the primary role or an extra one: "instructors"
+  // includes the student who also teaches.
+  if (q.role) {
+    and.push({ OR: [{ role: { slug: q.role } }, { extraRoles: { some: { role: { slug: q.role } } } }] });
+  }
   if (q.status) {
     and.push({ status: q.status as Prisma.UserWhereInput["status"] });
   }
@@ -58,7 +68,8 @@ export async function listUsers(q: ListUsersQuery): Promise<UserListResult> {
   // list to answer, so the totals come with the page rather than one query per
   // row. A single grouped read over just the ids on screen keeps it to one
   // extra round-trip however long the page is.
-  const paid = await paidTotalsFor(rows.map((u) => u.id));
+  const ids = rows.map((u) => u.id);
+  const [paid, extras] = await Promise.all([paidTotalsFor(ids), extraRolesFor(ids)]);
 
   return {
     total,
@@ -70,11 +81,28 @@ export async function listUsers(q: ListUsersQuery): Promise<UserListResult> {
       status: u.status,
       role: u.role.slug,
       roleLabel: u.role.name,
+      extraRoles: extras.get(u.id) ?? [],
       emailVerified: Boolean(u.emailVerified),
       paidTotal: paid.get(u.id) ?? 0,
       createdAt: u.createdAt.toISOString(),
     })),
   };
+}
+
+/** Extra roles per user, for the ids given — one query for the whole page. */
+async function extraRolesFor(userIds: string[]): Promise<Map<string, { slug: string; label: string }[]>> {
+  const map = new Map<string, { slug: string; label: string }[]>();
+  if (userIds.length === 0) return map;
+  const rows = await prisma.$queryRaw<{ userId: string; slug: string; name: string }[]>`
+    SELECT ur.userId, r.slug, r.name
+    FROM \`UserRole\` ur JOIN \`Role\` r ON r.id = ur.roleId
+    WHERE ur.userId IN (${Prisma.join(userIds)})`;
+  for (const r of rows) {
+    const list = map.get(r.userId) ?? [];
+    if (!list.some((x) => x.slug === r.slug)) list.push({ slug: r.slug, label: r.name });
+    map.set(r.userId, list);
+  }
+  return map;
 }
 
 /** Total settled fees per user, for the ids given. */
@@ -95,9 +123,23 @@ export async function createUserAdmin(
 ): Promise<{ id: string }> {
   const existing = await prisma.user.findUnique({
     where: { email: input.email },
-    select: { id: true },
+    select: { id: true, name: true, role: { select: { slug: true, name: true } } },
   });
-  if (existing) throw AppError.conflict("A user with this email already exists.");
+  if (existing) {
+    // Most often this is the same person being given a second hat — the
+    // student who is also going to teach. Hand the admin enough to offer
+    // "add the role to their account instead" rather than a dead end.
+    const extras = (await extraRolesFor([existing.id])).get(existing.id) ?? [];
+    throw new AppError("CONFLICT", "A user with this email already exists.", {
+      existing: {
+        id: existing.id,
+        name: existing.name,
+        role: existing.role.slug,
+        roleLabel: existing.role.name,
+        extraRoles: extras,
+      },
+    });
+  }
 
   const role = await prisma.role.findUnique({ where: { slug: input.roleSlug } });
   if (!role) throw AppError.badRequest("Unknown role.");
@@ -115,7 +157,67 @@ export async function createUserAdmin(
     },
     select: { id: true },
   });
+  await sendWelcomeEmail({ name: input.name, email: input.email, roleLabel: role.name });
   return user;
+}
+
+const escapeHtml = (text: string) =>
+  text.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+
+/**
+ * "Your account is ready" for an account an admin made. It never carries the
+ * password: the person signs in with the one they were given, or with an
+ * emailed code from the sign-in page, which needs nothing but this inbox.
+ * A mail failure is logged, never thrown — the account exists either way.
+ */
+export async function sendWelcomeEmail(input: { name: string; email: string; roleLabel: string }): Promise<void> {
+  const appUrl = env.NEXT_PUBLIC_APP_URL;
+  const name = escapeHtml(input.name);
+  const html = emailLayout({
+    heading: "Your account is ready",
+    previewText: `Welcome to Skill For Career, ${input.name}`,
+    bodyHtml: `
+      <p>Hi ${name},</p>
+      <p>An account has been created for you on Skill For Career as <strong>${escapeHtml(input.roleLabel)}</strong>.</p>
+      <p>Sign in with <strong>${escapeHtml(input.email)}</strong> and the password your academy gave you — or choose
+         <strong>Email code</strong> on the sign-in page and we'll send you a one-time code instead.</p>
+      <p style="margin:24px 0">
+        <a href="${appUrl}/login" style="background:#e11d48;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none">Sign in</a>
+      </p>
+      <p style="color:#666;font-size:13px">The Skill For Career app on Android and iPhone uses the same sign-in.</p>`,
+  });
+  const text = `Hi ${input.name}, an account has been created for you on Skill For Career as ${input.roleLabel}. Sign in at ${appUrl}/login with ${input.email} and the password your academy gave you, or choose "Email code" to get a one-time code.`;
+  try {
+    await sendMail({ to: input.email, subject: "Your Skill For Career account is ready", html, text });
+  } catch (error) {
+    logger.warn("Couldn't send the welcome email", { to: input.email, error: error instanceof Error ? error.message : String(error) });
+  }
+}
+
+/**
+ * Replace the extra roles a person holds (their primary role is left alone and
+ * never duplicated as an extra). The whole set is written each time, so the
+ * edit dialog's checkboxes are the truth.
+ */
+export async function setExtraRoles(userId: string, slugs: string[]): Promise<{ slug: string; label: string }[]> {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, role: { select: { slug: true } } } });
+  if (!user) throw AppError.notFound("User not found.");
+  const wanted = [...new Set(slugs)].filter((slug) => slug !== user.role.slug);
+  const roles = wanted.length
+    ? await prisma.role.findMany({ where: { slug: { in: wanted } }, select: { id: true, slug: true, name: true } })
+    : [];
+  if (roles.length !== wanted.length) throw AppError.badRequest("Unknown role.");
+  await prisma.userRole.deleteMany({ where: { userId } });
+  if (roles.length) {
+    await prisma.userRole.createMany({ data: roles.map((r) => ({ userId, roleId: r.id })) });
+  }
+  return roles.map((r) => ({ slug: r.slug, label: r.name }));
+}
+
+/** Give an existing person one more role (no-op if they already hold it). */
+export async function addExtraRole(userId: string, slug: string): Promise<void> {
+  const current = (await extraRolesFor([userId])).get(userId) ?? [];
+  await setExtraRoles(userId, [...current.map((r) => r.slug), slug]);
 }
 
 export async function updateUserAdmin(
@@ -203,7 +305,11 @@ function money(value: Prisma.Decimal | number | null | undefined): string {
 export async function usersForExport(q: ListUsersQuery) {
   const and: Prisma.UserWhereInput[] = [];
   if (q.search) and.push({ OR: [{ name: { contains: q.search } }, { email: { contains: q.search } }] });
-  if (q.role) and.push({ role: { slug: q.role } });
+  // A role filter matches the primary role or an extra one: "instructors"
+  // includes the student who also teaches.
+  if (q.role) {
+    and.push({ OR: [{ role: { slug: q.role } }, { extraRoles: { some: { role: { slug: q.role } } } }] });
+  }
   if (q.status) and.push({ status: q.status as Prisma.UserWhereInput["status"] });
   const where: Prisma.UserWhereInput = and.length ? { AND: and } : {};
 
@@ -507,4 +613,121 @@ function countsByUser<T extends { _count: { _all: number } }>(
 
 function unique(values: string[]): string[] {
   return [...new Set(values)];
+}
+
+export interface ImportUsersResult {
+  created: number;
+  rolesAdded: number;
+  skipped: number;
+  errors: { row: number; email: string; reason: string }[];
+}
+
+/** The template's columns, in order — shared with GET /api/admin/users/template. */
+export const USER_IMPORT_COLUMNS = ["name", "email", "phone", "role", "password"] as const;
+
+const HEADER_ALIASES: Record<(typeof USER_IMPORT_COLUMNS)[number], string[]> = {
+  name: ["name", "full name", "student name"],
+  email: ["email", "email id", "email address", "e-mail"],
+  phone: ["phone", "mobile", "phone number", "mobile number", "contact"],
+  role: ["role"],
+  password: ["password", "temporary password"],
+};
+
+/**
+ * Bulk-create accounts from a sheet. Rows are handled one by one and a bad row
+ * is reported rather than aborting the file, so a mostly-good sheet lands.
+ * Accounts are pre-verified and ACTIVE; a row without a password (or with one
+ * under 8 characters) makes an account that signs in with an emailed code.
+ */
+export async function importUsers(input: {
+  csv: string;
+  defaultRole: string;
+  addRoleToExisting: boolean;
+  sendWelcome: boolean;
+}): Promise<ImportUsersResult> {
+  const { parseCsv } = await import("@/lib/csv");
+  const { headers, rows } = parseCsv(input.csv);
+  if (rows.length === 0) throw AppError.badRequest("The sheet has no rows.");
+  if (rows.length > 1000) throw AppError.badRequest("Import at most 1,000 people at a time.");
+
+  const pick = (field: (typeof USER_IMPORT_COLUMNS)[number]) =>
+    headers.find((h) => HEADER_ALIASES[field].includes(h.trim().toLowerCase()));
+  const col = Object.fromEntries(USER_IMPORT_COLUMNS.map((f) => [f, pick(f)])) as Record<
+    (typeof USER_IMPORT_COLUMNS)[number],
+    string | undefined
+  >;
+  if (!col.email) throw AppError.badRequest("The sheet needs an 'email' column.");
+
+  const roles = await prisma.role.findMany({ select: { id: true, slug: true, name: true } });
+  const roleFor = (value: string | undefined) => {
+    const v = (value ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+    if (!v) return roles.find((r) => r.slug === input.defaultRole);
+    return roles.find((r) => r.slug.toLowerCase() === v || r.name.toLowerCase().replace(/[\s-]+/g, "_") === v);
+  };
+
+  const emails = rows.map((r) => (r[col.email!] ?? "").trim().toLowerCase()).filter(Boolean);
+  const existing = await prisma.user.findMany({
+    where: { email: { in: emails } },
+    select: { id: true, email: true, role: { select: { slug: true } } },
+  });
+  const byEmail = new Map(existing.map((u) => [u.email, u]));
+  const extras = await extraRolesFor(existing.map((u) => u.id));
+
+  const result: ImportUsersResult = { created: 0, rolesAdded: 0, skipped: 0, errors: [] };
+  const seen = new Set<string>();
+  for (const [i, row] of rows.entries()) {
+    const line = i + 2; // header is line 1
+    const email = (row[col.email] ?? "").trim().toLowerCase();
+    const name = (col.name ? row[col.name] : "")?.trim() || email.split("@")[0];
+    if (!/^\S+@\S+\.\S+$/.test(email)) {
+      result.errors.push({ row: line, email, reason: "Not a valid email" });
+      continue;
+    }
+    if (seen.has(email)) {
+      result.skipped += 1;
+      result.errors.push({ row: line, email, reason: "Appears earlier in the sheet" });
+      continue;
+    }
+    seen.add(email);
+    const role = roleFor(col.role ? row[col.role] : undefined);
+    if (!role) {
+      result.errors.push({ row: line, email, reason: `Unknown role "${row[col.role!]}"` });
+      continue;
+    }
+
+    const found = byEmail.get(email);
+    if (found) {
+      const held = [found.role.slug, ...(extras.get(found.id) ?? []).map((r) => r.slug)];
+      if (!input.addRoleToExisting || held.includes(role.slug)) {
+        result.skipped += 1;
+        result.errors.push({ row: line, email, reason: held.includes(role.slug) ? "Already has this role" : "Account already exists" });
+        continue;
+      }
+      await addExtraRole(found.id, role.slug);
+      result.rolesAdded += 1;
+      continue;
+    }
+
+    const password = (col.password ? row[col.password] : "")?.trim() ?? "";
+    const phone = (col.phone ? row[col.phone] : "")?.trim() || null;
+    try {
+      await prisma.user.create({
+        data: {
+          name: name.slice(0, 120),
+          email,
+          phone,
+          passwordHash: password.length >= 8 ? await hashPassword(password) : null,
+          roleId: role.id,
+          status: "ACTIVE",
+          emailVerified: new Date(),
+        },
+        select: { id: true },
+      });
+      result.created += 1;
+      if (input.sendWelcome) await sendWelcomeEmail({ name, email, roleLabel: role.name });
+    } catch (error) {
+      result.errors.push({ row: line, email, reason: error instanceof Error ? error.message.slice(0, 120) : "Couldn't create" });
+    }
+  }
+  return result;
 }

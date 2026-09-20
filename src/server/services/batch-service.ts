@@ -2,14 +2,23 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
 import { ROLES } from "@/config/roles";
-import { notify } from "./notification-service";
+import { queueAddedToBatch } from "./batch-emails";
 import {
   bumpBatchEnrolledCount,
   bumpCourseEnrollmentCount,
   moveEnrollmentsToBatch,
   unlinkEnrollmentFromBatch,
 } from "@/server/repositories/counters";
+import { activeStudentWhere } from "@/server/repositories/role-filters";
 import type { BatchInput, BatchSchedule } from "@/lib/validations/batch";
+
+/**
+ * Batches an instructor teaches: the ones they lead, plus the ones they are an
+ * associate instructor on. Used wherever an instructor sees "my batches".
+ */
+export function instructorBatchScope(userId: string): Prisma.BatchWhereInput {
+  return { OR: [{ instructorId: userId }, { associates: { some: { userId } } }] };
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -58,7 +67,7 @@ export interface BatchListQuery {
   search?: string;
   status?: string;
   courseId?: string;
-  /** Scope to batches led by one instructor. */
+  /** Scope to batches one instructor leads or assists on. */
   instructorId?: string;
 }
 
@@ -71,7 +80,7 @@ export async function listBatchesAdmin(q: BatchListQuery) {
   }
   if (q.status) and.push({ status: q.status as Prisma.BatchWhereInput["status"] });
   if (q.courseId) and.push({ courseId: q.courseId });
-  if (q.instructorId) and.push({ instructorId: q.instructorId });
+  if (q.instructorId) and.push(instructorBatchScope(q.instructorId));
   const where: Prisma.BatchWhereInput = and.length ? { AND: and } : {};
 
   const [total, rows] = await Promise.all([
@@ -84,6 +93,10 @@ export async function listBatchesAdmin(q: BatchListQuery) {
       include: {
         course: { select: { title: true } },
         instructor: { select: { name: true } },
+        associates: {
+          orderBy: { createdAt: "asc" },
+          select: { user: { select: { id: true, name: true } } },
+        },
         _count: { select: { enrollments: true } },
       },
     }),
@@ -100,6 +113,7 @@ export async function listBatchesAdmin(q: BatchListQuery) {
       courseTitle: b.course.title,
       instructorId: b.instructorId,
       instructorName: b.instructor?.name ?? null,
+      associates: b.associates.map((a) => ({ id: a.user.id, name: a.user.name })),
       capacity: b.capacity,
       enrolledCount: b.enrolledCount || b._count.enrollments,
       startDate: b.startDate ? b.startDate.toISOString() : null,
@@ -158,6 +172,10 @@ export async function getBatchDetail(id: string) {
     include: {
       course: { select: { title: true, slug: true } },
       instructor: { select: { name: true, avatarUrl: true, headline: true } },
+      associates: {
+        orderBy: { createdAt: "asc" },
+        select: { user: { select: { id: true, name: true, avatarUrl: true } } },
+      },
       enrollments: {
         take: 200,
         orderBy: { enrolledAt: "desc" },
@@ -181,7 +199,13 @@ export async function getBatchDetail(id: string) {
     endDate: b.endDate ? b.endDate.toISOString() : null,
     schedule: parseSchedule(b.schedule),
     course: b.course,
+    instructorId: b.instructorId,
     instructor: b.instructor,
+    associates: b.associates.map((a) => ({
+      id: a.user.id,
+      name: a.user.name,
+      avatarUrl: a.user.avatarUrl,
+    })),
     students: b.enrollments.map((e) => ({
       id: e.user.id,
       name: e.user.name,
@@ -203,7 +227,7 @@ export interface BatchStats {
 }
 
 export async function batchStats(instructorId?: string): Promise<BatchStats> {
-  const scope: Prisma.BatchWhereInput = instructorId ? { instructorId } : {};
+  const scope: Prisma.BatchWhereInput = instructorId ? instructorBatchScope(instructorId) : {};
   const [total, upcoming, ongoing, completed, agg] = await Promise.all([
     prisma.batch.count({ where: scope }),
     prisma.batch.count({ where: { ...scope, status: "UPCOMING" } }),
@@ -223,11 +247,14 @@ export async function listCoursesForBatch(instructorId?: string) {
   });
 }
 
-/** Staff/instructors who can lead a batch. */
+/** Staff/instructors who can lead a batch — including a student who also teaches. */
 export async function listInstructors() {
   return prisma.user.findMany({
     where: {
-      role: { slug: { in: [ROLES.INSTRUCTOR, ROLES.ADMIN, ROLES.SUPER_ADMIN] } },
+      OR: [
+        { role: { slug: { in: [ROLES.INSTRUCTOR, ROLES.ADMIN, ROLES.SUPER_ADMIN] } } },
+        { extraRoles: { some: { role: { slug: ROLES.INSTRUCTOR } } } },
+      ],
     },
     select: { id: true, name: true },
     orderBy: { name: "asc" },
@@ -320,14 +347,23 @@ export async function listBatchStudents(batchId: string): Promise<BatchStudent[]
   }));
 }
 
-/** Students to offer in the batch's "add learner" picker. */
+/**
+ * Students to offer in the batch's "add learner" picker.
+ *
+ * "Batch me student add krne wali list me instructor and admin kyu dikh rhe
+ * hain" — only people who are students (by their main role or an extra one)
+ * and whose account is active belong here. Staff accounts, pending sign-ups
+ * and suspended learners are left out.
+ */
 export async function listStudentsForBatchSelect(search?: string): Promise<BatchStudent[]> {
   const rows = await prisma.user.findMany({
     where: {
-      role: { slug: ROLES.STUDENT },
-      ...(search
-        ? { OR: [{ name: { contains: search } }, { email: { contains: search } }] }
-        : {}),
+      AND: [
+        activeStudentWhere(),
+        ...(search
+          ? [{ OR: [{ name: { contains: search } }, { email: { contains: search } }] }]
+          : []),
+      ],
     },
     select: { id: true, name: true, email: true, avatarUrl: true },
     orderBy: { name: "asc" },
@@ -336,62 +372,105 @@ export async function listStudentsForBatchSelect(search?: string): Promise<Batch
   return rows.map((u) => ({ userId: u.id, name: u.name, email: u.email, avatar: u.avatarUrl }));
 }
 
+/** What happened to each learner handed to `placeStudentsOnBatch`. */
+export interface BatchPlacement {
+  /** New to the course — enrolled straight onto this batch. */
+  enrolled: string[];
+  /** Owned the course without a batch — this batch was attached. */
+  attached: string[];
+  /** Sat on another batch of the course — moved here. */
+  moved: { userId: string; fromBatchId: string; fromBatchName: string }[];
+  /** Already on this batch; nothing to do. */
+  already: string[];
+  /** Turned away because the batch had no seats left (only when enforced). */
+  full: string[];
+}
+
 /**
- * Put learners onto a batch. A student who already owns the course is simply
- * moved onto this batch; a brand-new learner gets an ADMIN_GRANT enrolment (and
- * bumps the course's total). Re-adding someone already here is a no-op. Returns
- * how many were actually added or moved.
+ * Put learners onto a batch — the one routine behind both the hand-picked add
+ * and the CSV import, so both keep the counters straight and both send the
+ * "you've been added" email.
+ *
+ * A learner who already owns the course keeps their enrolment and is attached
+ * to (or moved onto) this batch; a brand-new one gets an ADMIN_GRANT enrolment
+ * and bumps the course's total. With `enforceCapacity`, learners past the
+ * batch's last free seat come back in `full`, in the order given.
  *
  * `enrolledCount` is nudged by the real delta rather than recomputed, so a
- * batch's advertised head-count only ever moves by genuine admin actions.
+ * batch's advertised head-count only ever moves by genuine admin actions — and
+ * a learner moved off another batch now comes off that batch's count too.
  */
-export async function addBatchStudents(batchId: string, userIds: string[]): Promise<number> {
-  const batch = await prisma.batch.findUnique({
-    where: { id: batchId },
-    select: { id: true, name: true, courseId: true, course: { select: { title: true, slug: true } } },
-  });
+export async function placeStudentsOnBatch(
+  batchId: string,
+  userIds: string[],
+  opts: { enforceCapacity?: boolean } = {},
+): Promise<BatchPlacement> {
+  const ids = [...new Set(userIds)].filter(Boolean);
+  const placement: BatchPlacement = { enrolled: [], attached: [], moved: [], already: [], full: [] };
+
+  const [batch, seated, existing] = await Promise.all([
+    prisma.batch.findUnique({
+      where: { id: batchId },
+      select: { id: true, courseId: true, capacity: true },
+    }),
+    opts.enforceCapacity ? prisma.enrollment.count({ where: { batchId } }) : Promise.resolve(0),
+    ids.length
+      ? prisma.enrollment.findMany({
+          where: { userId: { in: ids }, course: { batches: { some: { id: batchId } } } },
+          select: { id: true, userId: true, batchId: true, batch: { select: { name: true } } },
+        })
+      : Promise.resolve([]),
+  ]);
   if (!batch) throw AppError.notFound("Batch not found.");
+  if (ids.length === 0) return placement;
 
-  const ids = [...new Set(userIds)];
-  if (ids.length === 0) return 0;
-
-  const existing = await prisma.enrollment.findMany({
-    where: { courseId: batch.courseId, userId: { in: ids } },
-    select: { id: true, userId: true, batchId: true },
-  });
   const byUser = new Map(existing.map((e) => [e.userId, e]));
+  let seatsLeft =
+    opts.enforceCapacity && batch.capacity != null ? Math.max(0, batch.capacity - seated) : Infinity;
 
-  /** Already own the course but sit on another batch (or none) — move them. */
-  const moveIds: string[] = [];
-  /** Brand new to the course — enrol them. */
-  const fresh: string[] = [];
+  const relinkIds: string[] = [];
+  /** How many learners each other batch is losing to this one. */
+  const leaving = new Map<string, number>();
 
   for (const userId of ids) {
     const e = byUser.get(userId);
-    if (e) {
-      if (e.batchId === batchId) continue; // already on this batch
-      moveIds.push(e.id);
+    if (e?.batchId === batchId) {
+      placement.already.push(userId);
+      continue;
+    }
+    if (seatsLeft <= 0) {
+      placement.full.push(userId);
+      continue;
+    }
+    seatsLeft -= 1;
+    if (!e) {
+      placement.enrolled.push(userId);
+    } else if (!e.batchId) {
+      placement.attached.push(userId);
+      relinkIds.push(e.id);
     } else {
-      fresh.push(userId);
+      placement.moved.push({ userId, fromBatchId: e.batchId, fromBatchName: e.batch?.name ?? "" });
+      relinkIds.push(e.id);
+      leaving.set(e.batchId, (leaving.get(e.batchId) ?? 0) + 1);
     }
   }
 
-  const added = [
-    ...fresh,
-    ...moveIds.map((id) => existing.find((e) => e.id === id)!.userId),
+  const addedIds = [
+    ...placement.enrolled,
+    ...placement.attached,
+    ...placement.moved.map((m) => m.userId),
   ];
-  if (added.length === 0) return 0;
+  if (addedIds.length === 0) return placement;
 
-  // Four statements, whatever the roster size. Per-row `create`/`update` calls
-  // fan out into a relation-integrity SELECT each under relationMode="prisma",
-  // and against a database a region away that overran the 5 s transaction
-  // timeout as soon as two learners were picked at once — see
-  // src/server/repositories/counters.ts.
+  // A handful of statements, whatever the roster size. Per-row `create`/
+  // `update` calls fan out into a relation-integrity SELECT each under
+  // relationMode="prisma", which overran the 5 s transaction timeout as soon as
+  // two learners were picked at once — see src/server/repositories/counters.ts.
   const ops: Prisma.PrismaPromise<unknown>[] = [];
-  if (fresh.length > 0) {
+  if (placement.enrolled.length > 0) {
     ops.push(
       prisma.enrollment.createMany({
-        data: fresh.map((userId) => ({
+        data: placement.enrolled.map((userId) => ({
           userId,
           courseId: batch.courseId,
           batchId,
@@ -400,24 +479,39 @@ export async function addBatchStudents(batchId: string, userIds: string[]): Prom
         })),
       }),
     );
-    ops.push(bumpCourseEnrollmentCount(batch.courseId, fresh.length));
+    ops.push(bumpCourseEnrollmentCount(batch.courseId, placement.enrolled.length));
   }
-  if (moveIds.length > 0) {
-    ops.push(moveEnrollmentsToBatch(moveIds, batchId));
-  }
-  ops.push(bumpBatchEnrolledCount(batchId, added.length));
+  if (relinkIds.length > 0) ops.push(moveEnrollmentsToBatch(relinkIds, batchId));
+  ops.push(bumpBatchEnrolledCount(batchId, addedIds.length));
+  for (const [fromId, n] of leaving) ops.push(bumpBatchEnrolledCount(fromId, -n));
 
   await prisma.$transaction(ops);
 
-  await notify({
-    userIds: added,
-    type: "COURSE",
-    title: "You've been added to a batch",
-    message: `You're now on “${batch.name}” for ${batch.course.title}.`,
-    actionUrl: `/student/learn/${batch.course.slug}`,
-  });
+  // Email + bell for everyone who is newly on this batch, sent after the
+  // response so the admin isn't kept waiting on SMTP.
+  queueAddedToBatch(batchId, addedIds);
 
-  return added.length;
+  return placement;
+}
+
+/**
+ * Put hand-picked learners onto a batch (walk-ins, offline sign-ups). Capacity
+ * is advisory here — the picker warns before going over, and an admin adding
+ * someone by hand means it. Returns how many were actually added or moved.
+ */
+export async function addBatchStudents(batchId: string, userIds: string[]): Promise<number> {
+  // The picker only offers active students; hold the endpoint to the same rule
+  // so a staff account can't be put on a roster by a hand-made request.
+  const students = await prisma.user.findMany({
+    where: { AND: [{ id: { in: [...new Set(userIds)] } }, activeStudentWhere()] },
+    select: { id: true },
+  });
+  const allowed = new Set(students.map((s) => s.id));
+  const p = await placeStudentsOnBatch(
+    batchId,
+    userIds.filter((id) => allowed.has(id)),
+  );
+  return p.enrolled.length + p.attached.length + p.moved.length;
 }
 
 /**
@@ -443,14 +537,30 @@ export async function batchesForExport(q: Pick<BatchListQuery, "search" | "statu
     where,
     orderBy: { startDate: "desc" },
     take: 10000,
-    include: { course: { select: { title: true } }, instructor: { select: { name: true } } },
+    include: {
+      course: { select: { title: true } },
+      instructor: { select: { name: true } },
+      associates: { select: { user: { select: { name: true } } } },
+    },
   });
-  const headers = ["Name", "Code", "Course", "Instructor", "Status", "Learners", "Capacity", "Starts", "Ends"];
+  const headers = [
+    "Name",
+    "Code",
+    "Course",
+    "Instructor",
+    "Associate instructors",
+    "Status",
+    "Learners",
+    "Capacity",
+    "Starts",
+    "Ends",
+  ];
   const data = rows.map((b) => [
     b.name,
     b.code,
     b.course?.title ?? "",
     b.instructor?.name ?? "",
+    b.associates.map((a) => a.user.name).join(", "),
     b.status,
     b.enrolledCount,
     b.capacity ?? "",

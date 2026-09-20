@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { hashPassword, verifyPassword, needsRehash } from "@/lib/auth/password";
 import { signAuthTokens, verifyToken } from "@/lib/auth/jwt";
@@ -23,7 +24,14 @@ export interface PublicUser {
   id: string;
   name: string;
   email: string;
+  /**
+   * The role this request acts as. It is the account's primary role, except
+   * inside a panel the person reaches through an extra role (an instructor in
+   * /student is a STUDENT there) — see `getCurrentUser` in lib/auth/require.
+   */
   role: Role;
+  /** Every role the person holds: the primary one first, then any extras. */
+  roles: Role[];
   avatarUrl: string | null;
   status: string;
   permissions: string[];
@@ -60,6 +68,7 @@ interface AuthUser {
   avatarUrl: string | null;
   status: string;
   role: Role;
+  roles: Role[];
   permissions: string[];
 }
 
@@ -72,6 +81,7 @@ interface AuthUserRow {
   avatarUrl: string | null;
   status: string;
   roleSlug: string;
+  extraRoleSlug: string | null;
   permissionKey: string | null;
 }
 
@@ -88,9 +98,9 @@ function foldAuthUser(rows: AuthUserRow[]): AuthUser | null {
     avatarUrl: first.avatarUrl,
     status: first.status,
     role: first.roleSlug as Role,
-    permissions: rows
-      .map((r) => r.permissionKey)
-      .filter((k): k is string => k !== null),
+    roles: [...new Set([first.roleSlug, ...rows.map((r) => r.extraRoleSlug).filter((k): k is string => k !== null)])] as Role[],
+    // One row per (extra role × permission), so the same key can repeat.
+    permissions: [...new Set(rows.map((r) => r.permissionKey).filter((k): k is string => k !== null))],
   };
 }
 
@@ -98,10 +108,13 @@ async function loadAuthUserById(id: string): Promise<AuthUser | null> {
   return foldAuthUser(
     await prisma.$queryRaw<AuthUserRow[]>`
       SELECT u.id, u.name, u.email, u.emailVerified, u.passwordHash,
-             u.avatarUrl, u.status, r.slug AS roleSlug, p.\`key\` AS permissionKey
+             u.avatarUrl, u.status, r.slug AS roleSlug, x.slug AS extraRoleSlug,
+             p.\`key\` AS permissionKey
       FROM \`User\` u
       JOIN \`Role\` r ON r.id = u.roleId
-      LEFT JOIN \`RolePermission\` rp ON rp.roleId = r.id
+      LEFT JOIN \`UserRole\` ur ON ur.userId = u.id
+      LEFT JOIN \`Role\` x ON x.id = ur.roleId
+      LEFT JOIN \`RolePermission\` rp ON rp.roleId = r.id OR rp.roleId = x.id
       LEFT JOIN \`Permission\` p ON p.id = rp.permissionId
       WHERE u.id = ${id}
     `,
@@ -112,10 +125,13 @@ async function loadAuthUserByEmail(email: string): Promise<AuthUser | null> {
   return foldAuthUser(
     await prisma.$queryRaw<AuthUserRow[]>`
       SELECT u.id, u.name, u.email, u.emailVerified, u.passwordHash,
-             u.avatarUrl, u.status, r.slug AS roleSlug, p.\`key\` AS permissionKey
+             u.avatarUrl, u.status, r.slug AS roleSlug, x.slug AS extraRoleSlug,
+             p.\`key\` AS permissionKey
       FROM \`User\` u
       JOIN \`Role\` r ON r.id = u.roleId
-      LEFT JOIN \`RolePermission\` rp ON rp.roleId = r.id
+      LEFT JOIN \`UserRole\` ur ON ur.userId = u.id
+      LEFT JOIN \`Role\` x ON x.id = ur.roleId
+      LEFT JOIN \`RolePermission\` rp ON rp.roleId = r.id OR rp.roleId = x.id
       LEFT JOIN \`Permission\` p ON p.id = rp.permissionId
       WHERE u.email = ${email}
     `,
@@ -130,6 +146,7 @@ function toPublicUser(user: AuthUser): PublicUser {
     role: user.role,
     avatarUrl: user.avatarUrl,
     status: user.status,
+    roles: user.roles,
     permissions: user.permissions,
   };
 }
@@ -635,4 +652,49 @@ export async function issueSessionFor(
 export async function getMe(userId: string): Promise<PublicUser | null> {
   const user = await loadAuthUserById(userId);
   return user ? toPublicUser(user) : null;
+}
+
+/** How long an app-to-website sign-in link stays usable. */
+const HANDOFF_TTL_MS = 2 * 60_000;
+
+/**
+ * A one-time link that signs the app's user into the website — how an admin,
+ * instructor or sales agent opens their panel from the phone app without
+ * typing their password again. The link carries a long random code stored
+ * hashed as a LOGIN code, good for one use within two minutes.
+ *
+ * The row is inserted directly rather than through `createAndSendOtp`: that
+ * would email the code and clear any code the person asked for by email.
+ */
+export async function createWebHandoff(userId: string): Promise<{ email: string; code: string }> {
+  const user = await loadAuthUserById(userId);
+  if (!user || user.status === "SUSPENDED") throw AppError.unauthorized("Please sign in again.");
+  const code = randomBytes(24).toString("base64url");
+  await prisma.otpToken.create({
+    data: {
+      userId: user.id,
+      email: user.email,
+      codeHash: hashOtp(code),
+      purpose: PURPOSE_DB.login,
+      expiresAt: new Date(Date.now() + HANDOFF_TTL_MS),
+    },
+  });
+  return { email: user.email, code };
+}
+
+/** Spend a handoff code: exactly one use, before it expires, for that address. */
+export async function redeemWebHandoff(emailInput: string, code: string): Promise<{ user: PublicUser; tokens: AuthTokens }> {
+  const email = emailInput.trim().toLowerCase();
+  const record = await prisma.otpToken.findFirst({
+    where: { email, purpose: PURPOSE_DB.login, codeHash: hashOtp(code), consumedAt: null },
+    select: { id: true, expiresAt: true },
+  });
+  if (!record || record.expiresAt < new Date()) {
+    throw AppError.unauthorized("This sign-in link has expired. Open it again from the app.");
+  }
+  await prisma.otpToken.update({ where: { id: record.id }, data: { consumedAt: new Date() } });
+  const user = await loadAuthUserByEmail(email);
+  if (!user || user.status === "SUSPENDED") throw AppError.unauthorized("Please sign in again.");
+  const [tokens] = await Promise.all([issueTokens(user), recordLogin(user.id)]);
+  return { user: toPublicUser(user), tokens };
 }

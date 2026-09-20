@@ -8,11 +8,12 @@ export const USER_STATUSES = [
   "SUSPENDED",
 ] as const;
 
-const roleSlugEnum = z.enum([
+export const roleSlugEnum = z.enum([
   ROLES.SUPER_ADMIN,
   ROLES.ADMIN,
   ROLES.INSTRUCTOR,
   ROLES.STUDENT,
+  ROLES.SALES_AGENT,
 ]);
 
 /** "" clears the date; omitted leaves it alone. */
@@ -64,3 +65,25 @@ export const listUsersQuerySchema = z.object({
 });
 
 export type ListUsersQuery = z.infer<typeof listUsersQuerySchema>;
+
+/** The full set of extra roles a person holds besides their primary one. */
+export const setExtraRolesSchema = z.object({
+  extraRoles: z.array(roleSlugEnum).max(5),
+});
+
+/** Give an existing person one more role. */
+export const addExtraRoleSchema = z.object({ roleSlug: roleSlugEnum });
+
+/**
+ * Bulk-create accounts from a CSV (name, email, phone, role, password). A row
+ * whose email already has an account gets the row's role added to it instead,
+ * when `addRoleToExisting` is on — the usual reason it's in the sheet twice.
+ */
+export const importUsersSchema = z.object({
+  csv: z.string().min(1, "Paste or upload a CSV first").max(2_000_000),
+  defaultRole: roleSlugEnum.default(ROLES.STUDENT),
+  addRoleToExisting: z.boolean().default(true),
+  sendWelcome: z.boolean().default(true),
+});
+
+export type ImportUsersInput = z.infer<typeof importUsersSchema>;

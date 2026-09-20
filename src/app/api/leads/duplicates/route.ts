@@ -1,6 +1,6 @@
 import { withRoute } from "@/lib/api/handler";
 import { ok } from "@/lib/api/response";
-import { requireApiPermission } from "@/lib/auth/api-guard";
+import { requireApiLeadAdmin, requireApiPermission } from "@/lib/auth/api-guard";
 import { PERMISSIONS } from "@/config/roles";
 import { removeDuplicatesSchema } from "@/lib/validations/lead";
 import {
@@ -19,7 +19,7 @@ export const GET = withRoute(async () => {
 
 /** Delete the copies the admin chose to drop. */
 export const POST = withRoute(async (req) => {
-  await requireApiPermission(PERMISSIONS.MANAGE_LEADS);
+  await requireApiLeadAdmin();
   const input = removeDuplicatesSchema.parse(
     await req.json().catch(() => ({})),
   );

@@ -373,6 +373,9 @@ model User {
   recordingAccess    RecordingAccess[]      @relation("RecordingAccessUser")
   recordingViews     RecordingView[]        @relation("RecordingViewUser")
   recordingDevices   RecordingDevice[]      @relation("RecordingDeviceUser")
+  extraRoles         UserRole[]             @relation("UserExtraRoles")
+  batchesAssisted    BatchInstructor[]      @relation("BatchAssociate")
+  batchNotes         BatchNote[]            @relation("BatchNoteAuthor")
 
   @@index([roleId])
   @@index([status])
@@ -390,6 +393,7 @@ model Role {
 
   users       User[]
   permissions RolePermission[]
+  extraUsers  UserRole[]
 }
 
 model Permission {
@@ -561,6 +565,8 @@ model Batch {
   quizzes         QuizBatch[]
   lessonAccess    LessonAccess[]
   recordingAccess RecordingAccess[]
+  associates      BatchInstructor[]
+  notes           BatchNote[]
 
   @@index([courseId])
   @@index([instructorId])
@@ -1401,6 +1407,15 @@ model Meeting {
   /// Null or 0 means it is not for sale, and no button is offered.
   watermarkRemovalPrice Decimal? @db.Decimal(10, 2)
 
+  /// Created from the batch's timetable rather than by hand.
+  autoScheduled  Boolean   @default(false)
+  /// Someone moved, renamed or cancelled this auto class by hand, so rebuilding
+  /// the timetable must leave it alone.
+  manualOverride Boolean   @default(false)
+  cancelReason   String?   @db.Text
+  /// When the "your class is tomorrow, here is the link" email went out.
+  reminderSentAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1843,13 +1858,17 @@ model Lead {
  * A time-stamped follow-up note against a lead (with optional stage snapshot).
  */
 model LeadFollowUp {
-  id          String      @id @default(cuid())
-  leadId      String
-  note        String      @db.Text
-  stage       LeadStage?
-  subStatus   String?
-  status      LeadStatus? // legacy — superseded by `stage`
-  createdById String
+  id               String      @id @default(cuid())
+  leadId           String
+  note             String      @db.Text
+  stage            LeadStage?
+  subStatus        String?
+  status           LeadStatus? // legacy — superseded by `stage`
+  createdById      String
+  /// The next follow-up this remark scheduled, kept on the remark so the
+  /// history shows what was promised when.
+  nextFollowUpDate DateTime?
+  nextFollowUpTime String?
 
   createdAt DateTime @default(now())
 
@@ -2135,4 +2154,203 @@ model ChatMessage {
   @@index([intentId])
   @@index([matched, resolved])
   @@index([createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 9 (client list of 19 Sep 2026)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Roles a person holds besides `User.roleId` — an instructor who is also a
+/// student, a student who also teaches. Permissions are the union of all.
+/// Uniqueness (user, role) is kept in code: a unique index needs a data-loss
+/// flag on `db push`.
+model UserRole {
+  id        String   @id @default(cuid())
+  userId    String
+  roleId    String
+  createdAt DateTime @default(now())
+
+  user User @relation("UserExtraRoles", fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([userId])
+  @@index([roleId])
+}
+
+/// Associate instructors on a batch, beside the lead `Batch.instructorId`.
+model BatchInstructor {
+  id        String   @id @default(cuid())
+  batchId   String
+  userId    String
+  createdAt DateTime @default(now())
+
+  batch Batch @relation(fields: [batchId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user  User  @relation("BatchAssociate", fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([batchId])
+  @@index([userId])
+}
+
+/// Notes and study material shared with a whole batch.
+model BatchNote {
+  id          String   @id @default(cuid())
+  batchId     String
+  title       String
+  body        String?  @db.Text
+  fileUrl     String?
+  fileName    String?
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  batch     Batch @relation(fields: [batchId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  createdBy User  @relation("BatchNoteAuthor", fields: [createdById], references: [id], onUpdate: NoAction)
+
+  @@index([batchId])
+  @@index([createdById])
+}
+
+/// A festival or holiday. On the day, wishes go to every student and
+/// instructor; on a `noClasses` day the timetable skips that date.
+model Holiday {
+  id           String    @id @default(cuid())
+  date         DateTime  @db.Date
+  name         String
+  message      String?   @db.Text
+  noClasses    Boolean   @default(true)
+  sendWishes   Boolean   @default(true)
+  wishesSentAt DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([date])
+}
+
+enum ExperienceLevel {
+  FRESHER
+  EXPERIENCED
+}
+
+enum JobMode {
+  ONSITE
+  REMOTE
+  HYBRID
+  ANY
+}
+
+enum CandidateStatus {
+  NEW
+  SHORTLISTED
+  REFERRED
+  INTERVIEWING
+  PLACED
+  NOT_PLACED
+  ON_HOLD
+}
+
+/// A CV sent through "Send your CV" on the careers page, and the candidate's
+/// journey through placement afterwards.
+model JobApplication {
+  id                  String          @id @default(cuid())
+  name                String
+  email               String
+  phone               String
+  userId              String?
+  courseId            String?
+  courseName          String?
+  /// The batch number printed on the certificate.
+  batchCode           String?
+  jobExpecting        String?
+  experienceLevel     ExperienceLevel @default(FRESHER)
+  experienceDetails   String?         @db.Text
+  currentAddress      String?         @db.Text
+  expectedLocation    String?
+  expectedMode        JobMode?
+  joiningAvailability String?
+  cvUrl               String?
+  cvName              String?
+  status              CandidateStatus @default(NEW)
+  placementPartnerId  String?
+  hiringPartnerId     String?
+  hiringPostId        String?
+  placedAt            DateTime?
+  placedCompany       String?
+  placedRole          String?
+  placedPackage       String?
+  adminNotes          String?         @db.Text
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  placementPartner PlacementPartner? @relation(fields: [placementPartnerId], references: [id], onUpdate: NoAction)
+  hiringPartner    HiringPartner?    @relation(fields: [hiringPartnerId], references: [id], onUpdate: NoAction)
+  hiringPost       HiringPost?       @relation(fields: [hiringPostId], references: [id], onUpdate: NoAction)
+
+  @@index([status])
+  @@index([email])
+  @@index([userId])
+  @@index([placementPartnerId])
+  @@index([hiringPartnerId])
+  @@index([hiringPostId])
+  @@index([createdAt])
+}
+
+/// A company that helps place our candidates.
+model PlacementPartner {
+  id            String   @id @default(cuid())
+  name          String
+  contactPerson String?
+  email         String?
+  phone         String?
+  website       String?
+  city          String?
+  notes         String?  @db.Text
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  candidates JobApplication[]
+
+  @@index([isActive])
+}
+
+/// A company that hires our candidates.
+model HiringPartner {
+  id            String   @id @default(cuid())
+  name          String
+  contactPerson String?
+  email         String?
+  phone         String?
+  website       String?
+  city          String?
+  notes         String?  @db.Text
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  posts      HiringPost[]
+  candidates JobApplication[]
+
+  @@index([isActive])
+}
+
+/// A role a hiring partner is filling, for freshers or experienced people.
+model HiringPost {
+  id          String          @id @default(cuid())
+  partnerId   String
+  title       String
+  level       ExperienceLevel @default(FRESHER)
+  openings    Int?
+  location    String?
+  mode        JobMode?
+  salary      String?
+  description String?         @db.Text
+  isOpen      Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  partner    HiringPartner    @relation(fields: [partnerId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  candidates JobApplication[]
+
+  @@index([partnerId])
+  @@index([isOpen])
 }

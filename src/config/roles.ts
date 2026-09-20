@@ -13,6 +13,8 @@ export const ROLES = {
   ADMIN: "ADMIN",
   INSTRUCTOR: "INSTRUCTOR",
   STUDENT: "STUDENT",
+  /** Counsellors working the lead sheet — the Leads section and nothing else. */
+  SALES_AGENT: "SALES_AGENT",
 } as const;
 
 export type Role = (typeof ROLES)[keyof typeof ROLES];
@@ -22,6 +24,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   ADMIN: "Admin",
   INSTRUCTOR: "Instructor",
   STUDENT: "Student",
+  SALES_AGENT: "Sales Agent",
 };
 
 /**
@@ -38,6 +41,7 @@ export const PERMISSIONS = {
   MANAGE_HOMEPAGE: "homepage:manage",
   VIEW_REPORTS: "reports:view",
   MANAGE_LEADS: "leads:manage",
+  MANAGE_PLACEMENTS: "placements:manage",
 
   // Catalog
   MANAGE_CATEGORIES: "categories:manage",
@@ -77,6 +81,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     P.MANAGE_HOMEPAGE,
     P.VIEW_REPORTS,
     P.MANAGE_LEADS,
+    P.MANAGE_PLACEMENTS,
     P.MANAGE_CATEGORIES,
     P.CREATE_COURSE,
     P.UPDATE_ANY_COURSE,
@@ -109,6 +114,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     P.TAKE_QUIZ,
     P.VIEW_OWN_CERTIFICATE,
   ],
+  SALES_AGENT: [P.MANAGE_LEADS, P.VIEW_COURSE],
 };
 
 /** Which dashboard home a role lands on after login. */
@@ -117,4 +123,5 @@ export const ROLE_HOME: Record<Role, string> = {
   ADMIN: "/admin",
   INSTRUCTOR: "/instructor",
   STUDENT: "/student",
+  SALES_AGENT: "/admin/leads",
 };

@@ -91,6 +91,25 @@ export async function requireBatchWrite(batchId: string): Promise<PublicUser> {
   throw AppError.forbidden("You can only manage batches you lead.");
 }
 
+/**
+ * Staff, the batch's lead instructor, or one of its associate instructors.
+ * Associates teach the batch, so they may share notes and set quizzes for it —
+ * but the roster and the batch itself stay with `requireBatchWrite`.
+ */
+export async function requireBatchAccess(batchId: string): Promise<PublicUser> {
+  const user = await requireApiPermission(PERMISSIONS.MANAGE_BATCHES);
+  if (isStaffRole(user.role)) return user;
+  const [batch, associate] = await Promise.all([
+    prisma.batch.findUnique({ where: { id: batchId }, select: { instructorId: true } }),
+    prisma.batchInstructor.findFirst({
+      where: { batchId, userId: user.id },
+      select: { id: true },
+    }),
+  ]);
+  if (batch && (batch.instructorId === user.id || associate)) return user;
+  throw AppError.forbidden("You can only manage batches you teach.");
+}
+
 /** Staff may manage any live class; instructors only ones they host. */
 export async function requireMeetingWrite(meetingId: string): Promise<PublicUser> {
   const user = await requireApiPermission(PERMISSIONS.HOST_LIVE_CLASS);
@@ -164,5 +183,17 @@ export async function requireApiStaff(): Promise<PublicUser> {
   if (user.role !== ROLES.SUPER_ADMIN && user.role !== ROLES.ADMIN) {
     throw AppError.forbidden("Staff only.");
   }
+  return user;
+}
+
+/**
+ * Lead work that can't be undone — deleting a lead, clearing duplicates — is
+ * for admins. Sales agents hold `leads:manage` to work the sheet, not to
+ * remove it.
+ */
+export async function requireApiLeadAdmin(): Promise<PublicUser> {
+  const user = await requireApiPermission(PERMISSIONS.MANAGE_LEADS);
+  const admin = [user.role, ...user.roles].some((r) => r === ROLES.SUPER_ADMIN || r === ROLES.ADMIN);
+  if (!admin) throw AppError.forbidden("Only an admin can delete leads.");
   return user;
 }

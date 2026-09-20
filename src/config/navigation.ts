@@ -27,6 +27,8 @@ import {
   Image as ImageIcon,
   CalendarCheck,
   Bot,
+  Briefcase,
+  PartyPopper,
   Stethoscope,
   type LucideIcon,
 } from "lucide-react";
@@ -59,6 +61,8 @@ const ALL: Role[] = [
   ROLES.STUDENT,
 ];
 const STAFF: Role[] = [ROLES.SUPER_ADMIN, ROLES.ADMIN];
+/** Staff plus the sales agents who work the lead sheet. */
+const SALES: Role[] = [...STAFF, ROLES.SALES_AGENT];
 const TEACHING: Role[] = [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.INSTRUCTOR];
 
 /**
@@ -121,7 +125,9 @@ export const NAV_SECTIONS: NavSection[] = [
       { title: "Blog", href: "/blog", icon: Newspaper, roles: STAFF },
       { title: "Media", href: "/media", icon: ImageIcon, roles: STAFF },
       { title: "Users", href: "/users", icon: Users, roles: STAFF },
-      { title: "Leads", href: "/leads", icon: Target, roles: STAFF },
+      { title: "Leads", href: "/leads", icon: Target, roles: SALES },
+      { title: "Careers", href: "/careers", icon: Briefcase, roles: STAFF },
+      { title: "Holidays", href: "/holidays", icon: PartyPopper, roles: STAFF },
       { title: "Schedule", href: "/schedule", icon: CalendarClock, roles: TEACHING },
       { title: "Payments", href: "/payments", icon: CreditCard, roles: STAFF },
       { title: "Fees", href: "/payments", icon: CreditCard, roles: [ROLES.STUDENT] },
@@ -139,6 +145,7 @@ const ROLE_BASE: Record<Role, string> = {
   ADMIN: "/admin",
   INSTRUCTOR: "/instructor",
   STUDENT: "/student",
+  SALES_AGENT: "/admin",
 };
 
 /**

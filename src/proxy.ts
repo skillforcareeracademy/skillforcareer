@@ -4,6 +4,8 @@ import { ACCESS_TOKEN_COOKIE, REFRESH_TOKEN_COOKIE } from "@/lib/auth/cookies";
 import { accessCookieOptions, refreshCookieOptions } from "@/lib/auth/session";
 import { renewFromRefreshToken } from "@/lib/auth/renew";
 import { ROLE_HOME, ROLES, type Role } from "@/config/roles";
+import { SECTION_HEADER } from "@/lib/auth/section";
+import { prisma } from "@/lib/prisma";
 
 /**
  * Route-protection proxy (Next.js 16 renamed `middleware` → `proxy`, and it now
@@ -21,7 +23,9 @@ import { ROLE_HOME, ROLES, type Role } from "@/config/roles";
  *      they don't own are redirected to their own dashboard home.
  */
 const SECTION_ROLES: Record<string, Role[]> = {
-  "/admin": [ROLES.SUPER_ADMIN, ROLES.ADMIN],
+  // Sales agents only reach /admin/leads — every other admin page checks its
+  // own role or permission and sends them back there.
+  "/admin": [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.SALES_AGENT],
   "/instructor": [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.INSTRUCTOR],
   "/student": [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.STUDENT],
 };
@@ -36,6 +40,8 @@ function sectionFor(pathname: string): string | null {
 
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
+  // Only this proxy may say which panel a request is for (see lib/auth/require).
+  req.headers.delete(SECTION_HEADER);
 
   // The auth endpoints issue and clear these cookies themselves — renewing
   // underneath them would fight the Set-Cookie headers they're writing.
@@ -58,7 +64,7 @@ export async function proxy(req: NextRequest) {
   if (accessToken) {
     try {
       const payload = await verifyToken(accessToken, "access");
-      return authorize(req, payload.role, section);
+      return await authorize(req, payload.sub, payload.role, section);
     } catch {
       // Expired or invalid — fall through to renewal rather than signing out.
     }
@@ -83,9 +89,7 @@ export async function proxy(req: NextRequest) {
     req.cookies.set(REFRESH_TOKEN_COOKIE, renewed.refreshToken);
   }
 
-  const res = authorize(req, renewed.claims.role, section, {
-    headers: req.headers,
-  });
+  const res = await authorize(req, renewed.claims.sub, renewed.claims.role, section);
 
   // ...and to the browser, for every request after this one.
   res.cookies.set(
@@ -103,20 +107,27 @@ export async function proxy(req: NextRequest) {
   return res;
 }
 
-/** Continue the request, or bounce to the caller's own dashboard home. */
-function authorize(
-  req: NextRequest,
-  role: Role,
-  section: string | null,
-  init?: { headers: Headers },
-) {
+/**
+ * Continue the request, or bounce to the caller's own dashboard home.
+ *
+ * The token carries the primary role only, and it was written at sign-in, so a
+ * section the primary role can't enter gets one more look: the extra roles an
+ * admin may have given since (an instructor who is also a student). That costs
+ * a query only on this rare path.
+ */
+async function authorize(req: NextRequest, userId: string, role: Role, section: string | null) {
   if (section && !SECTION_ROLES[section].includes(role)) {
-    const url = req.nextUrl.clone();
-    url.pathname = ROLE_HOME[role];
-    url.search = "";
-    return NextResponse.redirect(url);
+    const extra = await prisma.$queryRaw<{ slug: string }[]>`
+      SELECT r.slug FROM \`UserRole\` ur JOIN \`Role\` r ON r.id = ur.roleId WHERE ur.userId = ${userId}`;
+    if (!extra.some((r) => SECTION_ROLES[section].includes(r.slug as Role))) {
+      const url = req.nextUrl.clone();
+      url.pathname = ROLE_HOME[role] ?? "/login";
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
   }
-  return init ? NextResponse.next({ request: init }) : NextResponse.next();
+  if (section) req.headers.set(SECTION_HEADER, section);
+  return NextResponse.next({ request: { headers: req.headers } });
 }
 
 export const config = {

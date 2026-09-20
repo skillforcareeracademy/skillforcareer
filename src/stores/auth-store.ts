@@ -7,6 +7,8 @@ export interface SessionUser {
   name: string;
   email: string;
   role: Role;
+  /** Every role held — primary first. Optional for sessions cached before extra roles existed. */
+  roles?: Role[];
   avatarUrl: string | null;
   status: string;
   permissions: string[];

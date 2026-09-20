@@ -16,6 +16,9 @@ import {
   UserCog,
   IdCard,
   Loader2,
+  Upload,
+  AlertCircle,
+  UserPlus,
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
@@ -26,6 +29,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -70,7 +75,25 @@ const ROLE_OPTIONS: Role[] = [
   ROLES.ADMIN,
   ROLES.INSTRUCTOR,
   ROLES.STUDENT,
+  ROLES.SALES_AGENT,
 ];
+
+/** What the API hands back when the email is taken, so the admin can add a role instead. */
+interface ExistingAccount {
+  id: string;
+  name: string;
+  role: string;
+  roleLabel: string;
+  extraRoles: { slug: string; label: string }[];
+}
+
+interface ImportResult {
+  created: number;
+  rolesAdded: number;
+  skipped: number;
+  errors: { row: number; email: string; reason: string }[];
+  message: string;
+}
 
 const STATUS_BADGE: Record<string, string> = {
   ACTIVE: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
@@ -80,6 +103,8 @@ const STATUS_BADGE: Record<string, string> = {
 };
 
 const ALL = "all";
+/** A file download, not a page — a plain link, not client navigation. */
+const IMPORT_TEMPLATE_HREF = "/api/admin/users/template";
 
 const cap = (s: string) => s.charAt(0) + s.slice(1).toLowerCase();
 
@@ -108,6 +133,21 @@ export function UsersClient({
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState(emptyCreate);
   const [creating, setCreating] = useState(false);
+  // Shown inside the dialog, not only as a toast: a toast in the corner is
+  // easy to miss on a tablet, and the admin was left with a button that
+  // seemed to do nothing.
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [existingAccount, setExistingAccount] = useState<ExistingAccount | null>(null);
+  const [addingRole, setAddingRole] = useState(false);
+
+  const [importOpen, setImportOpen] = useState(false);
+  const [importCsv, setImportCsv] = useState("");
+  const [importFileName, setImportFileName] = useState<string | null>(null);
+  const [importRole, setImportRole] = useState<Role>(ROLES.STUDENT);
+  const [importAddRole, setImportAddRole] = useState(true);
+  const [importWelcome, setImportWelcome] = useState(true);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
 
   const [editing, setEditing] = useState<UserRow | null>(null);
   const [editForm, setEditForm] = useState({
@@ -115,6 +155,7 @@ export function UsersClient({
     email: "",
     roleSlug: ROLES.STUDENT as Role,
     status: "ACTIVE" as string,
+    extraRoles: [] as string[],
   });
   const [saving, setSaving] = useState(false);
 
@@ -193,19 +234,72 @@ export function UsersClient({
     );
   }
 
+  function openCreate(open: boolean) {
+    setCreateOpen(open);
+    setCreateError(null);
+    setExistingAccount(null);
+  }
+
   async function onCreate(e: FormEvent) {
     e.preventDefault();
     setCreating(true);
+    setCreateError(null);
+    setExistingAccount(null);
     try {
       await api.post("/api/admin/users", createForm);
-      toast.success("User created.");
+      toast.success("User created. A welcome email is on its way.");
       setCreateOpen(false);
       setCreateForm(emptyCreate);
       router.refresh();
     } catch (err) {
-      toast.error(issueMessage(err, "Couldn't create user."));
+      const existing = err instanceof ApiError ? (err.details as { existing?: ExistingAccount } | undefined)?.existing : undefined;
+      if (existing) setExistingAccount(existing);
+      else setCreateError(issueMessage(err, "Couldn't create user."));
     } finally {
       setCreating(false);
+    }
+  }
+
+  async function addRoleToExisting() {
+    if (!existingAccount) return;
+    setAddingRole(true);
+    try {
+      await api.post(`/api/admin/users/${existingAccount.id}/roles`, { roleSlug: createForm.roleSlug });
+      toast.success(`${existingAccount.name} is now also ${ROLE_LABELS[createForm.roleSlug]}.`);
+      setCreateOpen(false);
+      setCreateForm(emptyCreate);
+      setExistingAccount(null);
+      router.refresh();
+    } catch (err) {
+      setCreateError(issueMessage(err, "Couldn't add the role."));
+    } finally {
+      setAddingRole(false);
+    }
+  }
+
+  async function onImportFile(file: File | undefined) {
+    if (!file) return;
+    setImportFileName(file.name);
+    setImportCsv(await file.text());
+    setImportResult(null);
+  }
+
+  async function runImport() {
+    setImporting(true);
+    try {
+      const result = await api.post<ImportResult>("/api/admin/users/import", {
+        csv: importCsv,
+        defaultRole: importRole,
+        addRoleToExisting: importAddRole,
+        sendWelcome: importWelcome,
+      });
+      setImportResult(result);
+      toast.success(result.message);
+      router.refresh();
+    } catch (err) {
+      toast.error(issueMessage(err, "Import failed."));
+    } finally {
+      setImporting(false);
     }
   }
 
@@ -215,6 +309,7 @@ export function UsersClient({
       email: u.email,
       roleSlug: u.role as Role,
       status: u.status,
+      extraRoles: u.extraRoles.map((r) => r.slug),
     });
     setEditing(u);
   }
@@ -224,7 +319,13 @@ export function UsersClient({
     if (!editing) return;
     setSaving(true);
     try {
-      await api.patch(`/api/admin/users/${editing.id}`, editForm);
+      const { extraRoles, ...profile } = editForm;
+      await api.patch(`/api/admin/users/${editing.id}`, profile);
+      const before = editing.extraRoles.map((r) => r.slug).sort().join();
+      const after = extraRoles.filter((r) => r !== profile.roleSlug).sort();
+      if (after.join() !== before) {
+        await api.patch(`/api/admin/users/${editing.id}/roles`, { extraRoles: after });
+      }
       toast.success("User updated.");
       setEditing(null);
       router.refresh();
@@ -285,7 +386,16 @@ export function UsersClient({
     {
       key: "role",
       header: "Role",
-      cell: (u) => <Badge variant="secondary">{u.roleLabel}</Badge>,
+      cell: (u) => (
+        <div className="flex flex-wrap items-center gap-1">
+          <Badge variant="secondary">{u.roleLabel}</Badge>
+          {u.extraRoles.map((r) => (
+            <Badge key={r.slug} variant="outline" title="Also holds this role">
+              + {r.label}
+            </Badge>
+          ))}
+        </div>
+      ),
     },
     {
       key: "status",
@@ -414,7 +524,16 @@ export function UsersClient({
             <Button variant="outline" nativeButton={false} render={<a href={usersExportHref} />}>
               <Download className="size-4" /> Export
             </Button>
-            <Button onClick={() => setCreateOpen(true)}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setImportResult(null);
+                setImportOpen(true);
+              }}
+            >
+              <Upload className="size-4" /> Import
+            </Button>
+            <Button onClick={() => openCreate(true)}>
               <Plus className="size-4" /> Add user
             </Button>
           </div>
@@ -506,7 +625,7 @@ export function UsersClient({
       />
 
       {/* Create user */}
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+      <Dialog open={createOpen} onOpenChange={openCreate}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Add user</DialogTitle>
@@ -580,8 +699,38 @@ export function UsersClient({
                 </Select>
               </div>
             </div>
+            {createError && (
+              <div role="alert" className="border-destructive/30 bg-destructive/5 text-destructive flex items-start gap-2 rounded-lg border p-3 text-sm">
+                <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden />
+                <p>{createError}</p>
+              </div>
+            )}
+            {existingAccount && (
+              <div role="alert" className="space-y-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-500/40 dark:bg-amber-500/10">
+                <p>
+                  <span className="font-medium">{createForm.email}</span> already has an account —{" "}
+                  <span className="font-medium">{existingAccount.name}</span> ({existingAccount.roleLabel}
+                  {existingAccount.extraRoles.map((r) => `, ${r.label}`).join("")}).
+                </p>
+                {existingAccount.role === createForm.roleSlug ||
+                existingAccount.extraRoles.some((r) => r.slug === createForm.roleSlug) ? (
+                  <p className="text-muted-foreground">They already have the {ROLE_LABELS[createForm.roleSlug]} role.</p>
+                ) : (
+                  <>
+                    <p className="text-muted-foreground">
+                      One person can hold more than one role. Give this account the{" "}
+                      {ROLE_LABELS[createForm.roleSlug]} role as well — their existing sign-in, courses and history stay as they are.
+                    </p>
+                    <Button type="button" size="sm" onClick={addRoleToExisting} disabled={addingRole}>
+                      {addingRole ? <Loader2 className="size-4 animate-spin" /> : <UserPlus className="size-4" />}
+                      Add {ROLE_LABELS[createForm.roleSlug]} role to {existingAccount.name}
+                    </Button>
+                  </>
+                )}
+              </div>
+            )}
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>
+              <Button type="button" variant="outline" onClick={() => openCreate(false)}>
                 Cancel
               </Button>
               <Button type="submit" disabled={creating}>
@@ -590,6 +739,87 @@ export function UsersClient({
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Import users */}
+      <Dialog open={importOpen} onOpenChange={setImportOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Import users</DialogTitle>
+            <DialogDescription>
+              Upload a CSV with columns name, email, phone, role, password.{" "}
+              <a href={IMPORT_TEMPLATE_HREF} className="text-primary font-medium hover:underline">
+                Download the template
+              </a>
+              . Accounts are pre-verified; anyone without a password signs in with an emailed code.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="import-file">CSV file</Label>
+              <Input id="import-file" type="file" accept=".csv,text/csv" onChange={(e) => void onImportFile(e.target.files?.[0])} />
+              {importFileName && <p className="text-muted-foreground text-xs">{importFileName} loaded.</p>}
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="import-paste">…or paste the sheet</Label>
+              <Textarea
+                id="import-paste"
+                rows={4}
+                value={importCsv}
+                onChange={(e) => {
+                  setImportCsv(e.target.value);
+                  setImportResult(null);
+                }}
+                placeholder={"name,email,phone,role\nPriya Nair,priya@example.com,+91 98765 43210,Student"}
+                className="font-mono text-xs"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Role for rows without one</Label>
+              <Select value={importRole} onValueChange={(v) => setImportRole((v as Role) ?? ROLES.STUDENT)}>
+                <SelectTrigger className="w-full">
+                  <SelectValue>{(v) => (v ? ROLE_LABELS[v as Role] : "Select role")}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {ROLE_OPTIONS.map((r) => (
+                    <SelectItem key={r} value={r}>{ROLE_LABELS[r]}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox checked={importAddRole} onCheckedChange={(v) => setImportAddRole(Boolean(v))} />
+              If an email already has an account, add the row&apos;s role to it
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox checked={importWelcome} onCheckedChange={(v) => setImportWelcome(Boolean(v))} />
+              Send each new person a welcome email
+            </label>
+            {importResult && (
+              <div className="space-y-2 rounded-lg border p-3 text-sm">
+                <p className="font-medium">{importResult.message}</p>
+                {importResult.errors.length > 0 && (
+                  <ul className="text-muted-foreground max-h-40 space-y-1 overflow-auto text-xs">
+                    {importResult.errors.map((e) => (
+                      <li key={`${e.row}-${e.email}`}>
+                        Row {e.row} · {e.email || "—"}: {e.reason}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setImportOpen(false)}>
+              Close
+            </Button>
+            <Button type="button" onClick={runImport} disabled={importing || !importCsv.trim()}>
+              {importing ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
+              Import
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -652,6 +882,28 @@ export function UsersClient({
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Also holds these roles</Label>
+              <p className="text-muted-foreground text-xs">
+                For someone who is, say, an instructor and also studying. They can switch panels from their menu.
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {ROLE_OPTIONS.filter((r) => r !== editForm.roleSlug).map((r) => (
+                  <label key={r} className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={editForm.extraRoles.includes(r)}
+                      onCheckedChange={(v) =>
+                        setEditForm((f) => ({
+                          ...f,
+                          extraRoles: v ? [...f.extraRoles, r] : f.extraRoles.filter((x) => x !== r),
+                        }))
+                      }
+                    />
+                    {ROLE_LABELS[r]}
+                  </label>
+                ))}
               </div>
             </div>
             <DialogFooter>

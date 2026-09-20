@@ -1,6 +1,6 @@
 import { withRoute } from "@/lib/api/handler";
 import { ok } from "@/lib/api/response";
-import { requireApiPermission } from "@/lib/auth/api-guard";
+import { requireApiLeadAdmin, requireApiPermission } from "@/lib/auth/api-guard";
 import { PERMISSIONS } from "@/config/roles";
 import { updateLeadSchema } from "@/lib/validations/lead";
 import {
@@ -27,7 +27,7 @@ export const PATCH = withRoute(async (req, { params }) => {
 });
 
 export const DELETE = withRoute(async (_req, { params }) => {
-  await requireApiPermission(PERMISSIONS.MANAGE_LEADS);
+  await requireApiLeadAdmin();
   const id = String((await params).id);
   await deleteLead(id);
   return ok({ message: "Lead deleted." });

@@ -11,11 +11,12 @@ import {
   ChevronDown,
   LayoutDashboard,
   Compass,
+  ArrowLeftRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api-client";
 import { useAuthStore, type SessionUser } from "@/stores/auth-store";
-import { ROLE_LABELS, ROLE_HOME } from "@/config/roles";
+import { ROLE_LABELS, ROLE_HOME, type Role } from "@/config/roles";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -38,6 +39,17 @@ export function UserMenu({ user }: { user: SessionUser }) {
     .join("")
     .toUpperCase();
   const home = ROLE_HOME[user.role] ?? "/";
+  // Profile and settings live at the panel root ("/admin/profile"), even for a
+  // role whose home is deeper, like a sales agent's /admin/leads.
+  const base = home.split("/").slice(0, 2).join("/") || "/";
+  // Other panels this person can open through their other roles — an
+  // instructor who is also studying switches to the learner panel here.
+  const otherPanels = [...new Set((user.roles ?? []).map((r) => ROLE_HOME[r as Role]).filter(Boolean))]
+    .filter((panelHome) => panelHome.split("/")[1] !== base.split("/")[1])
+    .map((panelHome) => ({
+      href: panelHome,
+      label: ROLE_LABELS[(user.roles ?? []).find((r) => ROLE_HOME[r as Role] === panelHome) as Role],
+    }));
 
   async function onLogout() {
     setLoading(true);
@@ -89,11 +101,17 @@ export function UserMenu({ user }: { user: SessionUser }) {
           <LayoutDashboard className="text-muted-foreground size-4" />
           Dashboard
         </DropdownMenuItem>
-        <DropdownMenuItem render={<Link href={`${home}/profile`} />} className="gap-2.5 py-2">
+        {otherPanels.map((panel) => (
+          <DropdownMenuItem key={panel.href} render={<Link href={panel.href} />} className="gap-2.5 py-2">
+            <ArrowLeftRight className="text-muted-foreground size-4" />
+            Switch to {panel.label} panel
+          </DropdownMenuItem>
+        ))}
+        <DropdownMenuItem render={<Link href={`${base}/profile`} />} className="gap-2.5 py-2">
           <UserIcon className="text-muted-foreground size-4" />
           Profile
         </DropdownMenuItem>
-        <DropdownMenuItem render={<Link href={`${home}/settings`} />} className="gap-2.5 py-2">
+        <DropdownMenuItem render={<Link href={`${base}/settings`} />} className="gap-2.5 py-2">
           <Settings className="text-muted-foreground size-4" />
           Settings
         </DropdownMenuItem>
