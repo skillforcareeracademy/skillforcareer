@@ -96,3 +96,17 @@ export function CLASS_MODE_LABEL(mode: string | null): string {
   if (!mode) return "—";
   return LEAD_CLASS_MODE_LABELS[mode as LeadClassMode] ?? mode;
 }
+
+const IST_OFFSET_MS = 330 * 60_000;
+
+/**
+ * An instant shifted so its *local* fields read as Indian wall-clock time.
+ * Formatting through it prints the same text on the server (UTC) and in any
+ * browser, so timestamps like the upload time hydrate without a mismatch and
+ * match the IST days the filters use.
+ */
+export function inIST(iso: string): Date {
+  const d = new Date(iso);
+  const shifted = new Date(d.getTime() + IST_OFFSET_MS);
+  return new Date(shifted.getTime() + shifted.getTimezoneOffset() * 60_000);
+}

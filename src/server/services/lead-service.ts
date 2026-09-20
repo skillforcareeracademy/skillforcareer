@@ -1,8 +1,10 @@
+import { format } from "date-fns";
 import { prisma } from "@/lib/prisma";
 import { notifyStaff } from "./notification-service";
 import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
 import { ROLES } from "@/config/roles";
+import type { Role } from "@/config/roles";
 import { parseCsv } from "@/lib/csv";
 import {
   LEAD_STAGES,
@@ -15,6 +17,7 @@ import {
   LEAD_QUALITY_LABELS,
   LEAD_SUB_STATUSES,
   OPEN_LEAD_STAGES,
+  INTERESTED_LEAD_STAGES,
   contactHref,
   contactNumber,
   parseAmount,
@@ -32,6 +35,9 @@ import type {
   LeadClassMode,
   LeadContactChannel,
   LeadQuality,
+  LeadSort,
+  LeadStatCard,
+  LeadViewParams,
 } from "@/lib/validations/lead";
 
 /** Legacy 5-value status kept in sync so old rows/reports don't go blank. */
@@ -63,6 +69,46 @@ const phoneKeyOf = (phone: string) => phone.replace(/\D/g, "").slice(-10);
 /** Ceiling on a whole-table duplicate scan. */
 const MAX_DUPLICATE_SCAN = 20_000;
 
+// ── Days ─────────────────────────────────────────────────────────────────────
+
+/**
+ * The academy works on Indian time, so "today", "received on 1 Sep" and the
+ * dates in a download follow the IST calendar whatever timezone the server
+ * runs in (UTC on Vercel). IST boundaries suit both shapes a lead's dates come
+ * in: a day picked in a form or read from a sheet is stored as UTC midnight —
+ * 05:30 IST, the same calendar day — while a website enquiry's `leadDate` is
+ * the instant it arrived, which only reads right against IST days.
+ */
+const IST_OFFSET_MS = 330 * 60_000;
+const DAY_MS = 86_400_000;
+
+/** IST midnight of `ymd` ("2026-09-20"), or of today when omitted. */
+function istDayStart(ymd?: string): Date | undefined {
+  if (ymd === undefined) {
+    const now = new Date(Date.now() + IST_OFFSET_MS);
+    return new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) -
+        IST_OFFSET_MS,
+    );
+  }
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd.trim());
+  if (!m) return undefined;
+  return new Date(
+    Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) - IST_OFFSET_MS,
+  );
+}
+
+/** "2026-09-20" — the IST calendar day an instant falls on. */
+const istDay = (d: Date | null) =>
+  d ? new Date(d.getTime() + IST_OFFSET_MS).toISOString().slice(0, 10) : "";
+
+/** "2026-09-20 16:05" in IST, for timestamps in a download. */
+const istDateTime = (d: Date) =>
+  new Date(d.getTime() + IST_OFFSET_MS)
+    .toISOString()
+    .slice(0, 16)
+    .replace("T", " ");
+
 // ── Lead numbers ─────────────────────────────────────────────────────────────
 
 const LEAD_PREFIX = "SFC";
@@ -92,7 +138,7 @@ const isDuplicateKey = (err: unknown) =>
 // ── Writes ───────────────────────────────────────────────────────────────────
 
 /** Shared mapping from validated input to Prisma columns. */
-function leadData(input: Partial<CreateLeadInput>) {
+function leadData(input: UpdateLeadInput) {
   const data:
     Prisma.LeadUncheckedCreateInput | Prisma.LeadUncheckedUpdateInput = {};
   const set = <K extends keyof typeof data>(
@@ -106,14 +152,15 @@ function leadData(input: Partial<CreateLeadInput>) {
   if (input.phone !== undefined) set("phone", input.phone.trim());
   if (input.whatsapp !== undefined) set("whatsapp", blank(input.whatsapp));
   if (input.email !== undefined) set("email", blank(input.email));
-  if (input.leadDate !== undefined) set("leadDate", input.leadDate);
+  if (input.leadDate) set("leadDate", input.leadDate);
   if (input.courseId !== undefined) set("courseId", blank(input.courseId));
   if (input.courseInterest !== undefined)
     set("courseInterest", blank(input.courseInterest));
   if (input.whyThisCourse !== undefined)
     set("whyThisCourse", blank(input.whyThisCourse));
-  if (input.classMode !== undefined) set("classMode", input.classMode);
-  if (input.quality !== undefined) set("quality", input.quality);
+  // "" and null both mean "take it off" — see `clearableText` in validations.
+  if (input.classMode !== undefined) set("classMode", input.classMode || null);
+  if (input.quality !== undefined) set("quality", input.quality || null);
   if (input.leadScore !== undefined) set("leadScore", input.leadScore ?? null);
   if (input.qualification !== undefined)
     set("qualification", blank(input.qualification));
@@ -149,7 +196,7 @@ export async function createLead(
   input: CreateLeadInput | EnquiryInput,
   source: LeadSource,
 ): Promise<string> {
-  const base = leadData(input as Partial<CreateLeadInput>);
+  const base = leadData(input as UpdateLeadInput);
   const stage = (input as CreateLeadInput).stage ?? "FRESH_LEAD";
 
   let seq = await nextLeadSeq();
@@ -224,6 +271,10 @@ export async function addFollowUp(
       subStatus: blank(input.subStatus) ?? null,
       status: input.stage ? LEGACY_STATUS[input.stage] : null,
       createdById: userId,
+      // The call-back this remark booked, kept on the remark itself: the lead
+      // only holds the latest one, and the history should show each promise.
+      nextFollowUpDate: input.followUpDate ?? null,
+      nextFollowUpTime: blank(input.followUpTime),
     },
     select: { id: true },
   });
@@ -295,25 +346,25 @@ export async function deleteLeadDocument(
 
 // ── Reads ────────────────────────────────────────────────────────────────────
 
-export interface LeadListQuery {
+/**
+ * The list's filters and sort as they arrive in a URL, plus who is looking —
+ * `assignedToId=me` resolves against `viewerId`.
+ */
+export type LeadFilters = LeadViewParams & { viewerId?: string };
+
+export interface LeadListQuery extends LeadFilters {
   page: number;
   pageSize: number;
-  search?: string;
-  stage?: string;
-  subStatus?: string;
-  source?: string;
-  classMode?: string;
-  courseId?: string;
-  assignedToId?: string;
-  quality?: string;
-  minScore?: string;
-  /** Follow-up due window: "overdue" | "today" | "week". */
-  due?: string;
-  from?: string;
-  to?: string;
 }
 
-type LeadFilters = Omit<LeadListQuery, "page" | "pageSize">;
+/** `from`/`to` bounds as IST days; anything else that parses is taken as-is. */
+function dayBound(value: string | undefined, end: boolean): Date | undefined {
+  if (!value) return undefined;
+  const start = istDayStart(value);
+  if (start) return end ? new Date(start.getTime() + DAY_MS - 1) : start;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? undefined : d;
+}
 
 function buildWhere(q: LeadFilters): Prisma.LeadWhereInput {
   const and: Prisma.LeadWhereInput[] = [];
@@ -342,39 +393,78 @@ function buildWhere(q: LeadFilters): Prisma.LeadWhereInput {
     and.push(
       q.assignedToId === "unassigned"
         ? { assignedToId: null }
-        : { assignedToId: q.assignedToId },
+        : q.assignedToId === "me"
+          ? // Nobody signed in can't own a lead — match nothing rather than all.
+            { assignedToId: q.viewerId ?? "" }
+          : { assignedToId: q.assignedToId },
     );
   }
   if (q.due) {
-    // Day boundaries in the server's timezone — a counsellor's "due today"
-    // means their working day, not a UTC window.
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
-    const endOfToday = new Date(startOfToday.getTime() + 86_400_000 - 1);
-    if (q.due === "overdue") and.push({ followUpDate: { lt: startOfToday } });
-    else if (q.due === "today") {
-      and.push({ followUpDate: { gte: startOfToday, lte: endOfToday } });
+    // A converted or dropped lead with an old call-back date isn't "overdue",
+    // so every due window looks at open leads only — the same rule the stat
+    // cards count by.
+    const today = istDayStart()!;
+    const open: Prisma.LeadWhereInput = {
+      stage: { in: [...OPEN_LEAD_STAGES] },
+    };
+    if (q.due === "overdue") {
+      and.push(open, { followUpDate: { lt: today } });
+    } else if (q.due === "today") {
+      and.push(open, {
+        followUpDate: { gte: today, lt: new Date(today.getTime() + DAY_MS) },
+      });
     } else if (q.due === "week") {
-      and.push({
+      and.push(open, {
         followUpDate: {
-          gte: startOfToday,
-          lte: new Date(startOfToday.getTime() + 7 * 86_400_000),
+          gte: today,
+          lt: new Date(today.getTime() + 8 * DAY_MS),
         },
       });
     }
   }
-  if (q.from) {
-    const from = new Date(q.from);
-    if (!Number.isNaN(from.getTime())) and.push({ leadDate: { gte: from } });
-  }
-  if (q.to) {
-    const to = new Date(q.to);
-    if (!Number.isNaN(to.getTime())) {
-      to.setHours(23, 59, 59, 999);
-      and.push({ leadDate: { lte: to } });
-    }
-  }
+  // "Date of lead received" (`leadDate`) and "Lead upload date" (`createdAt`).
+  const from = dayBound(q.from, false);
+  if (from) and.push({ leadDate: { gte: from } });
+  const to = dayBound(q.to, true);
+  if (to) and.push({ leadDate: { lte: to } });
+  const uploadedFrom = dayBound(q.uploadedFrom, false);
+  if (uploadedFrom) and.push({ createdAt: { gte: uploadedFrom } });
+  const uploadedTo = dayBound(q.uploadedTo, true);
+  if (uploadedTo) and.push({ createdAt: { lte: uploadedTo } });
   return and.length ? { AND: and } : {};
+}
+
+/**
+ * Every order ends on `id`. A sheet import gives all its rows the same
+ * `leadDate`, and without a tiebreak the database may return those in a
+ * different order from one page to the next — a lead could show on two pages
+ * or none, and the detail sheet's next / previous would skip or repeat.
+ */
+function orderFor(
+  sort: string | undefined,
+): Prisma.LeadOrderByWithRelationInput[] {
+  switch (sort as LeadSort | undefined) {
+    case "received_asc":
+      return [{ leadDate: "asc" }, { id: "asc" }];
+    case "uploaded_desc":
+      return [{ createdAt: "desc" }, { id: "desc" }];
+    case "followup_asc":
+      return [
+        { followUpDate: { sort: "asc", nulls: "last" } },
+        { followUpTime: { sort: "asc", nulls: "last" } },
+        { id: "asc" },
+      ];
+    case "score_desc":
+      return [
+        { leadScore: { sort: "desc", nulls: "last" } },
+        { leadDate: "desc" },
+        { id: "desc" },
+      ];
+    case "name_asc":
+      return [{ name: "asc" }, { id: "asc" }];
+    default:
+      return [{ leadDate: "desc" }, { id: "desc" }];
+  }
 }
 
 const money = (d: Prisma.Decimal | null) => (d == null ? null : Number(d));
@@ -385,7 +475,7 @@ export async function listLeadsAdmin(q: LeadListQuery) {
     prisma.lead.count({ where }),
     prisma.lead.findMany({
       where,
-      orderBy: { leadDate: "desc" },
+      orderBy: orderFor(q.sort),
       skip: (q.page - 1) * q.pageSize,
       take: q.pageSize,
       include: {
@@ -438,6 +528,7 @@ export async function listLeadsAdmin(q: LeadListQuery) {
       followUpTime: l.followUpTime,
       feesOffered: money(l.feesOffered),
       finalFees: money(l.finalFees),
+      assignedToId: l.assignedToId,
       assignedToName: l.assignedTo?.name ?? null,
       followUps: l._count.followUps,
       documents: l._count.documents,
@@ -446,31 +537,78 @@ export async function listLeadsAdmin(q: LeadListQuery) {
   };
 }
 
-export interface LeadStats {
-  total: number;
-  fresh: number;
-  inProgress: number;
-  converted: number;
-  dropped: number;
+/**
+ * One page of lead ids in list order — how the detail sheet's previous / next
+ * crosses a page boundary without loading whole rows.
+ */
+export async function leadIdsPage(
+  q: LeadListQuery,
+): Promise<{ total: number; ids: string[] }> {
+  const where = buildWhere(q);
+  const [total, rows] = await Promise.all([
+    prisma.lead.count({ where }),
+    prisma.lead.findMany({
+      where,
+      orderBy: orderFor(q.sort),
+      skip: (q.page - 1) * q.pageSize,
+      take: q.pageSize,
+      select: { id: true },
+    }),
+  ]);
+  return { total, ids: rows.map((r) => r.id) };
 }
 
-export async function leadStats(): Promise<LeadStats> {
-  const grouped = await prisma.lead.groupBy({
-    by: ["stage"],
-    _count: { _all: true },
-  });
-  const by = Object.fromEntries(
-    grouped.map((g) => [g.stage, g._count._all]),
-  ) as Record<string, number>;
-  const sum = (stages: readonly string[]) =>
-    stages.reduce((n, s) => n + (by[s] ?? 0), 0);
+export type LeadStats = Record<LeadStatCard, number>;
 
+/**
+ * Every stat card in one pass over the table — a single round-trip however
+ * many cards a counsellor has switched on, so the choice costs nothing.
+ */
+export async function leadStats(viewerId: string): Promise<LeadStats> {
+  const today = istDayStart()!;
+  const tomorrow = new Date(today.getTime() + DAY_MS);
+  const weekAgo = new Date(today.getTime() - 6 * DAY_MS);
+  const open = Prisma.join([...OPEN_LEAD_STAGES]);
+  const worked = Prisma.join(
+    OPEN_LEAD_STAGES.filter((s) => s !== "FRESH_LEAD"),
+  );
+  const interested = Prisma.join([...INTERESTED_LEAD_STAGES]);
+
+  // `Lead` is a reserved word in MySQL 8 / TiDB — keep it backticked.
+  const [row] = await prisma.$queryRaw<Record<LeadStatCard, unknown>[]>`
+    SELECT
+      COUNT(*) AS total,
+      SUM(stage = 'FRESH_LEAD') AS fresh,
+      SUM(stage IN (${worked})) AS inProgress,
+      SUM(stage IN (${interested})) AS interested,
+      SUM(stage = 'CONVERTED') AS converted,
+      SUM(stage IN ('NOT_INTERESTED', 'INVALID_LEAD')) AS notInterested,
+      SUM(stage IN (${open}) AND followUpDate >= ${today} AND followUpDate < ${tomorrow}) AS followUpsToday,
+      SUM(stage IN (${open}) AND followUpDate < ${today}) AS overdue,
+      SUM(stage IN (${open}) AND visitDate >= ${today} AND visitDate < ${tomorrow}) AS visitsToday,
+      SUM(stage IN (${open}) AND quality = 'HOT') AS hot,
+      SUM(assignedToId IS NULL) AS unassigned,
+      SUM(assignedToId = ${viewerId}) AS mine,
+      SUM(leadDate >= ${weekAgo}) AS receivedThisWeek
+    FROM \`Lead\`
+  `;
+  // SUM() comes back as a DECIMAL (NULL on an empty table), COUNT() as a
+  // BIGINT — both read cleanly through their string form.
+  const n = (v: unknown) => Number(String(v ?? 0)) || 0;
   return {
-    total: grouped.reduce((n, g) => n + g._count._all, 0),
-    fresh: by.FRESH_LEAD ?? 0,
-    inProgress: sum(OPEN_LEAD_STAGES.filter((s) => s !== "FRESH_LEAD")),
-    converted: by.CONVERTED ?? 0,
-    dropped: sum(["NOT_INTERESTED", "INVALID_LEAD"]),
+    total: n(row?.total),
+    fresh: n(row?.fresh),
+    inProgress: n(row?.inProgress),
+    interested: n(row?.interested),
+    converted: n(row?.converted),
+    notInterested: n(row?.notInterested),
+    followUpsToday: n(row?.followUpsToday),
+    overdue: n(row?.overdue),
+    visitsToday: n(row?.visitsToday),
+    hot: n(row?.hot),
+    unassigned: n(row?.unassigned),
+    mine: n(row?.mine),
+    receivedThisWeek: n(row?.receivedThisWeek),
   };
 }
 
@@ -541,8 +679,11 @@ export async function getLeadDetail(id: string) {
       note: f.note,
       stage: f.stage,
       subStatus: f.subStatus,
+      // The counsellor who wrote the remark — never the lead.
       authorName: f.createdBy.name,
       authorAvatar: f.createdBy.avatarUrl,
+      nextFollowUpDate: f.nextFollowUpDate?.toISOString() ?? null,
+      nextFollowUpTime: f.nextFollowUpTime,
       createdAt: f.createdAt.toISOString(),
     })),
     contacts: l.contacts.map((c) => ({
@@ -584,17 +725,37 @@ export async function logLeadContact(
   return { channel, target, href: contactHref(target, channel) };
 }
 
-/** Staff/instructors a lead can be assigned to. */
-export async function listAssignees() {
-  return prisma.user.findMany({
+/** The people who work leads: sales agents, admins and super admins. */
+const ASSIGNEE_ROLES: Role[] = [
+  ROLES.SALES_AGENT,
+  ROLES.ADMIN,
+  ROLES.SUPER_ADMIN,
+];
+
+export interface LeadAssignee {
+  id: string;
+  name: string;
+  role: Role;
+}
+
+/**
+ * Everyone a lead can be assigned to (and filtered by). Primary role only, and
+ * active accounts only — a suspended counsellor shouldn't be handed new leads.
+ */
+export async function listAssignees(): Promise<LeadAssignee[]> {
+  const rows = await prisma.user.findMany({
     where: {
-      role: {
-        slug: { in: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.INSTRUCTOR] },
-      },
+      status: "ACTIVE",
+      role: { slug: { in: ASSIGNEE_ROLES } },
     },
-    select: { id: true, name: true },
+    select: { id: true, name: true, role: { select: { slug: true } } },
     orderBy: { name: "asc" },
   });
+  return rows.map((u) => ({
+    id: u.id,
+    name: u.name,
+    role: u.role.slug as Role,
+  }));
 }
 
 /** Courses for the enquiry dropdown. */
@@ -610,12 +771,14 @@ export async function listLeadCourses() {
 /**
  * Column order for both directions. Export writes these headers and import
  * reads them, so a counsellor can export, edit in Excel and import straight
- * back. `Lead No.` is echoed on export but ignored on import — numbers are
- * always allocated by us.
+ * back. `Lead No.` and `Lead Upload Date` are echoed on export but ignored on
+ * import — numbers are always allocated by us, and the upload date is when a
+ * row entered this system, which an import stamps for itself.
  */
 const CSV_COLUMNS = [
   "Lead No.",
-  "Lead Date",
+  "Date of Lead Received",
+  "Lead Upload Date",
   "Lead Source",
   "Lead Quality",
   "Lead Score",
@@ -647,13 +810,14 @@ const CSV_COLUMNS = [
 
 export const LEAD_CSV_HEADERS: readonly string[] = CSV_COLUMNS;
 
-const day = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : "");
+const day = istDay;
 
+/** The list's current filters and sort, with the columns import accepts. */
 export async function leadsForExport(q: LeadFilters) {
   const where = buildWhere(q);
   const rows = await prisma.lead.findMany({
     where,
-    orderBy: { leadDate: "desc" },
+    orderBy: orderFor(q.sort),
     take: 5000,
     include: {
       assignedTo: { select: { name: true } },
@@ -665,6 +829,7 @@ export async function leadsForExport(q: LeadFilters) {
   const data = rows.map((l) => [
     l.leadNo ?? "",
     day(l.leadDate),
+    istDateTime(l.createdAt),
     LEAD_SOURCE_LABELS[l.source as LeadSource] ?? l.source,
     l.quality
       ? (LEAD_QUALITY_LABELS[l.quality as LeadQuality] ?? l.quality)
@@ -708,7 +873,8 @@ export function leadImportTemplate(): { headers: string[]; data: string[][] } {
     data: [
       [
         "",
-        new Date().toISOString().slice(0, 10),
+        istDay(new Date()),
+        "",
         "Manual",
         "Hot",
         "80",
@@ -743,7 +909,17 @@ export function leadImportTemplate(): { headers: string[]; data: string[][] } {
 
 /** Header aliases → our field key. Compared case- and punctuation-insensitively. */
 const IMPORT_ALIASES: Record<string, string[]> = {
-  leadDate: ["lead date", "date", "enquiry date", "created"],
+  leadDate: [
+    "date of lead received",
+    "lead received date",
+    "lead received",
+    "date received",
+    "received date",
+    "lead date",
+    "date",
+    "enquiry date",
+    "created",
+  ],
   source: ["lead source", "source"],
   quality: ["lead quality", "quality"],
   leadScore: ["lead score", "score"],
@@ -886,11 +1062,11 @@ export async function importLeads(
 
   const [courses, staff] = await Promise.all([
     prisma.course.findMany({ select: { id: true, title: true } }),
+    // Instructors stay matchable alongside the assignee roles: leads handed to
+    // one before sales agents existed must survive an export → import.
     prisma.user.findMany({
       where: {
-        role: {
-          slug: { in: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.INSTRUCTOR] },
-        },
+        role: { slug: { in: [...ASSIGNEE_ROLES, ROLES.INSTRUCTOR] } },
       },
       select: { id: true, name: true },
     }),
@@ -1176,6 +1352,81 @@ const label = <T extends string>(
   labels: Record<T, string>,
 ) => (value ? (labels[value as T] ?? value) : "—");
 
+const DUE_LABELS: Record<string, string> = {
+  overdue: "Overdue",
+  today: "Due today",
+  week: "Next 7 days",
+};
+
+/** "1 Sep 2026" for a `YYYY-MM-DD` filter value. */
+function filterDay(value: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+  if (!m) return value;
+  // A local-midnight Date prints its own fields whatever the server's zone.
+  return format(
+    new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])),
+    "d MMM yyyy",
+  );
+}
+
+function dayRange(from?: string, to?: string): string | null {
+  if (from && to) return `${filterDay(from)} – ${filterDay(to)}`;
+  if (from) return `from ${filterDay(from)}`;
+  if (to) return `up to ${filterDay(to)}`;
+  return null;
+}
+
+/**
+ * The filters behind a download, in words — printed at the top of the report
+ * so a sheet passed round the office says which leads it counts.
+ */
+async function describeLeadFilters(q: LeadFilters): Promise<string[]> {
+  const needsAssignee =
+    q.assignedToId && q.assignedToId !== "unassigned" ? q.assignedToId : null;
+  const assigneeId = needsAssignee === "me" ? q.viewerId : needsAssignee;
+  const [course, assignee] = await Promise.all([
+    q.courseId
+      ? prisma.course.findUnique({
+          where: { id: q.courseId },
+          select: { title: true },
+        })
+      : null,
+    assigneeId
+      ? prisma.user.findUnique({
+          where: { id: assigneeId },
+          select: { name: true },
+        })
+      : null,
+  ]);
+
+  const parts: string[] = [];
+  if (q.search) parts.push(`Search: "${q.search}"`);
+  if (q.stage) parts.push(`Stage: ${label(q.stage, LEAD_STAGE_LABELS)}`);
+  if (q.subStatus) parts.push(`Status: ${q.subStatus}`);
+  if (q.source) parts.push(`Source: ${label(q.source, LEAD_SOURCE_LABELS)}`);
+  if (q.classMode)
+    parts.push(`Class mode: ${label(q.classMode, LEAD_CLASS_MODE_LABELS)}`);
+  if (q.courseId) parts.push(`Course: ${course?.title ?? "(removed course)"}`);
+  if (q.assignedToId) {
+    parts.push(
+      `Assigned to: ${
+        q.assignedToId === "unassigned"
+          ? "Unassigned"
+          : `${assignee?.name ?? "(unknown)"}${q.assignedToId === "me" ? " (me)" : ""}`
+      }`,
+    );
+  }
+  if (q.quality)
+    parts.push(`Quality: ${label(q.quality, LEAD_QUALITY_LABELS)}`);
+  if (q.minScore) parts.push(`Lead score ≥ ${q.minScore}`);
+  if (q.due) parts.push(`Follow-up: ${DUE_LABELS[q.due] ?? q.due}`);
+  const received = dayRange(q.from, q.to);
+  if (received) parts.push(`Lead received ${received}`);
+  const uploaded = dayRange(q.uploadedFrom, q.uploadedTo);
+  if (uploaded) parts.push(`Lead uploaded ${uploaded}`);
+  return parts;
+}
+
 /**
  * A summary report over whatever the list is currently filtered to: totals,
  * then a breakdown by stage, status, quality, source, class mode, course and
@@ -1186,8 +1437,12 @@ export async function leadReport(
 ): Promise<{ headers: string[]; data: (string | number)[][] }> {
   const where = buildWhere(q);
 
-  const [total, byStage, bySubStatus, byQuality, bySource, byMode, rows] =
-    await Promise.all([
+  const [
+    filters,
+    [total, byStage, bySubStatus, byQuality, bySource, byMode, rows],
+  ] = await Promise.all([
+    describeLeadFilters(q),
+    Promise.all([
       prisma.lead.count({ where }),
       prisma.lead.groupBy({ by: ["stage"], where, _count: { _all: true } }),
       prisma.lead.groupBy({ by: ["subStatus"], where, _count: { _all: true } }),
@@ -1206,7 +1461,8 @@ export async function leadReport(
           assignedTo: { select: { name: true } },
         },
       }),
-    ]);
+    ]),
+  ]);
 
   const pct = (n: number) =>
     total ? `${((n / total) * 100).toFixed(1)}%` : "0%";
@@ -1224,6 +1480,14 @@ export async function leadReport(
       (sum, r) => sum + (money(r.finalFees) ?? money(r.feesOffered) ?? 0),
       0,
     );
+
+  data.push([
+    "Filters applied",
+    filters.length ? filters.join(" · ") : "None — every lead",
+    "",
+  ]);
+  data.push(["Generated", `${istDateTime(new Date())} IST`, ""]);
+  data.push(["", "", ""]);
 
   data.push(["Total leads", total, "100%"]);
   data.push(["Converted", converted, pct(converted)]);

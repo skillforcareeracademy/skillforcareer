@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
 import { requirePermission } from "@/lib/auth/require";
 import { PERMISSIONS } from "@/config/roles";
+import { leadViewFrom } from "@/lib/validations/lead";
 import {
   listLeadsAdmin,
   leadStats,
   listAssignees,
   listLeadCourses,
 } from "@/server/services/lead-service";
+import { getLeadCards } from "@/server/services/lead-preferences-service";
 import { LeadsClient } from "@/components/admin/leads/leads-client";
 
 export const metadata: Metadata = { title: "Leads" };
@@ -21,31 +23,22 @@ export default async function LeadsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requirePermission(PERMISSIONS.MANAGE_LEADS);
+  const user = await requirePermission(PERMISSIONS.MANAGE_LEADS);
   const sp = await searchParams;
   const query = {
     page: Math.max(1, Number(sp.page) || 1),
     pageSize: 12,
-    search: str(sp.search),
-    stage: str(sp.stage),
-    subStatus: str(sp.subStatus),
-    source: str(sp.source),
-    classMode: str(sp.classMode),
-    courseId: str(sp.courseId),
-    assignedToId: str(sp.assignedToId),
-    quality: str(sp.quality),
-    minScore: str(sp.minScore),
-    due: str(sp.due),
-    from: str(sp.from),
-    to: str(sp.to),
+    ...leadViewFrom((key) => str(sp[key])),
   };
 
-  const [{ leads, total }, stats, assignees, courses] = await Promise.all([
-    listLeadsAdmin(query),
-    leadStats(),
-    listAssignees(),
-    listLeadCourses(),
-  ]);
+  const [{ leads, total }, stats, assignees, courses, cards] =
+    await Promise.all([
+      listLeadsAdmin({ ...query, viewerId: user.id }),
+      leadStats(user.id),
+      listAssignees(),
+      listLeadCourses(),
+      getLeadCards(user.id),
+    ]);
 
   return (
     <LeadsClient
@@ -53,6 +46,8 @@ export default async function LeadsPage({
       total={total}
       query={query}
       stats={stats}
+      cards={cards}
+      viewer={{ id: user.id, name: user.name, role: user.role }}
       assignees={assignees}
       courses={courses}
     />

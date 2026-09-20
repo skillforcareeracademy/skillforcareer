@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { format } from "date-fns";
 import {
   LEAD_STAGES,
   LEAD_STAGE_LABELS,
@@ -16,6 +17,7 @@ import {
   type LeadClassMode,
   type LeadQuality,
 } from "@/lib/validations/lead";
+import { ROLE_LABELS, type Role } from "@/config/roles";
 import { PhoneInput } from "@/components/shared/phone-input";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -68,7 +70,9 @@ export const NONE = "none";
 /** Free text rather than one of our course rows. */
 export const OTHER_COURSE = "other";
 
-const today = () => new Date().toISOString().slice(0, 10);
+// The counsellor's own calendar day — a UTC slice reads as yesterday before
+// 05:30 in India.
+const today = () => format(new Date(), "yyyy-MM-dd");
 
 export function blankLeadForm(): LeadFormState {
   return {
@@ -103,18 +107,21 @@ export function blankLeadForm(): LeadFormState {
   };
 }
 
-/** Only the fields the API accepts, with "" collapsed to undefined. */
+/**
+ * Only the fields the API accepts. Blanks go as "" rather than being dropped:
+ * the API reads "" as "clear it", so emptying a follow-up date or a fee on an
+ * existing lead actually unsets it instead of silently keeping the old value.
+ */
 export function leadFormPayload(form: LeadFormState): Record<string, unknown> {
-  const text = (v: string) => (v.trim() ? v.trim() : undefined);
+  const text = (v: string) => v.trim();
   return {
-    leadDate: text(form.leadDate),
+    // Never blank: the lead-received date can move but not be emptied.
+    leadDate: text(form.leadDate) || undefined,
     source: form.source,
-    quality: form.quality || undefined,
+    quality: form.quality,
     leadScore: text(form.leadScore),
     name: form.name.trim(),
     phone: form.phone.trim(),
-    // Sent as "" rather than dropped, so clearing the field on an existing lead
-    // actually unsets it instead of silently keeping the old number.
     whatsapp: form.whatsapp.trim(),
     email: text(form.email),
     courseId: text(form.courseId),
@@ -122,7 +129,7 @@ export function leadFormPayload(form: LeadFormState): Record<string, unknown> {
     whyThisCourse: text(form.whyThisCourse),
     stage: form.stage,
     subStatus: text(form.subStatus),
-    classMode: form.classMode || undefined,
+    classMode: form.classMode,
     qualification: text(form.qualification),
     jobStatus: text(form.jobStatus),
     experiencedIn: text(form.experiencedIn),
@@ -136,13 +143,47 @@ export function leadFormPayload(form: LeadFormState): Record<string, unknown> {
     feesOffered: text(form.feesOffered),
     finalFees: text(form.finalFees),
     emiCount: text(form.emiCount),
-    assignedToId: form.assignedToId || "",
+    assignedToId: form.assignedToId,
   };
 }
 
 export interface CourseOption {
   id: string;
   title: string;
+}
+
+/** Someone a lead can be assigned to — a sales agent, admin or super admin. */
+export interface AssigneeOption {
+  id: string;
+  name: string;
+  role?: Role;
+}
+
+/**
+ * The assignee list, plus whoever holds the lead now if they're no longer on
+ * it (an instructor from before sales agents, a suspended account) — so the
+ * picker names them instead of reading "Unassigned".
+ */
+export function assigneeOptions(
+  assignees: AssigneeOption[],
+  current?: { id: string; name: string } | null,
+): AssigneeOption[] {
+  if (!current || assignees.some((a) => a.id === current.id)) return assignees;
+  return [...assignees, { id: current.id, name: current.name }];
+}
+
+/** "Priya Sharma · Sales Agent" in pickers; the name alone where it's tight. */
+export function AssigneeLabel({ person }: { person: AssigneeOption }) {
+  return (
+    <span className="flex min-w-0 items-center gap-1.5">
+      <span className="truncate">{person.name}</span>
+      {person.role && (
+        <span className="text-muted-foreground shrink-0 text-xs">
+          {ROLE_LABELS[person.role] ?? person.role}
+        </span>
+      )}
+    </span>
+  );
 }
 
 function Field({
@@ -183,14 +224,21 @@ export function LeadFormFields({
   onChange,
   courses,
   assignees,
+  currentAssignee,
+  uploadedAt,
   disabled,
 }: {
   form: LeadFormState;
   onChange: (patch: Partial<LeadFormState>) => void;
   courses: CourseOption[];
-  assignees: { id: string; name: string }[];
+  assignees: AssigneeOption[];
+  /** Who holds the lead now, when editing. */
+  currentAssignee?: { id: string; name: string } | null;
+  /** When the lead entered the system (read-only), when editing. */
+  uploadedAt?: string;
   disabled?: boolean;
 }) {
+  const people = assigneeOptions(assignees, currentAssignee);
   const subStatuses = LEAD_SUB_STATUSES[form.stage] ?? [];
   // A sub-status carried over from an earlier stage stays selectable until the
   // counsellor picks a new one — dropping it silently would lose information.
@@ -204,7 +252,15 @@ export function LeadFormFields({
 
   return (
     <div className="grid gap-4 sm:grid-cols-2">
-      <Field label="Lead date" htmlFor="l-date">
+      <Field
+        label="Date of lead received"
+        htmlFor="l-date"
+        hint={
+          uploadedAt
+            ? `Lead upload date: ${format(new Date(uploadedAt), "d MMM yyyy, h:mm a")} (set automatically)`
+            : "When the enquiry came in. The upload date is recorded automatically."
+        }
+      >
         <Input
           id="l-date"
           type="date"
@@ -454,15 +510,15 @@ export function LeadFormFields({
               {(v) =>
                 !v || v === NONE
                   ? "Unassigned"
-                  : (assignees.find((a) => a.id === v)?.name ?? "Unassigned")
+                  : (people.find((a) => a.id === v)?.name ?? "Unassigned")
               }
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={NONE}>Unassigned</SelectItem>
-            {assignees.map((a) => (
+            {people.map((a) => (
               <SelectItem key={a.id} value={a.id}>
-                {a.name}
+                <AssigneeLabel person={a} />
               </SelectItem>
             ))}
           </SelectContent>

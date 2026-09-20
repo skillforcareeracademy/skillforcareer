@@ -184,6 +184,20 @@ export const OPEN_LEAD_STAGES: readonly LeadStage[] = [
   "ADMISSION_PENDING",
 ];
 
+/**
+ * The "Interested" stat card: every open stage after the lead has said yes to
+ * the course — Interested itself, then Counselling / Demo, Follow-up and
+ * Admission Pending, which only a lead who showed interest reaches. Contacted
+ * stays out: its statuses are mostly "No Answer", "Busy", "Switched Off" —
+ * reached, not yet interested. Fresh and the three closed stages stay out too.
+ */
+export const INTERESTED_LEAD_STAGES: readonly LeadStage[] = [
+  "INTERESTED",
+  "COUNSELLING_DEMO",
+  "FOLLOW_UP",
+  "ADMISSION_PENDING",
+];
+
 /** Is `sub` a listed sub-status of `stage`? Unknown values are let through. */
 export function isSubStatusOf(
   stage: LeadStage,
@@ -197,6 +211,14 @@ export function isSubStatusOf(
 
 const optionalText = (max: number) =>
   z.string().trim().max(max).optional().or(z.literal(""));
+
+/**
+ * Update semantics for the lead's own fields: `undefined` leaves a field alone,
+ * while `""` and `null` clear it. The inline table editors and the edit tab
+ * both rely on this to take a follow-up date, a score or an assignee back off.
+ */
+const clearableText = (max: number) =>
+  z.string().trim().max(max).nullable().optional().or(z.literal(""));
 
 /**
  * "" → undefined, and "35000" / "35,000" / "₹35,000" / "35k" → 35000.
@@ -222,30 +244,43 @@ export function parseAmount(
 }
 
 const money = z
-  .union([z.string(), z.number()])
+  .union([z.string(), z.number(), z.null()])
   .optional()
-  .transform(parseAmount)
+  .transform((v) => (v === null || v === "" ? null : parseAmount(v)))
   .refine(
-    (n) => n === undefined || (n >= 0 && n <= 10_000_000),
+    (n) => n == null || (n >= 0 && n <= 10_000_000),
     "Enter a valid amount",
   );
 
-const count = z
-  .union([z.string(), z.number()])
+/** A whole number within `min`–`max`; "" and null clear it. */
+const wholeNumber = (min: number, max: number, message: string) =>
+  z
+    .union([z.string(), z.number(), z.null()])
+    .optional()
+    .transform((v) => {
+      if (v === undefined) return undefined;
+      if (v === null || v === "") return null;
+      const n = Math.trunc(Number(v));
+      return Number.isFinite(n) ? n : undefined;
+    })
+    .refine((n) => n == null || (n >= min && n <= max), message);
+
+const count = wholeNumber(0, 60, "EMI count must be 0–60");
+
+/** Accepts "2026-08-25" or an ISO instant; "" and null clear it. */
+const optionalDate = z
+  .union([z.string(), z.date(), z.null()])
   .optional()
   .transform((v) => {
-    if (v == null || v === "") return undefined;
-    const n = Math.trunc(Number(v));
-    return Number.isFinite(n) ? n : undefined;
-  })
-  .refine(
-    (n) => n === undefined || (n >= 0 && n <= 60),
-    "EMI count must be 0–60",
-  );
+    if (v === undefined) return undefined;
+    if (v === null || v === "") return null;
+    const d = v instanceof Date ? v : new Date(v);
+    return Number.isNaN(d.getTime()) ? undefined : d;
+  });
 
-/** Accepts "2026-08-25", an ISO instant or "" (→ undefined). */
-const optionalDate = z
-  .union([z.string(), z.date()])
+/** The lead-received date can be moved but never emptied. */
+const requiredDate = z
+  .union([z.string(), z.date(), z.null()])
   .optional()
   .transform((v) => {
     if (v == null || v === "") return undefined;
@@ -258,6 +293,7 @@ const optionalTime = z
   .string()
   .trim()
   .max(12)
+  .nullable()
   .optional()
   .or(z.literal(""))
   .refine(
@@ -324,50 +360,40 @@ const leadFields = {
     .or(z.literal("")),
   phone: z.string().trim().min(6, "Enter a valid phone number").max(20),
   /// Blank means "same as phone" — see `whatsappNumber()`.
-  whatsapp: optionalText(20),
+  whatsapp: clearableText(20),
 
-  leadDate: optionalDate,
-  courseId: optionalText(40),
-  courseInterest: optionalText(120),
-  whyThisCourse: optionalText(1000),
+  /** "Date of lead received" — when the enquiry actually came in. */
+  leadDate: requiredDate,
+  courseId: clearableText(40),
+  courseInterest: clearableText(120),
+  whyThisCourse: clearableText(1000),
 
-  quality: z.enum(LEAD_QUALITIES).optional(),
-  leadScore: z
-    .union([z.string(), z.number()])
-    .optional()
-    .transform((v) => {
-      if (v == null || v === "") return undefined;
-      const n = Math.trunc(Number(v));
-      return Number.isFinite(n) ? n : undefined;
-    })
-    .refine(
-      (n) => n === undefined || (n >= 0 && n <= 100),
-      "Lead score must be 0–100",
-    ),
+  quality: z.enum(LEAD_QUALITIES).nullable().optional().or(z.literal("")),
+  leadScore: wholeNumber(0, 100, "Lead score must be 0–100"),
 
   stage: z.enum(LEAD_STAGES).optional(),
-  subStatus: optionalText(60),
-  classMode: z.enum(LEAD_CLASS_MODES).optional(),
+  subStatus: clearableText(60),
+  classMode: z.enum(LEAD_CLASS_MODES).nullable().optional().or(z.literal("")),
 
-  qualification: optionalText(120),
-  jobStatus: optionalText(120),
-  experiencedIn: optionalText(160),
-  address: optionalText(500),
+  qualification: clearableText(120),
+  jobStatus: clearableText(120),
+  experiencedIn: clearableText(160),
+  address: clearableText(500),
 
-  expectedVisit: optionalText(160),
+  expectedVisit: clearableText(160),
   visitDate: optionalDate,
   visitTime: optionalTime,
 
   followUpDate: optionalDate,
   followUpTime: optionalTime,
 
-  message: optionalText(2000),
+  message: clearableText(2000),
 
   feesOffered: money,
   finalFees: money,
   emiCount: count,
 
-  assignedToId: optionalText(40),
+  assignedToId: clearableText(40),
 };
 
 /**
@@ -383,7 +409,7 @@ export const createLeadSchema = z.object({
     .trim()
     .min(1, "Expected visit is required")
     .max(160),
-  feesOffered: money.refine((n) => n !== undefined, "Fees offered is required"),
+  feesOffered: money.refine((n) => n != null, "Fees offered is required"),
 });
 
 export const updateLeadSchema = z
@@ -394,7 +420,8 @@ export const followUpSchema = z.object({
   note: z.string().trim().min(1, "Add a remark").max(2000),
   stage: z.enum(LEAD_STAGES).optional(),
   subStatus: optionalText(60),
-  /** Schedule the next call-back while writing up this one. */
+  /** Schedule the next call-back while writing up this one. It is kept on the
+   *  remark as well as the lead, so the history shows what was promised when. */
   followUpDate: optionalDate,
   followUpTime: optionalTime,
 });
@@ -444,6 +471,134 @@ export const removeDuplicatesSchema = z.object({
   ids: z.array(z.string().min(1)).min(1, "Pick the leads to remove").max(500),
 });
 
+// ── List view: filters, sort and stat cards ─────────────────────────────────
+
+/**
+ * Every list filter, in URL order. The table, its Report and Export downloads
+ * and the detail sheet's previous / next all read these same keys, so they can
+ * never disagree about which leads are "in view". `assignedToId` also takes
+ * "unassigned" and "me" (whoever is signed in).
+ */
+export const LEAD_FILTER_KEYS = [
+  "search",
+  "stage",
+  "subStatus",
+  "source",
+  "classMode",
+  "courseId",
+  "assignedToId",
+  "quality",
+  "minScore",
+  "due",
+  "from",
+  "to",
+  "uploadedFrom",
+  "uploadedTo",
+] as const;
+export type LeadFilterKey = (typeof LEAD_FILTER_KEYS)[number];
+
+export const LEAD_SORTS = [
+  "received_desc",
+  "received_asc",
+  "uploaded_desc",
+  "followup_asc",
+  "score_desc",
+  "name_asc",
+] as const;
+export type LeadSort = (typeof LEAD_SORTS)[number];
+export const DEFAULT_LEAD_SORT: LeadSort = "received_desc";
+
+export const LEAD_SORT_LABELS: Record<LeadSort, string> = {
+  received_desc: "Newest received",
+  received_asc: "Oldest received",
+  uploaded_desc: "Recently uploaded",
+  followup_asc: "Next follow-up first",
+  score_desc: "Highest lead score",
+  name_asc: "Name A–Z",
+};
+
+/** The list's filters plus its sort, exactly as they travel in a URL. */
+export type LeadViewParams = Partial<Record<LeadFilterKey | "sort", string>>;
+
+/** Read the filters and sort out of a URL's query (page, route or API). */
+export function leadViewFrom(
+  get: (key: string) => string | null | undefined,
+): LeadViewParams {
+  const out: LeadViewParams = {};
+  for (const key of [...LEAD_FILTER_KEYS, "sort"] as const) {
+    const value = get(key)?.trim();
+    if (value) out[key] = value;
+  }
+  if (out.sort && !(LEAD_SORTS as readonly string[]).includes(out.sort)) {
+    delete out.sort;
+  }
+  return out;
+}
+
+/** The boxes that can sit above the lead list; each counsellor picks theirs. */
+export const LEAD_STAT_CARDS = [
+  "total",
+  "fresh",
+  "inProgress",
+  "interested",
+  "converted",
+  "notInterested",
+  "followUpsToday",
+  "overdue",
+  "visitsToday",
+  "hot",
+  "unassigned",
+  "mine",
+  "receivedThisWeek",
+] as const;
+export type LeadStatCard = (typeof LEAD_STAT_CARDS)[number];
+
+export const DEFAULT_LEAD_STAT_CARDS: readonly LeadStatCard[] = [
+  "total",
+  "fresh",
+  "inProgress",
+  "interested",
+  "converted",
+  "notInterested",
+];
+
+export const LEAD_STAT_CARD_LABELS: Record<LeadStatCard, string> = {
+  total: "Total leads",
+  fresh: "Fresh",
+  inProgress: "In progress",
+  interested: "Interested",
+  converted: "Converted",
+  notInterested: "Not interested",
+  followUpsToday: "Follow-ups today",
+  overdue: "Overdue follow-ups",
+  visitsToday: "Visits today",
+  hot: "Hot leads",
+  unassigned: "Unassigned",
+  mine: "Assigned to me",
+  receivedThisWeek: "Received this week",
+};
+
+/** One line each for the "Customize cards" menu and the card's tooltip. */
+export const LEAD_STAT_CARD_HINTS: Record<LeadStatCard, string> = {
+  total: "Every lead in the system",
+  fresh: "Not worked yet",
+  inProgress: "Worked and still open — contacted to admission pending",
+  interested: "Interested, counselling / demo, follow-up or admission pending",
+  converted: "Admitted",
+  notInterested: "Not interested or invalid",
+  followUpsToday: "Open leads with a call-back booked for today",
+  overdue: "Open leads whose call-back day has passed",
+  visitsToday: "Open leads due at the centre today",
+  hot: "Open leads rated Hot",
+  unassigned: "Nobody is working these yet",
+  mine: "Leads assigned to you",
+  receivedThisWeek: "Received in the last 7 days",
+};
+
+export const leadCardPrefsSchema = z.object({
+  cards: z.array(z.enum(LEAD_STAT_CARDS)).max(LEAD_STAT_CARDS.length),
+});
+
 export type EnquiryInput = z.infer<typeof enquirySchema>;
 export type CreateLeadInput = z.infer<typeof createLeadSchema>;
 export type UpdateLeadInput = z.infer<typeof updateLeadSchema>;
@@ -453,3 +608,4 @@ export type LeadReminderInput = z.infer<typeof leadReminderSchema>;
 export type LeadContactInput = z.infer<typeof leadContactSchema>;
 export type ImportLeadsInput = z.infer<typeof importLeadsSchema>;
 export type RemoveDuplicatesInput = z.infer<typeof removeDuplicatesSchema>;
+export type LeadCardPrefsInput = z.infer<typeof leadCardPrefsSchema>;

@@ -24,6 +24,9 @@ import {
   IndianRupee,
   GraduationCap,
   Briefcase,
+  ChevronLeft,
+  ChevronRight,
+  Inbox,
 } from "lucide-react";
 import { api, ApiError } from "@/lib/api-client";
 import {
@@ -42,7 +45,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -63,11 +66,13 @@ import {
   QUALITY_BADGE,
   SOURCE_LABEL,
   CLASS_MODE_LABEL,
+  inIST,
 } from "@/components/admin/leads/lead-badges";
 import {
   LeadFormFields,
   blankLeadForm,
   leadFormPayload,
+  type AssigneeOption,
   type CourseOption,
   type LeadFormState,
 } from "@/components/admin/leads/lead-form";
@@ -85,17 +90,17 @@ const CONTACT_ICON: Record<string, typeof Phone> = {
   SMS: MessageSquareText,
 };
 
-interface Assignee {
-  id: string;
-  name: string;
-}
 interface FollowUp {
   id: string;
   note: string;
   stage: string | null;
   subStatus: string | null;
+  /** Who wrote the remark — the counsellor, not the lead. */
   authorName: string;
   authorAvatar: string | null;
+  /** The call-back this remark booked, if it booked one. */
+  nextFollowUpDate: string | null;
+  nextFollowUpTime: string | null;
   createdAt: string;
 }
 interface LeadDocument {
@@ -179,10 +184,13 @@ function fileSize(bytes: number | null): string {
 
 /** Detail → the editable form shape. */
 function toForm(d: Detail): LeadFormState {
+  // Picked days are stored as UTC midnight, so the first ten characters are
+  // the day. `leadDate` can also be the instant an enquiry arrived, which is
+  // read on the Indian calendar like everywhere else.
   const day = (iso: string | null) => (iso ? iso.slice(0, 10) : "");
   return {
     ...blankLeadForm(),
-    leadDate: day(d.leadDate),
+    leadDate: format(inIST(d.leadDate), "yyyy-MM-dd"),
     source: d.source as LeadSource,
     quality: d.quality ?? "",
     leadScore: d.leadScore != null ? String(d.leadScore) : "",
@@ -213,20 +221,114 @@ function toForm(d: Detail): LeadFormState {
   };
 }
 
+/** Where the open lead sits in the list, and how to step through it. */
+export interface LeadNav {
+  /** 1-based position in the filtered, sorted list. */
+  position: number;
+  total: number;
+  busy?: boolean;
+  onPrev?: () => void;
+  onNext?: () => void;
+}
+
+/**
+ * Arrow keys belong to whatever has focus when that thing uses them — a text
+ * box moves its caret, the tab strip and menus move their selection — and to
+ * any dialog or popover opened on top of the sheet.
+ */
+function arrowsTaken(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  const layer = target.closest('[role="dialog"], [role="alertdialog"]');
+  if (layer && layer.getAttribute("data-slot") !== "sheet-content") return true;
+  return Boolean(
+    target.closest(
+      'input, textarea, select, [role="tablist"], [role="tab"], [role="listbox"], [role="option"], [role="menu"], [role="menuitem"], [role="slider"], [role="radiogroup"], [role="combobox"]',
+    ),
+  );
+}
+
 export function LeadDetailSheet({
   leadId,
   assignees,
   courses,
+  nav,
   onOpenChange,
 }: {
   leadId: string | null;
-  assignees: Assignee[];
+  assignees: AssigneeOption[];
   courses: CourseOption[];
+  nav?: LeadNav;
   onOpenChange: (open: boolean) => void;
 }) {
+  // Kept outside the per-lead body, so stepping to the next lead stays on the
+  // tab you were working in — follow-ups, say — instead of jumping back.
+  const [tab, setTab] = useState("overview");
+  const onPrev = nav?.onPrev;
+  const onNext = nav?.onNext;
+  const busy = nav?.busy;
+
+  useEffect(() => {
+    if (!leadId || (!onPrev && !onNext)) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
+      if (e.shiftKey || busy || arrowsTaken(e.target)) return;
+      const go = e.key === "ArrowLeft" ? onPrev : onNext;
+      if (!go) return;
+      e.preventDefault();
+      go();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [leadId, onPrev, onNext, busy]);
+
   return (
-    <Sheet open={leadId != null} onOpenChange={onOpenChange}>
+    <Sheet
+      open={leadId != null}
+      onOpenChange={(open) => {
+        if (!open) setTab("overview");
+        onOpenChange(open);
+      }}
+    >
       <SheetContent className="w-full gap-0 overflow-y-auto p-0 sm:max-w-xl">
+        {nav && nav.total > 0 && (
+          <div className="flex items-center gap-1 border-b px-4 py-2 pr-12">
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={!onPrev || busy}
+              onClick={onPrev}
+              aria-label="Previous lead"
+            >
+              <ChevronLeft className="size-4" /> Previous
+            </Button>
+            <span
+              className="text-muted-foreground min-w-16 text-center text-xs tabular-nums"
+              aria-live="polite"
+            >
+              {busy ? (
+                <Loader2 className="mx-auto size-3.5 animate-spin" />
+              ) : (
+                `${nav.position} of ${nav.total}`
+              )}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={!onNext || busy}
+              onClick={onNext}
+              aria-label="Next lead"
+            >
+              Next <ChevronRight className="size-4" />
+            </Button>
+            <span className="text-muted-foreground ml-auto hidden text-[11px] sm:inline">
+              <kbd className="bg-muted rounded border px-1 font-sans">←</kbd>{" "}
+              <kbd className="bg-muted rounded border px-1 font-sans">→</kbd> to
+              move
+            </span>
+          </div>
+        )}
         {leadId && (
           // Remount per lead: the form and the phone field both seed from the
           // first render's data, so reusing the instance would show stale values.
@@ -235,6 +337,8 @@ export function LeadDetailSheet({
             leadId={leadId}
             assignees={assignees}
             courses={courses}
+            tab={tab}
+            onTabChange={setTab}
           />
         )}
       </SheetContent>
@@ -246,10 +350,14 @@ function Body({
   leadId,
   assignees,
   courses,
+  tab,
+  onTabChange,
 }: {
   leadId: string;
-  assignees: Assignee[];
+  assignees: AssigneeOption[];
   courses: CourseOption[];
+  tab: string;
+  onTabChange: (tab: string) => void;
 }) {
   const router = useRouter();
   const [data, setData] = useState<Detail | null>(null);
@@ -297,7 +405,13 @@ function Body({
     if (!form) return;
     setSaving(true);
     try {
-      await api.patch(`/api/leads/${leadId}`, leadFormPayload(form));
+      const payload = leadFormPayload(form);
+      // An untouched received date isn't sent back: a website enquiry's is the
+      // exact instant it arrived, and the date box would round it to midnight.
+      if (data && form.leadDate === toForm(data).leadDate) {
+        delete payload.leadDate;
+      }
+      await api.patch(`/api/leads/${leadId}`, payload);
       toast.success("Lead updated.");
       await load();
       router.refresh();
@@ -474,7 +588,11 @@ function Body({
         </div>
       </SheetHeader>
 
-      <Tabs defaultValue="overview" className="p-6">
+      <Tabs
+        value={tab}
+        onValueChange={(v) => onTabChange(String(v))}
+        className="p-6"
+      >
         <TabsList className="w-full">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="edit">Edit</TabsTrigger>
@@ -539,6 +657,16 @@ function Body({
           )}
 
           <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+            <Fact
+              icon={CalendarClock}
+              label="Date of lead received"
+              value={format(inIST(data.leadDate), "d MMM yyyy")}
+            />
+            <Fact
+              icon={Inbox}
+              label="Lead upload date"
+              value={format(inIST(data.createdAt), "d MMM yyyy, h:mm a")}
+            />
             <Fact
               label="Lead score"
               value={data.leadScore != null ? `${data.leadScore} / 100` : null}
@@ -669,6 +797,8 @@ function Body({
               onChange={(patch) => setForm((f) => (f ? { ...f, ...patch } : f))}
               courses={courses}
               assignees={assignees}
+              currentAssignee={data.assignedTo}
+              uploadedAt={data.createdAt}
               disabled={saving}
             />
             <div className="flex justify-end gap-2 border-t pt-4">
@@ -938,9 +1068,22 @@ function Body({
             <ol className="space-y-4 border-l pl-4">
               {data.followUps.map((f) => (
                 <li key={f.id} className="relative">
-                  <span className="bg-primary ring-background absolute top-1.5 -left-[21px] size-2 rounded-full ring-4" />
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-medium">{f.authorName}</span>
+                  <span className="bg-primary ring-background absolute top-2.5 -left-[21px] size-2 rounded-full ring-4" />
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    {/* Labelled, so the counsellor's name can't be read as the
+                        lead's — the client asked to see who wrote each one. */}
+                    <span className="flex items-center gap-1.5 text-sm">
+                      <Avatar className="size-5">
+                        {f.authorAvatar && (
+                          <AvatarImage src={f.authorAvatar} alt="" />
+                        )}
+                        <AvatarFallback className="text-[9px]">
+                          {initials(f.authorName)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="text-muted-foreground">Added by</span>
+                      <span className="font-medium">{f.authorName}</span>
+                    </span>
                     {f.stage && (
                       <Badge variant="secondary" className="text-[10px]">
                         → {LEAD_STAGE_LABELS[f.stage as LeadStage] ?? f.stage}
@@ -948,10 +1091,28 @@ function Body({
                       </Badge>
                     )}
                     <span className="text-muted-foreground ml-auto text-xs">
-                      {format(new Date(f.createdAt), "d MMM, h:mm a")}
+                      {format(new Date(f.createdAt), "d MMM yyyy, h:mm a")}
                     </span>
                   </div>
-                  <p className="mt-0.5 text-sm whitespace-pre-wrap">{f.note}</p>
+                  <p className="mt-1 text-sm whitespace-pre-wrap">{f.note}</p>
+                  {(f.nextFollowUpDate || f.nextFollowUpTime) && (
+                    <p className="bg-muted/50 mt-1.5 inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs">
+                      <CalendarClock className="text-muted-foreground size-3.5" />
+                      <span className="text-muted-foreground">
+                        Next follow-up:
+                      </span>
+                      <span className="font-medium">
+                        {f.nextFollowUpDate
+                          ? format(
+                              new Date(f.nextFollowUpDate),
+                              "EEE, d MMM yyyy",
+                            )
+                          : ""}
+                        {f.nextFollowUpDate && f.nextFollowUpTime ? " at " : ""}
+                        {f.nextFollowUpTime ?? ""}
+                      </span>
+                    </p>
+                  )}
                 </li>
               ))}
             </ol>
