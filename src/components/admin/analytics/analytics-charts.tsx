@@ -1,6 +1,5 @@
 "use client";
 
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Area,
   AreaChart,
@@ -18,7 +17,6 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { cn } from "@/lib/utils";
 
 const CHART_COLORS = [
   "var(--chart-1)",
@@ -29,7 +27,15 @@ const CHART_COLORS = [
 ];
 
 const inr = (n: number) => `₹${n.toLocaleString("en-IN")}`;
-const inrShort = (n: number) => (n >= 1000 ? `₹${Math.round(n / 100) / 10}k` : `₹${n}`);
+/** Axis ticks in Indian units — a year of revenue runs into lakhs and crores. */
+const inrShort = (n: number) =>
+  n >= 1e7
+    ? `₹${Math.round(n / 1e6) / 10}Cr`
+    : n >= 1e5
+      ? `₹${Math.round(n / 1e4) / 10}L`
+      : n >= 1000
+        ? `₹${Math.round(n / 100) / 10}k`
+        : `₹${n}`;
 
 const tooltipStyle = {
   background: "var(--popover)",
@@ -39,50 +45,16 @@ const tooltipStyle = {
   color: "var(--popover-foreground)",
 } as const;
 
-// ── Range tabs ───────────────────────────────────────────────────────────────
-
-export function RangeTabs({ current }: { current: number }) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const params = useSearchParams();
-
-  function select(days: number) {
-    const next = new URLSearchParams(params.toString());
-    next.set("range", String(days));
-    router.push(`${pathname}?${next.toString()}`);
-  }
-
-  const options = [
-    { days: 7, label: "7 days" },
-    { days: 30, label: "30 days" },
-    { days: 90, label: "90 days" },
-  ];
-
-  return (
-    <div className="bg-muted inline-flex rounded-lg p-1">
-      {options.map((o) => (
-        <button
-          key={o.days}
-          type="button"
-          onClick={() => select(o.days)}
-          className={cn(
-            "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-            current === o.days
-              ? "bg-background text-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground",
-          )}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
+/** Title a trend tooltip with the days the point covers (a week or a month on long ranges). */
+const trendTooltipLabel = (label: unknown, payload: readonly { payload?: { hint?: string } }[]) =>
+  payload?.[0]?.payload?.hint ?? String(label);
 
 // ── Revenue area ─────────────────────────────────────────────────────────────
 
 interface TrendPoint {
   label: string;
+  /** The exact days a point covers — shown as the tooltip title. */
+  hint?: string;
   revenue: number;
   enrollments: number;
   signups: number;
@@ -116,7 +88,12 @@ export function RevenueTrend({ data }: { data: TrendPoint[] }) {
           stroke="var(--muted-foreground)"
           tickFormatter={inrShort}
         />
-        <Tooltip cursor={{ stroke: "var(--border)" }} contentStyle={tooltipStyle} formatter={(v) => [inr(Number(v)), "Revenue"]} />
+        <Tooltip
+          cursor={{ stroke: "var(--border)" }}
+          contentStyle={tooltipStyle}
+          labelFormatter={trendTooltipLabel}
+          formatter={(v) => [inr(Number(v)), "Revenue"]}
+        />
         <Area type="monotone" dataKey="revenue" stroke="var(--chart-1)" strokeWidth={2} fill="url(#aRev)" />
       </AreaChart>
     </ResponsiveContainer>
@@ -140,7 +117,7 @@ export function ActivityTrend({ data }: { data: TrendPoint[] }) {
           stroke="var(--muted-foreground)"
         />
         <YAxis tickLine={false} axisLine={false} fontSize={11} width={36} allowDecimals={false} stroke="var(--muted-foreground)" />
-        <Tooltip cursor={{ stroke: "var(--border)" }} contentStyle={tooltipStyle} />
+        <Tooltip cursor={{ stroke: "var(--border)" }} contentStyle={tooltipStyle} labelFormatter={trendTooltipLabel} />
         <Legend iconType="circle" wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
         <Line type="monotone" dataKey="enrollments" name="Enrollments" stroke="var(--chart-2)" strokeWidth={2} dot={false} />
         <Line type="monotone" dataKey="signups" name="Sign-ups" stroke="var(--chart-4)" strokeWidth={2} dot={false} />

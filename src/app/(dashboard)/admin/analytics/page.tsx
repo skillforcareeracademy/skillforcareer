@@ -11,27 +11,33 @@ import {
   Star,
   Users,
   TrendingUp,
+  CalendarRange,
 } from "lucide-react";
 import { requireRole } from "@/lib/auth/require";
-import { ROLES } from "@/config/roles";
+import { ROLES, PERMISSIONS } from "@/config/roles";
 import {
-  getAnalyticsKpis,
-  getTrendSeries,
+  getAnalyticsSummary,
   getEnrollmentStatusBreakdown,
   getUsersByRole,
-  getRevenueByCategory,
-  getTopCourses,
-  normalizeRange,
+  resolveAnalyticsWindow,
+  analyticsPresets,
+  istToday,
+  formatDayRange,
+  toTrendSeries,
+  trendGranularity,
+  topCoursesBy,
+  revenueByCategory,
+  MAX_RANGE_DAYS,
   type Kpi,
 } from "@/server/services/analytics-service";
 import { PageHeader } from "@/components/shared/page-header";
 import {
-  RangeTabs,
   RevenueTrend,
   ActivityTrend,
   BreakdownDonut,
   CategoryBar,
 } from "@/components/admin/analytics/analytics-charts";
+import { AnalyticsToolbar } from "@/components/admin/analytics/analytics-toolbar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
@@ -40,33 +46,68 @@ export const dynamic = "force-dynamic";
 
 const inr = (n: number) => `₹${n.toLocaleString("en-IN")}`;
 
+const GRANULARITY_LABEL = { day: "Daily", week: "Weekly", month: "Monthly" } as const;
+
 export default async function AnalyticsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ range?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireRole([ROLES.SUPER_ADMIN, ROLES.ADMIN]);
-  const range = normalizeRange((await searchParams).range);
+  const user = await requireRole([ROLES.SUPER_ADMIN, ROLES.ADMIN]);
+  const { range, from, to } = await searchParams;
+  const today = istToday();
+  const { period, error } = resolveAnalyticsWindow({ range, from, to }, today);
 
-  const [kpis, trend, statusBreakdown, roleBreakdown, revenueByCategory, topCourses] =
-    await Promise.all([
-      getAnalyticsKpis(range),
-      getTrendSeries(range),
-      getEnrollmentStatusBreakdown(),
-      getUsersByRole(),
-      getRevenueByCategory(6),
-      getTopCourses(6),
-    ]);
+  const [summary, statusBreakdown, roleBreakdown] = await Promise.all([
+    getAnalyticsSummary(period),
+    getEnrollmentStatusBreakdown(),
+    getUsersByRole(),
+  ]);
 
+  const { kpis } = summary;
+  const trend = toTrendSeries(summary.daily);
+  const every = GRANULARITY_LABEL[trendGranularity(period.days)];
+  const topCourses = topCoursesBy(summary.courses, "enrollments", 6);
+  const categoryRevenue = revenueByCategory(summary.courses, 6);
   const maxTopEnroll = Math.max(1, ...topCourses.map((c) => c.enrollments));
+
+  const periodLabel = formatDayRange(period.from, period.to);
+  const prevLabel = formatDayRange(period.prevFrom, period.prevTo);
+  const dayCount = `${period.days} ${period.days === 1 ? "day" : "days"}`;
+  const reportHref = user.permissions.includes(PERMISSIONS.VIEW_ANALYTICS)
+    ? `/api/admin/analytics/report?${new URLSearchParams({ from: period.from, to: period.to })}`
+    : undefined;
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Analytics"
-        description="Revenue, growth and engagement across the platform."
-        actions={<RangeTabs current={range} />}
-      />
+      <div className="space-y-3">
+        <PageHeader
+          title="Analytics"
+          description="Revenue, growth and engagement across the platform."
+          actions={
+            <AnalyticsToolbar
+              from={period.from}
+              to={period.to}
+              today={today}
+              preset={period.preset}
+              presets={analyticsPresets(today)}
+              label={periodLabel}
+              maxDays={MAX_RANGE_DAYS}
+              reportHref={reportHref}
+            />
+          }
+        />
+        <p className="text-muted-foreground flex flex-wrap items-center gap-x-1.5 text-sm">
+          <CalendarRange className="size-4 shrink-0" aria-hidden />
+          <span className="text-foreground font-medium">{periodLabel}</span>
+          <span>· {dayCount}, IST · compared with {prevLabel}</span>
+        </p>
+        {error && (
+          <p className="text-sm text-amber-700 dark:text-amber-400" role="alert">
+            {error} Showing {periodLabel} instead.
+          </p>
+        )}
+      </div>
 
       {/* Headline KPIs with period-over-period trend */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -76,47 +117,54 @@ export default async function AnalyticsPage({
         <KpiCard label="Completions" kpi={kpis.completions} icon={Award} tint="from-amber-500 to-orange-600" />
       </div>
 
-      {/* Secondary totals */}
+      {/* Secondary totals — platform snapshots, plus the period itself */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <MiniStat label="Published courses" value={kpis.publishedCourses} icon={BookOpen} />
-        <MiniStat label="Active learners" value={kpis.activeLearners} icon={Users} />
-        <MiniStat label="Avg. rating" value={kpis.avgRating ? kpis.avgRating.toFixed(2) : "—"} icon={Star} />
+        <MiniStat label="Published courses" hint="Right now" value={kpis.publishedCourses} icon={BookOpen} />
+        <MiniStat label="Active learners" hint="All time" value={kpis.activeLearners} icon={Users} />
         <MiniStat
-          label="Period"
-          value={`${range} days`}
-          icon={TrendingUp}
+          label="Avg. rating"
+          hint="Rated courses"
+          value={kpis.avgRating ? kpis.avgRating.toFixed(2) : "—"}
+          icon={Star}
         />
+        <MiniStat label="Period" hint={periodLabel} value={dayCount} icon={TrendingUp} />
       </div>
 
       {/* Charts */}
       <div className="grid gap-6 lg:grid-cols-3">
-        <ChartCard className="lg:col-span-2" title="Revenue" description={`Daily paid revenue · last ${range} days`}>
+        <ChartCard className="lg:col-span-2" title="Revenue" description={`${every} paid revenue · ${periodLabel}`}>
           <RevenueTrend data={trend} />
         </ChartCard>
         <ChartCard title="Enrollment status" description="All-time distribution">
           <BreakdownDonut data={statusBreakdown} />
         </ChartCard>
 
-        <ChartCard className="lg:col-span-2" title="Activity" description={`Enrollments & sign-ups · last ${range} days`}>
+        <ChartCard
+          className="lg:col-span-2"
+          title="Activity"
+          description={`${every} enrollments & sign-ups · ${periodLabel}`}
+        >
           <ActivityTrend data={trend} />
         </ChartCard>
         <ChartCard title="Users by role" description="Account distribution">
           <BreakdownDonut data={roleBreakdown} />
         </ChartCard>
 
-        <ChartCard title="Revenue by category" description="All-time, top categories">
-          <CategoryBar data={revenueByCategory} money />
+        <ChartCard title="Revenue by category" description="Course sales in this period, top categories">
+          <CategoryBar data={categoryRevenue} money />
         </ChartCard>
 
         {/* Top courses */}
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>Top courses</CardTitle>
-            <CardDescription>By enrollments, with lifetime revenue</CardDescription>
+            <CardDescription>By enrollments in this period, with the revenue they brought in</CardDescription>
           </CardHeader>
           <CardContent>
             {topCourses.length === 0 ? (
-              <p className="text-muted-foreground py-8 text-center text-sm">No courses yet.</p>
+              <p className="text-muted-foreground py-8 text-center text-sm">
+                No course sales or enrollments in this period.
+              </p>
             ) : (
               <ol className="space-y-3">
                 {topCourses.map((c, i) => (
@@ -202,13 +250,24 @@ function DeltaBadge({ delta }: { delta: number }) {
   );
 }
 
-function MiniStat({ label, value, icon: Icon }: { label: string; value: string | number; icon: LucideIcon }) {
+function MiniStat({
+  label,
+  hint,
+  value,
+  icon: Icon,
+}: {
+  label: string;
+  hint?: string;
+  value: string | number;
+  icon: LucideIcon;
+}) {
   return (
     <Card className="flex-row items-center gap-3 p-4">
       <Icon className="text-muted-foreground size-5 shrink-0" />
       <div className="min-w-0">
         <p className="text-lg leading-none font-bold">{value}</p>
         <p className="text-muted-foreground truncate text-xs">{label}</p>
+        {hint && <p className="text-muted-foreground/70 truncate text-[11px]">{hint}</p>}
       </div>
     </Card>
   );
