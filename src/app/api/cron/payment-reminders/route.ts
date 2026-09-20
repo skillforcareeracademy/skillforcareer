@@ -1,6 +1,6 @@
 import { withRoute } from "@/lib/api/handler";
 import { ok, fail } from "@/lib/api/response";
-import { env } from "@/lib/env";
+import { cronCallerAllowed } from "@/lib/cron-auth";
 import { runPaymentReminders } from "@/server/services/payment-reminder-service";
 import { logger } from "@/lib/logger";
 
@@ -14,11 +14,8 @@ export const dynamic = "force-dynamic";
  * (local dev), the guard is skipped so it can be exercised by hand.
  */
 async function run(req: Request) {
-  if (env.CRON_SECRET) {
-    const auth = req.headers.get("authorization");
-    if (auth !== `Bearer ${env.CRON_SECRET}`) {
-      return fail("UNAUTHORIZED", "Invalid cron secret.", 401);
-    }
+  if (!cronCallerAllowed(req)) {
+    return fail("UNAUTHORIZED", "Invalid cron secret.", 401);
   }
   const result = await runPaymentReminders();
   logger.info("cron.payment_reminders", { ...result });
