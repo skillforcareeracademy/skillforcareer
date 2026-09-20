@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   Presentation,
@@ -133,12 +134,26 @@ export default async function WebinarDetailPage({
         {/* Right: register */}
         <aside className="lg:sticky lg:top-24 lg:self-start">
           <Card className="p-6 shadow-lg">
-            <WebinarRegisterForm
-              webinarId={w.id}
-              isFull={isFull}
-              seatsLeft={seatsLeft}
-              attendanceDiscountPercent={discount}
-            />
+            {w.phase === "PAST" ? (
+              // Registration closes once the session is over; the server
+              // refuses it too, this just says so up front.
+              <div className="space-y-3 text-center">
+                <p className="text-lg font-semibold">This webinar has ended</p>
+                <p className="text-muted-foreground text-sm">
+                  Registration is closed. See what&apos;s coming up next and save your seat.
+                </p>
+                <Link href="/webinars" className="text-primary text-sm font-medium hover:underline">
+                  Upcoming webinars →
+                </Link>
+              </div>
+            ) : (
+              <WebinarRegisterForm
+                webinarId={w.id}
+                isFull={isFull}
+                seatsLeft={seatsLeft}
+                attendanceDiscountPercent={discount}
+              />
+            )}
           </Card>
         </aside>
       </div>

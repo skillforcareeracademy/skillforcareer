@@ -38,12 +38,19 @@ export function LoginForm({
   const nextQuery = safeNext(next) ? `&next=${encodeURIComponent(next!)}` : "";
   const setUser = useAuthStore((s) => s.setUser);
   const [mode, setMode] = useState<Mode>("password");
+  // Whatever was typed in the password tab's email carries over to the code tab.
+  const [codeEmail, setCodeEmail] = useState("");
   const {
     register,
     handleSubmit,
-    watch,
+    getValues,
     formState: { errors, isSubmitting },
   } = useForm<LoginInput>({ resolver: zodResolver(loginSchema) });
+
+  function switchMode(next: Mode) {
+    if (next === "code") setCodeEmail(getValues("email") ?? "");
+    setMode(next);
+  }
 
   function signedIn(user: SessionUser) {
     setUser(user);
@@ -118,7 +125,7 @@ export function LoginForm({
             type="button"
             role="tab"
             aria-selected={mode === value}
-            onClick={() => setMode(value)}
+            onClick={() => switchMode(value)}
             className={cn(
               "flex h-9 items-center justify-center gap-2 rounded-md text-sm font-medium transition-colors",
               mode === value
@@ -136,7 +143,7 @@ export function LoginForm({
       </div>
 
       {mode === "code" ? (
-        <CodeLogin initialEmail={watch("email") ?? ""} onSignedIn={signedIn} />
+        <CodeLogin initialEmail={codeEmail} onSignedIn={signedIn} />
       ) : (
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <Field label="Email" htmlFor="email" error={errors.email?.message}>
@@ -164,7 +171,7 @@ export function LoginForm({
           <div className="flex items-center justify-between gap-3">
             <button
               type="button"
-              onClick={() => setMode("code")}
+              onClick={() => switchMode("code")}
               className="text-muted-foreground hover:text-foreground text-sm"
             >
               Sign in with an email code

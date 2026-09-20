@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import {
@@ -237,7 +238,10 @@ export default async function CourseDetailPage({
                 </div>
 
                 <p className="text-muted-foreground flex items-center justify-center gap-1.5 text-xs">
-                  <ShieldCheck className="size-3.5" /> 30-day money-back guarantee
+                  <ShieldCheck className="size-3.5" /> Fees are non-refundable ·{" "}
+                  <Link href="/terms" className="text-primary font-medium underline-offset-2 hover:underline">
+                    Terms &amp; Conditions
+                  </Link>
                 </p>
 
                 <div className="border-t pt-4">

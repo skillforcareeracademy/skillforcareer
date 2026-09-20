@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ArrowRight,
@@ -478,6 +479,15 @@ export function CheckoutPanel({
                   <ShieldCheck className="size-3.5" /> Secure payment via Razorpay · UPI,
                   cards, net banking
                 </p>
+                {/* The academy doesn't refund fees, so say it where the money
+                    is paid, not only on the terms page. */}
+                <p className="text-muted-foreground text-center text-xs">
+                  Fees are non-refundable. By paying you agree to our{" "}
+                  <Link href="/terms" target="_blank" className="text-primary font-medium underline-offset-2 hover:underline">
+                    Terms &amp; Conditions
+                  </Link>
+                  .
+                </p>
               </div>
             )
           ) : (
@@ -563,7 +573,13 @@ export function CheckoutPanel({
 
           <p className="text-muted-foreground flex items-start gap-1.5 text-xs">
             <ShieldCheck className="mt-0.5 size-3.5 shrink-0" />
-            Lifetime access, 30-day money-back guarantee.
+            <span>
+              Lifetime access. No refunds once paid —{" "}
+              <Link href="/terms" target="_blank" className="text-primary font-medium underline-offset-2 hover:underline">
+                Terms &amp; Conditions
+              </Link>
+              .
+            </span>
           </p>
         </CardContent>
       </Card>

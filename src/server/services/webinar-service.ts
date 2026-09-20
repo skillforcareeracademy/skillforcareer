@@ -331,6 +331,7 @@ export async function getPublicWebinarBySlug(slug: string) {
     /** Null when uncapped; drives the "seats left" / "full" copy. */
     seatsLeft: w.capacity != null ? Math.max(0, w.capacity - w._count.registrations) : null,
     isFull: w.capacity != null && w._count.registrations >= w.capacity,
+    phase: webinarPhase(w.scheduledStart, w.durationMinutes),
   };
 }
 
@@ -341,9 +342,22 @@ export async function registerForWebinar(
 ): Promise<{ joinUrl: string | null }> {
   const w = await prisma.webinar.findUnique({
     where: { id: webinarId },
-    select: { id: true, isPublished: true, capacity: true, joinUrl: true, _count: { select: { registrations: true } } },
+    select: {
+      id: true,
+      isPublished: true,
+      capacity: true,
+      joinUrl: true,
+      scheduledStart: true,
+      durationMinutes: true,
+      _count: { select: { registrations: true } },
+    },
   });
   if (!w || !w.isPublished) throw AppError.notFound("Webinar not found.");
+  // A session that has already finished can't be joined, so taking a sign-up
+  // for it only collects a promise nobody can keep.
+  if (webinarPhase(w.scheduledStart, w.durationMinutes) === "PAST") {
+    throw AppError.badRequest("This webinar has ended, so registration is closed.");
+  }
   if (w.capacity != null && w._count.registrations >= w.capacity) {
     throw AppError.badRequest("This webinar is full.");
   }
