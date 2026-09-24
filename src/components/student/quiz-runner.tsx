@@ -13,6 +13,8 @@ import {
   RefreshCw,
   Trophy,
   Clock,
+  Eye,
+  NotebookText,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
@@ -45,8 +47,20 @@ interface QuizData {
   attemptsUsed: number;
   canAttempt: boolean;
   bookmarked: boolean;
+  /** Marks each question as it is answered, rather than only at the end. */
+  showAnswerPerQuestion: boolean;
+  categoryName: string | null;
+  /** Notes this paper was set from — what to revise. */
+  preparedFrom: string[];
   totalPoints: number;
   questions: Question[];
+}
+/** One question's verdict, asked for as the learner answers it. */
+interface Checked {
+  questionId: string;
+  isCorrect: boolean | null;
+  correctOptionIds: string[];
+  explanation: string | null;
 }
 interface Result {
   score: number;
@@ -68,6 +82,8 @@ interface Result {
 export function QuizRunner({ quiz }: { quiz: QuizData }) {
   const router = useRouter();
   const [answers, setAnswers] = useState<Record<string, { optionIds: string[]; text: string }>>({});
+  const [checked, setChecked] = useState<Record<string, Checked>>({});
+  const [checking, setChecking] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<Result | null>(null);
   // Timer: only when the admin set a time limit — otherwise unlimited.
@@ -122,9 +138,11 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
   }
 
   function setSingle(qid: string, optId: string) {
+    if (checked[qid]) return; // marked already — the answer stands
     setAnswers((p) => ({ ...p, [qid]: { optionIds: [optId], text: "" } }));
   }
   function toggleMulti(qid: string, optId: string) {
+    if (checked[qid]) return;
     setAnswers((p) => {
       const cur = p[qid]?.optionIds ?? [];
       const next = cur.includes(optId) ? cur.filter((x) => x !== optId) : [...cur, optId];
@@ -132,7 +150,30 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
     });
   }
   function setText(qid: string, text: string) {
+    if (checked[qid]) return;
     setAnswers((p) => ({ ...p, [qid]: { optionIds: [], text } }));
+  }
+
+  /**
+   * Mark one question now, for a quiz set to answer as it goes. The key comes
+   * from the server one question at a time — the paper never carries it — and
+   * the answer locks once it has been marked.
+   */
+  async function checkOne(q: Question) {
+    const a = answers[q.id];
+    if (!a || (a.optionIds.length === 0 && !a.text.trim()) || checked[q.id] || checking) return;
+    setChecking(q.id);
+    try {
+      const res = await api.post<Checked>(`/api/quizzes/${quiz.id}/check`, {
+        questionId: q.id,
+        optionIds: a.optionIds,
+      });
+      setChecked((p) => ({ ...p, [q.id]: res }));
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Couldn't check that just now.");
+    } finally {
+      setChecking(null);
+    }
   }
 
   const answeredCount = quiz.questions.filter((q) => {
@@ -284,8 +325,15 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
           </Link>
           <h1 className="text-2xl font-bold">{quiz.title}</h1>
           <p className="text-muted-foreground mt-1 text-sm">
+            {quiz.categoryName ? `${quiz.categoryName} · ` : ""}
             {quiz.courseTitle} · {quiz.questions.length} questions · {quiz.totalPoints} points · Pass {quiz.passingScore}%
           </p>
+          {quiz.preparedFrom.length > 0 && (
+            <p className="text-muted-foreground mt-1 flex items-start gap-1.5 text-xs">
+              <NotebookText className="mt-0.5 size-3.5 shrink-0" />
+              <span>Set from your notes: {quiz.preparedFrom.join(", ")}</span>
+            </p>
+          )}
         </div>
         {remaining != null && (
           <div
@@ -307,6 +355,8 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
       {quiz.questions.map((q, i) => {
         const a = answers[q.id];
         const isMulti = q.type === "MULTIPLE_CHOICE";
+        const verdict = checked[q.id];
+        const answered = Boolean(a && (a.optionIds.length > 0 || a.text.trim()));
         return (
           <Card key={q.id} className="p-5">
             <div className="mb-3 flex items-start justify-between gap-3">
@@ -329,29 +379,109 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
               <div className="space-y-2">
                 {q.options.map((o) => {
                   const selected = a?.optionIds.includes(o.id) ?? false;
+                  const isKey = verdict?.correctOptionIds.includes(o.id) ?? false;
+                  const wrongPick = Boolean(verdict) && selected && !isKey;
                   return (
                     <button
                       key={o.id}
                       type="button"
+                      disabled={Boolean(verdict)}
                       onClick={() => (isMulti ? toggleMulti(q.id, o.id) : setSingle(q.id, o.id))}
                       className={cn(
                         "flex w-full items-center gap-3 rounded-lg border p-3 text-left text-sm transition-colors",
-                        selected ? "border-primary bg-primary/5" : "hover:bg-accent",
+                        // Once marked, the card reads as the answer key: the
+                        // right option green, a wrong pick red, the rest plain.
+                        isKey
+                          ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300"
+                          : wrongPick
+                            ? "border-rose-500 bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-300"
+                            : selected
+                              ? "border-primary bg-primary/5"
+                              : verdict
+                                ? "opacity-70"
+                                : "hover:bg-accent",
                       )}
                     >
                       <span
                         className={cn(
                           "grid size-5 shrink-0 place-items-center border",
                           isMulti ? "rounded-md" : "rounded-full",
-                          selected ? "border-primary bg-primary text-white" : "border-input",
+                          isKey
+                            ? "border-emerald-500 bg-emerald-500 text-white"
+                            : wrongPick
+                              ? "border-rose-500 bg-rose-500 text-white"
+                              : selected
+                                ? "border-primary bg-primary text-white"
+                                : "border-input",
                         )}
                       >
-                        {selected && <Check className="size-3.5" />}
+                        {isKey ? (
+                          <Check className="size-3.5" />
+                        ) : wrongPick ? (
+                          <XCircle className="size-3.5" />
+                        ) : (
+                          selected && <Check className="size-3.5" />
+                        )}
                       </span>
                       {o.text}
                     </button>
                   );
                 })}
+              </div>
+            )}
+
+            {/* Answer as you go, when the quiz is set that way. Checking locks
+                the answer — seeing the key and then changing your mind isn't
+                practice. */}
+            {quiz.showAnswerPerQuestion && (
+              <div className="mt-3">
+                {verdict ? (
+                  <div className="space-y-1">
+                    <p
+                      className={cn(
+                        "flex items-center gap-1.5 text-sm font-medium",
+                        verdict.isCorrect === null
+                          ? "text-muted-foreground"
+                          : verdict.isCorrect
+                            ? "text-emerald-600 dark:text-emerald-400"
+                            : "text-rose-600 dark:text-rose-400",
+                      )}
+                    >
+                      {verdict.isCorrect === null ? (
+                        <>
+                          <Eye className="size-4" /> Your instructor marks this one.
+                        </>
+                      ) : verdict.isCorrect ? (
+                        <>
+                          <CheckCircle2 className="size-4" /> Correct
+                        </>
+                      ) : (
+                        <>
+                          <XCircle className="size-4" /> Not quite — the right answer is marked
+                          above.
+                        </>
+                      )}
+                    </p>
+                    {verdict.explanation && (
+                      <p className="text-muted-foreground text-xs">💡 {verdict.explanation}</p>
+                    )}
+                  </div>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={!answered || checking === q.id}
+                    onClick={() => checkOne(q)}
+                  >
+                    {checking === q.id ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Eye className="size-4" />
+                    )}
+                    Check answer
+                  </Button>
+                )}
               </div>
             )}
           </Card>

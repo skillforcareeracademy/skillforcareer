@@ -16,6 +16,9 @@ import {
   Upload,
   Download,
   FileSpreadsheet,
+  Sparkles,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
@@ -53,6 +56,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { QuestionDialog, type EditableQuestion } from "@/components/admin/quizzes/question-dialog";
+import { QuizGenerateDialog } from "@/components/admin/quizzes/quiz-generate-dialog";
+import { QuizSourcesCard, type QuizSourceRow } from "@/components/admin/quizzes/quiz-sources-card";
 import { AudiencePicker } from "@/components/shared/audience-picker";
 import { cn } from "@/lib/utils";
 
@@ -67,12 +72,22 @@ interface Quiz {
   maxAttempts: number;
   shuffleQuestions: boolean;
   showAnswers: boolean;
+  showAnswerPerQuestion: boolean;
+  categoryId: string | null;
+  subCategoryId: string | null;
+  sequence: number;
   isPublished: boolean;
   releaseAt: string;
   batchIds: string[];
   studentIds: string[];
+  sources: QuizSourceRow[];
   questions: EditableQuestion[];
   totalPoints: number;
+}
+interface CategoryOpt {
+  id: string;
+  name: string;
+  parentId: string | null;
 }
 interface BatchOpt {
   id: string;
@@ -90,18 +105,24 @@ export function QuizEditor({
   quiz,
   courses,
   batches,
+  categories = [],
   students = [],
   basePath = "/admin/quizzes",
   canExport = true,
+  attemptDefault = 0,
 }: {
   quiz: Quiz;
   courses: { id: string; title: string }[];
   batches: BatchOpt[];
+  /** Quiz groups: parents, and sub-categories carrying their `parentId`. */
+  categories?: CategoryOpt[];
   /** Individuals who can be set the quiz on top of the chosen cohorts. */
   students?: StudentOpt[];
   basePath?: string;
   /** Instructors may import a question bank but not download the answer key. */
   canExport?: boolean;
+  /** Settings → Learning's attempt cap, used when this quiz names none. */
+  attemptDefault?: number;
 }) {
   const router = useRouter();
   const [form, setForm] = useState({
@@ -114,6 +135,9 @@ export function QuizEditor({
     maxAttempts: String(quiz.maxAttempts),
     shuffleQuestions: quiz.shuffleQuestions,
     showAnswers: quiz.showAnswers,
+    showAnswerPerQuestion: quiz.showAnswerPerQuestion,
+    categoryId: quiz.categoryId ?? "",
+    subCategoryId: quiz.subCategoryId ?? "",
     releaseAt: quiz.releaseAt,
     batchIds: quiz.batchIds,
     studentIds: quiz.studentIds,
@@ -127,6 +151,8 @@ export function QuizEditor({
   });
   const [deletingQuestion, setDeletingQuestion] = useState<EditableQuestion | null>(null);
   const [importing, setImporting] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [moving, setMoving] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   function set<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
@@ -138,6 +164,12 @@ export function QuizEditor({
           (id) => batches.find((b) => b.id === id)?.courseId === value,
         );
       }
+      // A sub-category only belongs under its own category.
+      if (key === "categoryId") {
+        next.subCategoryId = categories.find((c) => c.id === prev.subCategoryId)?.parentId === value
+          ? prev.subCategoryId
+          : "";
+      }
       return next;
     });
   }
@@ -146,6 +178,26 @@ export function QuizEditor({
   const formBatches = form.courseId
     ? batches.filter((b) => b.courseId === form.courseId)
     : batches;
+
+  const parentCategories = categories.filter((c) => !c.parentId);
+  const subCategories = categories.filter((c) => c.parentId === form.categoryId);
+
+  /** Move one question up or down — the paper's own order, saved as it changes. */
+  async function moveQuestion(index: number, delta: number) {
+    const ids = quiz.questions.map((q) => q.id);
+    const to = index + delta;
+    if (to < 0 || to >= ids.length || moving) return;
+    [ids[index], ids[to]] = [ids[to], ids[index]];
+    setMoving(true);
+    try {
+      await api.patch(`/api/quizzes/${quiz.id}/questions`, { ids });
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Couldn't reorder.");
+    } finally {
+      setMoving(false);
+    }
+  }
 
   /**
    * Read a question bank back in, appending to what's here.
@@ -202,6 +254,9 @@ export function QuizEditor({
         maxAttempts: Number(form.maxAttempts) || 0,
         shuffleQuestions: form.shuffleQuestions,
         showAnswers: form.showAnswers,
+        showAnswerPerQuestion: form.showAnswerPerQuestion,
+        categoryId: form.categoryId || undefined,
+        subCategoryId: form.subCategoryId || undefined,
         releaseAt: form.releaseAt || undefined,
         batchIds: form.batchIds,
         studentIds: form.studentIds,
@@ -262,7 +317,7 @@ export function QuizEditor({
           <ArrowLeft className="size-4" /> Back to quizzes
         </Link>
         <PageHeader
-          title={quiz.title}
+          title={quiz.sequence > 0 ? `${quiz.sequence}. ${quiz.title}` : quiz.title}
           description={quiz.isPublished ? "Published" : "Draft"}
           actions={
             <Button
@@ -328,6 +383,64 @@ export function QuizEditor({
                 </SelectContent>
               </Select>
             </div>
+            {/* Grouping. Sub-categories are filtered to the chosen category, so
+                "ICD-10" can't end up under "Soft Skills". */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Category</Label>
+                <Select
+                  value={form.categoryId || "none"}
+                  onValueChange={(v) => set("categoryId", v === "none" ? "" : (v ?? ""))}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue>
+                      {(v) =>
+                        !v || v === "none"
+                          ? "Ungrouped"
+                          : (parentCategories.find((c) => c.id === v)?.name ?? "Ungrouped")
+                      }
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Ungrouped</SelectItem>
+                    {parentCategories.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Sub-category</Label>
+                <Select
+                  value={form.subCategoryId || "none"}
+                  onValueChange={(v) => set("subCategoryId", v === "none" ? "" : (v ?? ""))}
+                  disabled={subCategories.length === 0}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue>
+                      {(v) =>
+                        !v || v === "none"
+                          ? subCategories.length === 0
+                            ? "None available"
+                            : "None"
+                          : (subCategories.find((c) => c.id === v)?.name ?? "None")
+                      }
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    {subCategories.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
             {/* Who sits this quiz. Nothing chosen = everyone on the course,
                 which is how quizzes behaved before cohorts could be named. */}
             <AudiencePicker
@@ -397,14 +510,14 @@ export function QuizEditor({
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label htmlFor="q-att">Max attempts</Label>
+                <Label htmlFor="q-att">Attempts per user</Label>
                 <Input
                   id="q-att"
                   type="number"
                   min={0}
                   value={form.maxAttempts}
                   onChange={(e) => set("maxAttempts", e.target.value)}
-                  placeholder="0 = platform default"
+                  placeholder="0 = unlimited"
                 />
               </div>
               <div className="space-y-1.5">
@@ -423,6 +536,14 @@ export function QuizEditor({
                 </Select>
               </div>
             </div>
+            <p className="text-muted-foreground -mt-2 text-xs">
+              How many times one learner may sit this quiz.{" "}
+              {form.maxAttempts === "0"
+                ? attemptDefault > 0
+                  ? `0 uses the platform default of ${attemptDefault}.`
+                  : "0 means unlimited."
+                : ""}
+            </p>
             <label className="flex items-center justify-between gap-4 text-sm">
               <span>Shuffle questions</span>
               <Switch
@@ -430,8 +551,19 @@ export function QuizEditor({
                 onCheckedChange={(v) => set("shuffleQuestions", v)}
               />
             </label>
+            {/* The two ways a paper can give itself away, asked as the academy
+                asks them: as each question is answered, and all at once at the
+                end. They are independent — practice sets want both, a real
+                assessment usually wants neither. */}
             <label className="flex items-center justify-between gap-4 text-sm">
-              <span>Show answers after</span>
+              <span>Show answer after every question attempted?</span>
+              <Switch
+                checked={form.showAnswerPerQuestion}
+                onCheckedChange={(v) => set("showAnswerPerQuestion", v)}
+              />
+            </label>
+            <label className="flex items-center justify-between gap-4 text-sm">
+              <span>Show all answers at once after the whole quiz?</span>
               <Switch checked={form.showAnswers} onCheckedChange={(v) => set("showAnswers", v)} />
             </label>
             <Button onClick={saveSettings} disabled={savingSettings} className="w-full">
@@ -485,6 +617,9 @@ export function QuizEditor({
                   <Download className="size-4" /> Export
                 </Button>
               )}
+              <Button variant="outline" onClick={() => setGenerating(true)}>
+                <Sparkles className="size-4" /> Generate from notes
+              </Button>
               <Button onClick={openAdd}>
                 <Plus className="size-4" /> Add question
               </Button>
@@ -524,6 +659,24 @@ export function QuizEditor({
                         <p className="text-sm font-medium">{q.text}</p>
                       </div>
                       <div className="flex shrink-0 gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          disabled={i === 0 || moving}
+                          onClick={() => moveQuestion(i, -1)}
+                          aria-label={`Move question ${i + 1} up`}
+                        >
+                          <ArrowUp className="size-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          disabled={i === quiz.questions.length - 1 || moving}
+                          onClick={() => moveQuestion(i, 1)}
+                          aria-label={`Move question ${i + 1} down`}
+                        >
+                          <ArrowDown className="size-4" />
+                        </Button>
                         <Button variant="ghost" size="icon-sm" onClick={() => openEdit(q)} aria-label="Edit">
                           <Pencil className="size-4" />
                         </Button>
@@ -569,6 +722,20 @@ export function QuizEditor({
           </CardContent>
         </Card>
       </div>
+
+      <QuizSourcesCard
+        quizId={quiz.id}
+        sources={quiz.sources}
+        onGenerate={() => setGenerating(true)}
+      />
+
+      {generating && (
+        <QuizGenerateDialog
+          open={generating}
+          onOpenChange={setGenerating}
+          quizId={quiz.id}
+        />
+      )}
 
       {dialog.open && (
         <QuestionDialog

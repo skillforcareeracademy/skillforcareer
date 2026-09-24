@@ -23,6 +23,9 @@ export const GRADING_MODE_LABEL: Record<string, string> = {
 export const createQuizSchema = z.object({
   title: z.string().trim().min(3, "Title is too short").max(150),
   courseId: z.string().optional().or(z.literal("")),
+  /** Grouping, both optional: a sub-category must belong to the category. */
+  categoryId: z.string().optional().or(z.literal("")),
+  subCategoryId: z.string().optional().or(z.literal("")),
 });
 
 export const updateQuizSchema = z.object({
@@ -45,7 +48,69 @@ export const updateQuizSchema = z.object({
   /** 0 = unlimited, falling back to the platform default in Settings. */
   maxAttempts: z.coerce.number().int().min(0).max(50).default(1),
   shuffleQuestions: z.boolean().default(false),
+  /** The whole answer key, once the paper is submitted. */
   showAnswers: z.boolean().default(true),
+  /** Mark each question the moment it is answered. */
+  showAnswerPerQuestion: z.boolean().default(false),
+  categoryId: z.string().optional().or(z.literal("")),
+  subCategoryId: z.string().optional().or(z.literal("")),
+});
+
+// ── Grouping, sequencing and notes ───────────────────────────────────────────
+
+export const quizCategorySchema = z.object({
+  name: z.string().trim().min(2, "Name is too short").max(80),
+  /** Set = this is a sub-category of that category. */
+  parentId: z.string().optional().or(z.literal("")),
+});
+
+/** The visible group, in the order it should be numbered 1…n. */
+export const reorderQuizzesSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1).max(500),
+});
+
+/** Notes a quiz was prepared from: a batch note, a lesson, or pasted text. */
+export const quizSourceSchema = z
+  .object({
+    batchNoteId: z.string().optional().or(z.literal("")),
+    lessonId: z.string().optional().or(z.literal("")),
+    title: z.string().trim().max(150).optional().or(z.literal("")),
+    text: z.string().trim().max(200_000).optional().or(z.literal("")),
+  })
+  .superRefine((v, ctx) => {
+    if (!v.batchNoteId && !v.lessonId && !v.text) {
+      ctx.addIssue({ code: "custom", message: "Choose notes or paste the text.", path: ["batchNoteId"] });
+    }
+    if (v.batchNoteId && v.lessonId) {
+      ctx.addIssue({ code: "custom", message: "Pick one set of notes at a time.", path: ["lessonId"] });
+    }
+    if (!v.batchNoteId && !v.lessonId && v.text && v.text.length < 200) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Paste at least a couple of paragraphs of notes.",
+        path: ["text"],
+      });
+    }
+  });
+
+export const GENERATE_STYLES = ["MIXED", "SINGLE_CHOICE", "MULTIPLE_CHOICE", "TRUE_FALSE"] as const;
+export const GENERATE_STYLE_LABEL: Record<string, string> = {
+  MIXED: "Mixed",
+  SINGLE_CHOICE: "Single choice",
+  MULTIPLE_CHOICE: "Multiple choice",
+  TRUE_FALSE: "True / False",
+};
+
+/** Draft questions from notes. `save` writes them onto the quiz. */
+export const generateQuestionsSchema = z.object({
+  sourceId: z.string().optional().or(z.literal("")),
+  batchNoteId: z.string().optional().or(z.literal("")),
+  lessonId: z.string().optional().or(z.literal("")),
+  text: z.string().trim().max(200_000).optional().or(z.literal("")),
+  count: z.coerce.number().int().min(1).max(25).default(5),
+  style: z.enum(GENERATE_STYLES).default("MIXED"),
+  /** Keep the notes on the quiz as the source it was prepared from. */
+  linkSource: z.boolean().default(true),
 });
 
 const optionSchema = z.object({
@@ -91,6 +156,9 @@ export const importQuestionsSchema = z.object({
 });
 
 export type CreateQuizInput = z.infer<typeof createQuizSchema>;
+export type QuizCategoryInput = z.infer<typeof quizCategorySchema>;
+export type QuizSourceInput = z.infer<typeof quizSourceSchema>;
+export type GenerateQuestionsInput = z.infer<typeof generateQuestionsSchema>;
 export type UpdateQuizInput = z.infer<typeof updateQuizSchema>;
 export type QuestionInput = z.infer<typeof questionSchema>;
 export type ImportQuestionsInput = z.infer<typeof importQuestionsSchema>;

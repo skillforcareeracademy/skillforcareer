@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   ArrowUpRight,
   Bot,
+  GripVertical,
   Loader2,
   MessageCircle,
   Send,
@@ -52,6 +53,59 @@ function newSessionId(): string {
   return `s_${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
 }
 
+/**
+ * Where the launcher sits. Ami floats over every page, so on a long table it
+ * can sit on top of the very row somebody is reading — the academy asked for it
+ * to be movable, and where they drag it is remembered per browser.
+ */
+interface Point {
+  x: number;
+  y: number;
+}
+
+const POSITION_KEY = "sfc.ami.position";
+const EDGE = 16;
+/**
+ * The launcher's own footprint, near enough. Measuring it would mean reading a
+ * ref while rendering, and a few pixels either way only ever changes how close
+ * to the edge it can be dragged.
+ */
+const LAUNCHER = { width: 172, height: 48 };
+/** Past this many pixels a press is a drag, not a click on the launcher. */
+const DRAG_THRESHOLD = 4;
+
+function readSavedPosition(): Point | null {
+  try {
+    const raw = window.localStorage.getItem(POSITION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<Point>;
+    if (typeof parsed?.x !== "number" || typeof parsed?.y !== "number") return null;
+    return { x: parsed.x, y: parsed.y };
+  } catch {
+    // Private windows and blocked site data both land here; the default corner
+    // is a perfectly good answer.
+    return null;
+  }
+}
+
+function savePosition(point: Point) {
+  try {
+    window.localStorage.setItem(POSITION_KEY, JSON.stringify(point));
+  } catch {
+    // Nothing to do — the launcher still moved for this visit.
+  }
+}
+
+/** Keep the launcher fully on screen, whatever the window has been resized to. */
+function clampToViewport(point: Point, size: { width: number; height: number }): Point {
+  const maxX = Math.max(EDGE, window.innerWidth - size.width - EDGE);
+  const maxY = Math.max(EDGE, window.innerHeight - size.height - EDGE);
+  return {
+    x: Math.min(Math.max(point.x, EDGE), maxX),
+    y: Math.min(Math.max(point.y, EDGE), maxY),
+  };
+}
+
 export function AmiWidget() {
   const [greeting, setGreeting] = useState<Greeting | null>(null);
   const [open, setOpen] = useState(false);
@@ -59,8 +113,15 @@ export function AmiWidget() {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [voice, setVoice] = useState(false);
+  const [position, setPosition] = useState<Point | null>(null);
+  const [dragging, setDragging] = useState(false);
   const sessionRef = useRef<string>("");
   const scrollRef = useRef<HTMLDivElement>(null);
+  /** Pointer offset inside the launcher, so it doesn't jump under the cursor. */
+  const grabRef = useRef<Point>({ x: 0, y: 0 });
+  /** Where the press began — what the drag threshold is measured against. */
+  const startRef = useRef<Point>({ x: 0, y: 0 });
+  const movedRef = useRef(false);
 
   // The greeting also carries the on/off switch, so a disabled assistant costs
   // one request and renders nothing.
@@ -82,6 +143,101 @@ export function AmiWidget() {
     if (!open) stopSpeaking();
     return () => stopSpeaking();
   }, [open]);
+
+  // Where it was left last time, brought back inside the current window.
+  //
+  // Read on a timer rather than straight from the effect body: the page should
+  // paint in the default corner first, and the compiler's `set-state-in-effect`
+  // rule rejects a synchronous setState here for the same reason — same
+  // reasoning as the panel tour's autostart.
+  useEffect(() => {
+    if (!greeting?.enabled) return;
+    const saved = readSavedPosition();
+    if (!saved) return;
+    const id = setTimeout(() => setPosition(clampToViewport(saved, LAUNCHER)), 0);
+    return () => clearTimeout(id);
+  }, [greeting?.enabled]);
+
+  // A narrower window can leave a remembered spot off-screen.
+  useEffect(() => {
+    if (!position) return;
+    const onResize = () => setPosition((p) => (p ? clampToViewport(p, LAUNCHER) : p));
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [position]);
+
+  function onPointerDown(e: React.PointerEvent<HTMLButtonElement>) {
+    // Left mouse button, a finger or a pen; never a right-click.
+    if (e.button !== 0) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    grabRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    startRef.current = { x: e.clientX, y: e.clientY };
+    movedRef.current = false;
+    // Pointer capture keeps the moves coming even when the cursor outruns the
+    // button, which is most of a drag.
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setDragging(true);
+  }
+
+  function onPointerMove(e: React.PointerEvent<HTMLButtonElement>) {
+    if (!dragging) return;
+    // Measured from where the press began, not from the last known position:
+    // the very first drag starts from the corner the stylesheet put it in,
+    // which this component has never had to know a number for.
+    if (
+      !movedRef.current &&
+      Math.abs(e.clientX - startRef.current.x) < DRAG_THRESHOLD &&
+      Math.abs(e.clientY - startRef.current.y) < DRAG_THRESHOLD
+    ) {
+      return; // still a click as far as anyone can tell
+    }
+    movedRef.current = true;
+    setPosition(
+      clampToViewport({ x: e.clientX - grabRef.current.x, y: e.clientY - grabRef.current.y }, LAUNCHER),
+    );
+  }
+
+  function onPointerUp(e: React.PointerEvent<HTMLButtonElement>) {
+    if (!dragging) return;
+    e.currentTarget.releasePointerCapture?.(e.pointerId);
+    setDragging(false);
+    if (movedRef.current && position) savePosition(position);
+  }
+
+  /**
+   * Opening is left on `click` rather than on `pointerup` so that Enter and
+   * Space still work; the flag swallows the click the browser fires at the end
+   * of a drag.
+   */
+  function onLauncherClick() {
+    if (movedRef.current) {
+      movedRef.current = false;
+      return;
+    }
+    openChat();
+  }
+
+  /** Keyboard: nudge it with the arrows, and Enter/Space still opens the chat. */
+  function onKeyDown(e: React.KeyboardEvent<HTMLButtonElement>) {
+    const step = e.shiftKey ? 40 : 10;
+    const deltas: Record<string, Point> = {
+      ArrowUp: { x: 0, y: -step },
+      ArrowDown: { x: 0, y: step },
+      ArrowLeft: { x: -step, y: 0 },
+      ArrowRight: { x: step, y: 0 },
+    };
+    const delta = deltas[e.key];
+    if (!delta) return;
+    e.preventDefault();
+    const from = position ?? {
+      // Never moved yet: start from the corner the classes put it in.
+      x: window.innerWidth - LAUNCHER.width - EDGE,
+      y: window.innerHeight - LAUNCHER.height - (window.innerWidth < 768 ? 80 : 24),
+    };
+    const next = clampToViewport({ x: from.x + delta.x, y: from.y + delta.y }, LAUNCHER);
+    setPosition(next);
+    savePosition(next);
+  }
 
   function openChat() {
     if (!sessionRef.current) sessionRef.current = newSessionId();
@@ -151,24 +307,73 @@ export function AmiWidget() {
 
   if (!greeting?.enabled) return null;
 
+  /**
+   * Placement for the chat window once the launcher has been moved. Phone-width
+   * screens keep the full-width sheet at the bottom — there is nowhere else for
+   * a 96-character-wide conversation to go.
+   */
+  const windowStyle = ((): React.CSSProperties | null => {
+    if (!position || typeof window === "undefined") return null;
+    if (window.innerWidth < 640) return null;
+    const width = 384; // sm:w-96
+    const left = Math.min(
+      Math.max(position.x + LAUNCHER.width - width, EDGE),
+      Math.max(EDGE, window.innerWidth - width - EDGE),
+    );
+    // Above the launcher when it is sitting low, below it when it is high.
+    const below = position.y < window.innerHeight / 2;
+    return below
+      ? {
+          left,
+          top: Math.min(position.y + LAUNCHER.height + 12, window.innerHeight - 160),
+          right: "auto",
+          bottom: "auto",
+        }
+      : { left, bottom: Math.max(window.innerHeight - position.y + 12, EDGE), right: "auto", top: "auto" };
+  })();
+
   return (
     <>
-      {/* Launcher */}
+      {/* Launcher — draggable, so it never has to sit on top of the page */}
       {!open && (
         <button
           type="button"
-          onClick={openChat}
-          aria-label={`Chat with ${greeting.name}`}
-          className="bg-primary text-primary-foreground fixed right-4 bottom-20 z-40 flex items-center gap-2 rounded-full px-4 py-3 shadow-lg transition-transform hover:scale-105 md:bottom-6"
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+          onClick={onLauncherClick}
+          onKeyDown={onKeyDown}
+          aria-label={`Chat with ${greeting.name}. Drag to move, or use the arrow keys.`}
+          title="Drag to move"
+          style={
+            position
+              ? { left: position.x, top: position.y, right: "auto", bottom: "auto" }
+              : undefined
+          }
+          className={cn(
+            "bg-primary text-primary-foreground fixed z-40 flex touch-none items-center gap-2 rounded-full py-3 pr-4 pl-3 shadow-lg",
+            dragging ? "cursor-grabbing scale-105" : "cursor-grab transition-transform hover:scale-105",
+            // Until it has been moved it sits where it always has: clear of the
+            // mobile tab bar, low right on a desktop.
+            position ? "" : "right-4 bottom-20 md:bottom-6",
+          )}
         >
+          <GripVertical className="size-4 opacity-70" aria-hidden />
           <MessageCircle className="size-5" />
           <span className="text-sm font-semibold">Ask {greeting.name}</span>
         </button>
       )}
 
-      {/* Window */}
+      {/* Window — opens next to wherever the launcher was dragged to */}
       {open && (
-        <div className="bg-card fixed inset-x-3 bottom-20 z-50 flex max-h-[75vh] flex-col overflow-hidden rounded-2xl border shadow-2xl sm:inset-x-auto sm:right-4 sm:w-96 md:bottom-6">
+        <div
+          style={windowStyle ?? undefined}
+          className={cn(
+            "bg-card fixed z-50 flex max-h-[75vh] flex-col overflow-hidden rounded-2xl border shadow-2xl sm:w-96",
+            windowStyle ? "inset-x-3 sm:inset-x-auto" : "inset-x-3 bottom-20 sm:inset-x-auto sm:right-4 md:bottom-6",
+          )}
+        >
           <div className="bg-primary text-primary-foreground flex items-center gap-2.5 px-4 py-3">
             <span className="flex size-8 items-center justify-center rounded-full bg-white/20">
               <Bot className="size-4" />

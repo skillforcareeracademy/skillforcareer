@@ -8,6 +8,8 @@ import {
   listBatchesForSelect,
 } from "@/server/services/quiz-service";
 import { listStudentsForSelect } from "@/server/services/assignment-service";
+import { listQuizCategoryOptions } from "@/server/services/quiz-category-service";
+import { getSettings } from "@/server/services/settings-service";
 import { QuizEditor } from "@/components/admin/quizzes/quiz-editor";
 
 export const dynamic = "force-dynamic";
@@ -23,12 +25,23 @@ export default async function QuizEditorPage({
 
   const quiz = await getQuizEdit(id).catch(() => null);
   if (!quiz) notFound();
-  const [courses, batches, students] = await Promise.all([
+  const [courses, batches, students, categories, { settings }] = await Promise.all([
     listCoursesForSelect(),
     listBatchesForSelect(),
     // Shared with assignments — the same "set this for one learner" picker.
     listStudentsForSelect(),
+    listQuizCategoryOptions(),
+    getSettings(),
   ]);
 
-  return <QuizEditor quiz={quiz} courses={courses} batches={batches} students={students} />;
+  return (
+    <QuizEditor
+      quiz={quiz}
+      courses={courses}
+      batches={batches}
+      students={students}
+      categories={categories}
+      attemptDefault={settings.quizAttemptLimit}
+    />
+  );
 }

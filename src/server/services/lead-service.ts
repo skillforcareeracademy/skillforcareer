@@ -1023,6 +1023,8 @@ function parseMoney(value: string): number | undefined {
 
 export interface ImportResult {
   imported: number;
+  /** Existing leads overwritten from the sheet, when replacing. */
+  updated: number;
   skipped: number;
   errors: { row: number; message: string }[];
 }
@@ -1054,8 +1056,13 @@ export async function importLeads(
   }
 
   const errors: ImportResult["errors"] = [];
-  const parsed: (Prisma.LeadUncheckedCreateInput & { phoneKey: string })[] = [];
+  const parsed: (Prisma.LeadUncheckedCreateInput & {
+    phoneKey: string;
+    /** Only the columns this row filled in — what "replace" overwrites. */
+    filled: Set<string>;
+  })[] = [];
   const seenInFile = new Set<string>();
+  const mode = input.onDuplicate ?? (input.skipDuplicatePhones === false ? "ALLOW" : "SKIP");
 
   const value = (row: Record<string, string>, field: string) =>
     (column[field] ? (row[column[field]] ?? "") : "").trim();
@@ -1093,7 +1100,7 @@ export async function importLeads(
     }
 
     const phoneKey = phoneKeyOf(phone);
-    if (input.skipDuplicatePhones && seenInFile.has(phoneKey)) {
+    if (mode !== "ALLOW" && seenInFile.has(phoneKey)) {
       errors.push({
         row: line,
         message: `"${name}" repeats a number already in this file.`,
@@ -1113,8 +1120,18 @@ export async function importLeads(
       ? (row[assignedHeader] ?? "").trim()
       : "";
 
+    // A blank cell in a sheet means "nothing to say about this", never "clear
+    // what the CRM already knows" — so a replace only touches what is filled.
+    // "Assigned to" isn't in the alias map (it is matched by header above), so
+    // it is added by hand.
+    const filled = new Set(
+      Object.keys(column).filter((field) => column[field] && value(row, field).length > 0),
+    );
+    if (assignedName) filled.add("assignedTo");
+
     parsed.push({
       phoneKey,
+      filled,
       leadNo: "", // allocated below, once we know how many survived
       name: name.slice(0, 80),
       phone: phone.slice(0, 20),
@@ -1167,29 +1184,46 @@ export async function importLeads(
 
   let candidates = parsed;
   let skipped = 0;
+  let updated = 0;
 
-  if (input.skipDuplicatePhones && candidates.length) {
+  if (mode !== "ALLOW" && candidates.length) {
     // Compared on the last 10 digits, not the raw string: the same person is
     // written "9812300011", "09812300011" and "+91 9812300011" across sheets,
     // and an `in` on the literal text would let every variant through.
     const existing = await prisma.lead.findMany({
       take: MAX_DUPLICATE_SCAN,
-      select: { phone: true },
+      select: { id: true, phone: true },
+      orderBy: { createdAt: "asc" },
     });
-    const known = new Set(existing.map((e) => phoneKeyOf(e.phone)));
-    const kept = candidates.filter((c) => !known.has(c.phoneKey));
-    skipped = candidates.length - kept.length;
-    candidates = kept;
+    const known = new Map<string, string>();
+    for (const e of existing) {
+      const key = phoneKeyOf(e.phone);
+      // The oldest row wins: that is the entry the counsellor has been working.
+      if (!known.has(key)) known.set(key, e.id);
+    }
+
+    const fresh = candidates.filter((c) => !known.has(c.phoneKey));
+    const known_rows = candidates.filter((c) => known.has(c.phoneKey));
+
+    if (mode === "REPLACE" && known_rows.length) {
+      updated = await replaceExisting(known_rows, known);
+    } else {
+      skipped = known_rows.length;
+    }
+    candidates = fresh;
   }
 
   if (!candidates.length) {
-    return { imported: 0, skipped, errors };
+    return { imported: 0, updated, skipped, errors };
   }
 
   let seq = await nextLeadSeq();
   const data = candidates.map((candidate) => {
     const lead = { ...candidate, leadNo: leadNoFor(seq++) };
-    delete (lead as Partial<typeof candidate>).phoneKey; // in-memory dedupe key only
+    // Both are bookkeeping this function keeps in memory — Prisma would reject
+    // them as unknown columns.
+    delete (lead as Partial<typeof candidate>).phoneKey;
+    delete (lead as Partial<typeof candidate>).filled;
     return lead as Prisma.LeadCreateManyInput;
   });
 
@@ -1197,7 +1231,97 @@ export async function importLeads(
     data,
     skipDuplicates: true,
   });
-  return { imported: count, skipped, errors };
+  return { imported: count, updated, skipped, errors };
+}
+
+/**
+ * Overwrite the leads a sheet already knows about — the academy's "replace
+ * previous entry".
+ *
+ * Only the columns the row filled in are written, so re-importing a sheet that
+ * carries just names, numbers and a new stage doesn't wipe the fees, the
+ * address or the counsellor off a lead somebody has been working for a month.
+ * The lead number, its follow-ups, documents and payments all stay as they are.
+ */
+async function replaceExisting(
+  rows: (Prisma.LeadUncheckedCreateInput & { phoneKey: string; filled: Set<string> })[],
+  known: Map<string, string>,
+): Promise<number> {
+  let count = 0;
+  const CONCURRENCY = 8;
+
+  for (let i = 0; i < rows.length; i += CONCURRENCY) {
+    const slice = rows.slice(i, i + CONCURRENCY);
+    const results = await Promise.all(
+      slice.map(async (row) => {
+        const id = known.get(row.phoneKey);
+        if (!id) return false;
+        const data = updatableFields(row);
+        if (Object.keys(data).length === 0) return false;
+        try {
+          await prisma.lead.update({ where: { id }, data });
+          return true;
+        } catch {
+          // One unhappy row must not lose the rest of the sheet.
+          return false;
+        }
+      }),
+    );
+    count += results.filter(Boolean).length;
+  }
+  return count;
+}
+
+/** The columns a replace may write, and only those the sheet filled in. */
+function updatableFields(
+  row: Prisma.LeadUncheckedCreateInput & { filled: Set<string> },
+): Prisma.LeadUpdateInput {
+  const data: Record<string, unknown> = {};
+  const take = (field: string, key: keyof Prisma.LeadUncheckedCreateInput = field as never) => {
+    if (row.filled.has(field)) data[key as string] = row[key];
+  };
+
+  take("name");
+  take("phone");
+  take("whatsapp");
+  take("email");
+  take("leadDate");
+  take("source");
+  take("quality");
+  take("leadScore");
+  take("whyThisCourse");
+  take("classMode");
+  take("qualification");
+  take("jobStatus");
+  take("experiencedIn");
+  take("address");
+  take("expectedVisit");
+  take("visitDate");
+  take("visitTime");
+  take("followUpDate");
+  take("followUpTime");
+  take("message");
+  take("feesOffered");
+  take("finalFees");
+  take("emiCount");
+
+  // A named course sets `courseId` and clears the free-text interest, and the
+  // other way round — they are two halves of one answer.
+  if (row.filled.has("course")) {
+    data.courseId = row.courseId;
+    data.courseInterest = row.courseInterest;
+  }
+  // The stage carries the legacy status and the sub-status with it.
+  if (row.filled.has("stage")) {
+    data.stage = row.stage;
+    data.status = row.status;
+    data.subStatus = row.subStatus;
+  } else if (row.filled.has("subStatus")) {
+    data.subStatus = row.subStatus;
+  }
+  if (row.filled.has("assignedTo")) data.assignedToId = row.assignedToId;
+
+  return data as Prisma.LeadUpdateInput;
 }
 
 // ── Duplicates ───────────────────────────────────────────────────────────────

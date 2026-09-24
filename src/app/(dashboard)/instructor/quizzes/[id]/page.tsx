@@ -8,6 +8,8 @@ import {
   listBatchesForSelect,
 } from "@/server/services/quiz-service";
 import { listStudentsForSelect } from "@/server/services/assignment-service";
+import { listQuizCategoryOptions } from "@/server/services/quiz-category-service";
+import { getSettings } from "@/server/services/settings-service";
 import { prisma } from "@/lib/prisma";
 import { QuizEditor } from "@/components/admin/quizzes/quiz-editor";
 
@@ -38,12 +40,14 @@ export default async function InstructorQuizEditorPage({
     if (!owned) notFound();
   }
 
-  const [courses, batches, students] = await Promise.all([
+  const [courses, batches, students, categories, { settings }] = await Promise.all([
     listCoursesForSelect(isStaff ? undefined : user.id),
     listBatchesForSelect(undefined, isStaff ? undefined : user.id),
     // Scoped to the quiz's own course, so an instructor only ever sees the
     // learners they teach.
     listStudentsForSelect(quiz.courseId ?? undefined),
+    listQuizCategoryOptions(),
+    getSettings(),
   ]);
   return (
     <QuizEditor
@@ -51,6 +55,8 @@ export default async function InstructorQuizEditorPage({
       courses={courses}
       batches={batches}
       students={students}
+      categories={categories}
+      attemptDefault={settings.quizAttemptLimit}
       basePath="/instructor/quizzes"
       canExport={isStaff}
     />

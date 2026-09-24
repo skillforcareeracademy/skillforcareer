@@ -6,12 +6,13 @@ import { Download, FileSpreadsheet, Loader2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
 import {
+  IMPORT_DUPLICATE_LABELS,
+  IMPORT_DUPLICATE_MODES,
   LEAD_SOURCES,
   LEAD_SOURCE_LABELS,
   type LeadSource,
 } from "@/lib/validations/lead";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -32,8 +33,11 @@ import {
 
 const MAX_BYTES = 2 * 1024 * 1024;
 
+type DuplicateMode = (typeof IMPORT_DUPLICATE_MODES)[number];
+
 interface ImportResult {
   imported: number;
+  updated: number;
   skipped: number;
   errors: { row: number; message: string }[];
   message: string;
@@ -56,7 +60,7 @@ export function LeadImportDialog({
   const [csv, setCsv] = useState("");
   const [fileName, setFileName] = useState("");
   const [source, setSource] = useState<LeadSource>("MANUAL");
-  const [skipDuplicatePhones, setSkipDuplicatePhones] = useState(true);
+  const [onDuplicate, setOnDuplicate] = useState<DuplicateMode>("SKIP");
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
 
@@ -85,10 +89,10 @@ export function LeadImportDialog({
       const res = await api.post<ImportResult>("/api/leads/import", {
         csv,
         source,
-        skipDuplicatePhones,
+        onDuplicate,
       });
       setResult(res);
-      if (res.imported > 0) {
+      if (res.imported > 0 || res.updated > 0) {
         toast.success(res.message);
         router.refresh();
       } else {
@@ -208,19 +212,46 @@ export function LeadImportDialog({
                 </SelectContent>
               </Select>
             </div>
-            <label className="flex items-start gap-2 pt-6 text-sm">
-              <Checkbox
-                checked={skipDuplicatePhones}
-                onCheckedChange={(v) => setSkipDuplicatePhones(v === true)}
-              />
-              <span>Skip numbers that already exist</span>
-            </label>
+            <div className="space-y-1.5">
+              <Label>If the number already exists</Label>
+              <Select
+                value={onDuplicate}
+                onValueChange={(v) => setOnDuplicate((v as DuplicateMode) ?? "SKIP")}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue>
+                    {(v) => IMPORT_DUPLICATE_LABELS[String(v ?? "SKIP")]}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {IMPORT_DUPLICATE_MODES.map((m) => (
+                    <SelectItem key={m} value={m}>
+                      {IMPORT_DUPLICATE_LABELS[m]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
+
+          {onDuplicate === "REPLACE" && (
+            <p className="rounded-lg bg-amber-50 p-2.5 text-xs text-amber-800 dark:bg-amber-500/10 dark:text-amber-300">
+              The existing lead is updated from the sheet — only the columns your
+              file fills in. Its lead number, follow-ups, documents and payments
+              are kept, and blank cells leave what&apos;s already there alone.
+            </p>
+          )}
 
           {result && (
             <div className="bg-muted/40 space-y-2 rounded-lg p-3 text-sm">
               <p>
                 <strong>{result.imported}</strong> imported
+                {result.updated > 0 && (
+                  <>
+                    {" "}
+                    · <strong>{result.updated}</strong> replaced
+                  </>
+                )}
                 {result.skipped > 0 && (
                   <> · {result.skipped} skipped as duplicates</>
                 )}

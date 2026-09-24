@@ -16,8 +16,7 @@ export const POST = withRoute(async (req) => {
   await requireApiPermission(PERMISSIONS.MANAGE_LEADS);
   const input = importLeadsSchema.parse(await req.json().catch(() => ({})));
   const result = await importLeads(input);
-  return created({
-    ...result,
-    message: `${result.imported} lead${result.imported === 1 ? "" : "s"} imported.`,
-  });
+  const parts = [`${result.imported} lead${result.imported === 1 ? "" : "s"} imported`];
+  if (result.updated > 0) parts.push(`${result.updated} replaced`);
+  return created({ ...result, message: `${parts.join(", ")}.` });
 });

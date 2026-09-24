@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
-import type { SubmitQuizInput } from "@/lib/validations/quiz-attempt";
+import type { CheckAnswerInput, SubmitQuizInput } from "@/lib/validations/quiz-attempt";
 import { getSettings } from "./settings-service";
 import { ACTIVITY_ACTIONS, logActivity } from "./activity-service";
 
@@ -21,6 +21,10 @@ export interface StudentQuiz {
   passed: boolean;
   /** Saved for later from the list or the quiz itself. */
   bookmarked: boolean;
+  /** The academy's own grouping and numbering. */
+  sequence: number;
+  categoryName: string | null;
+  subCategoryName: string | null;
 }
 
 export async function listStudentQuizzes(userId: string): Promise<StudentQuiz[]> {
@@ -52,13 +56,22 @@ export async function listStudentQuizzes(userId: string): Promise<StudentQuiz[]>
       ],
       AND: [{ OR: [{ releaseAt: null }, { releaseAt: { lte: new Date() } }] }],
     },
-    orderBy: { updatedAt: "desc" },
+    // In the academy's order — "Quiz 1, Quiz 2, Quiz 3" is how the class is
+    // told to work through them.
+    orderBy: [{ sequence: "asc" }, { createdAt: "asc" }],
     include: {
       course: { select: { title: true } },
+      category: { select: { name: true } },
+      subCategory: { select: { name: true } },
       questions: { select: { points: true } },
       attempts: { where: { studentId: userId }, select: { score: true, maxScore: true } },
     },
   });
+
+  // The platform default applies to any quiz that names no cap of its own —
+  // the same sum the attempt page and the submit endpoint do, so "attempts
+  // left" reads the same wherever a learner looks.
+  const { settings } = await getSettings();
 
   // One flat read for the saved set rather than a relation on each quiz —
   // `relationMode = "prisma"` would make that a round trip per row.
@@ -85,11 +98,14 @@ export async function listStudentQuizzes(userId: string): Promise<StudentQuiz[]>
       questionCount: z.questions.length,
       totalPoints,
       passingScore: z.passingScore,
-      maxAttempts: z.maxAttempts,
+      maxAttempts: z.maxAttempts || settings.quizAttemptLimit,
       attemptsUsed: z.attempts.length,
       bestPercent: best,
       passed: best != null && best >= z.passingScore,
       bookmarked: saved.has(z.id),
+      sequence: z.sequence,
+      categoryName: z.category?.name ?? null,
+      subCategoryName: z.subCategory?.name ?? null,
     };
   });
 }
@@ -100,6 +116,9 @@ export async function getQuizForAttempt(userId: string, quizId: string) {
     where: { id: quizId, isPublished: true },
     include: {
       course: { select: { id: true, title: true } },
+      category: { select: { name: true } },
+      subCategory: { select: { name: true } },
+      sources: { orderBy: { createdAt: "asc" }, select: { title: true } },
       questions: {
         orderBy: { order: "asc" },
         include: { options: { orderBy: { order: "asc" }, select: { id: true, text: true } } },
@@ -136,6 +155,11 @@ export async function getQuizForAttempt(userId: string, quizId: string) {
     attemptsUsed,
     canAttempt: cap === 0 || attemptsUsed < cap,
     bookmarked: bookmark != null,
+    /** Marks each question as it is answered, rather than only at the end. */
+    showAnswerPerQuestion: quiz.showAnswerPerQuestion,
+    categoryName: quiz.subCategory?.name ?? quiz.category?.name ?? null,
+    /** The notes this paper was prepared from — what to revise. */
+    preparedFrom: quiz.sources.map((s) => s.title),
     totalPoints: quiz.questions.reduce((s, q) => s + q.points, 0),
     questions: quiz.questions.map((q) => ({
       id: q.id,
@@ -144,6 +168,78 @@ export async function getQuizForAttempt(userId: string, quizId: string) {
       points: q.points,
       options: q.options,
     })),
+  };
+}
+
+// ── Marking as you go ────────────────────────────────────────────────────────
+
+export interface CheckedAnswer {
+  questionId: string;
+  isCorrect: boolean | null;
+  correctOptionIds: string[];
+  explanation: string | null;
+}
+
+/**
+ * Mark one question mid-attempt, for quizzes set to answer as you go.
+ *
+ * The answer key never rides along with the paper — it is asked for one
+ * question at a time, only for a quiz whose settings allow it, and only by
+ * someone enrolled on the course. A written answer has no key to give, so it
+ * comes back unmarked.
+ */
+export async function checkQuizAnswer(
+  userId: string,
+  quizId: string,
+  input: CheckAnswerInput,
+): Promise<CheckedAnswer> {
+  const quiz = await prisma.quiz.findFirst({
+    where: { id: quizId, isPublished: true },
+    select: { courseId: true, showAnswerPerQuestion: true, releaseAt: true },
+  });
+  if (!quiz || !quiz.courseId) throw AppError.notFound("Quiz not found.");
+  if (!quiz.showAnswerPerQuestion) {
+    throw AppError.badRequest("This quiz shows its answers at the end.");
+  }
+  if (quiz.releaseAt && quiz.releaseAt.getTime() > Date.now()) {
+    throw AppError.badRequest("This quiz hasn't opened yet.");
+  }
+
+  const enrolled = await prisma.enrollment.findUnique({
+    where: { userId_courseId: { userId, courseId: quiz.courseId } },
+    select: { id: true },
+  });
+  if (!enrolled) throw AppError.forbidden("You're not enrolled in this course.");
+
+  const question = await prisma.question.findFirst({
+    where: { id: input.questionId, quizId },
+    select: {
+      type: true,
+      explanation: true,
+      options: { select: { id: true, isCorrect: true } },
+    },
+  });
+  if (!question) throw AppError.notFound("Question not found.");
+
+  if (question.type === "SHORT_ANSWER") {
+    return {
+      questionId: input.questionId,
+      isCorrect: null,
+      correctOptionIds: [],
+      explanation: question.explanation,
+    };
+  }
+
+  const correctIds = question.options
+    .filter((o) => o.isCorrect)
+    .map((o) => o.id)
+    .sort();
+  const chosen = [...new Set(input.optionIds)].sort();
+  return {
+    questionId: input.questionId,
+    isCorrect: correctIds.length === chosen.length && correctIds.every((id, i) => id === chosen[i]),
+    correctOptionIds: correctIds,
+    explanation: question.explanation,
   };
 }
 

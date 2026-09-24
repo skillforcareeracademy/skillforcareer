@@ -622,6 +622,7 @@ model Lesson {
   assignment  Assignment?
   progress    LessonProgress[]
   notes       Note[]
+  quizSources QuizSource[]
   bookmarks   Bookmark[]
   discussions Discussion[]
   access      LessonAccess[]
@@ -990,6 +991,19 @@ model Quiz {
   showAnswers      Boolean     @default(true)
   isPublished      Boolean     @default(false)
 
+  /// Marks the paper as soon as each question is answered, rather than only at
+  /// the end. `showAnswers` is the other half of the pair: the whole answer key
+  /// once the paper is submitted.
+  showAnswerPerQuestion Boolean @default(false)
+
+  /// Grouping. A quiz sits in a category and, optionally, one of its
+  /// sub-categories; `sequence` is its number inside that group and is what the
+  /// list is ordered by, so "Quiz 1, Quiz 2, Quiz 3" is the academy's own order
+  /// rather than whenever somebody last edited them.
+  categoryId    String?
+  subCategoryId String?
+  sequence      Int     @default(0)
+
   /// Hidden from learners until this moment. Null = visible as soon as it is
   /// published and set for them.
   releaseAt DateTime?
@@ -1007,8 +1021,60 @@ model Quiz {
   notes     Note[]
   bookmarks Bookmark[]
 
+  category    QuizCategory? @relation("QuizInCategory", fields: [categoryId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  subCategory QuizCategory? @relation("QuizInSubCategory", fields: [subCategoryId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  sources     QuizSource[]
+
   @@index([courseId])
   @@index([createdById])
+  @@index([categoryId])
+  @@index([subCategoryId])
+}
+
+/// A quiz group, two levels deep: a row with no `parentId` is a category, one
+/// with a parent is a sub-category of it. Kept apart from course categories on
+/// purpose — the academy groups its papers by subject ("Medical Coding →
+/// ICD-10"), which is not how it groups what it sells.
+model QuizCategory {
+  id       String  @id @default(cuid())
+  name     String
+  parentId String?
+  order    Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// NoAction, not Cascade: Prisma forbids a cascading self-relation. Deleting
+  /// a category takes its sub-categories with it in `quiz-category-service`.
+  parent     QuizCategory?  @relation("QuizCategoryTree", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  children   QuizCategory[] @relation("QuizCategoryTree")
+  quizzes    Quiz[]         @relation("QuizInCategory")
+  subQuizzes Quiz[]         @relation("QuizInSubCategory")
+
+  @@index([parentId])
+}
+
+/// The notes a quiz was prepared from. Points at a batch note or a lesson —
+/// or, when the staff pasted the notes straight in, at neither, and `text`
+/// holds what they pasted. Learners see the source as revision material, and
+/// the question generator reads it.
+model QuizSource {
+  id          String  @id @default(cuid())
+  quizId      String
+  batchNoteId String?
+  lessonId    String?
+  title       String
+  text        String? @db.Text
+
+  createdAt DateTime @default(now())
+
+  quiz      Quiz       @relation(fields: [quizId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  batchNote BatchNote? @relation(fields: [batchNoteId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  lesson    Lesson?    @relation(fields: [lessonId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([quizId])
+  @@index([batchNoteId])
+  @@index([lessonId])
 }
 
 /// Which cohorts a quiz is set for. No rows = everyone on the course.
@@ -2203,8 +2269,9 @@ model BatchNote {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  batch     Batch @relation(fields: [batchId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  createdBy User  @relation("BatchNoteAuthor", fields: [createdById], references: [id], onUpdate: NoAction)
+  batch       Batch        @relation(fields: [batchId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  createdBy   User         @relation("BatchNoteAuthor", fields: [createdById], references: [id], onUpdate: NoAction)
+  quizSources QuizSource[]
 
   @@index([batchId])
   @@index([createdById])

@@ -459,11 +459,21 @@ export const leadReminderSchema = z.object({
   message: optionalText(600),
 });
 
+/** What to do with a row whose number is already on the sheet. */
+export const IMPORT_DUPLICATE_MODES = ["SKIP", "REPLACE", "ALLOW"] as const;
+export const IMPORT_DUPLICATE_LABELS: Record<string, string> = {
+  SKIP: "Skip numbers that already exist",
+  REPLACE: "Replace the previous entry",
+  ALLOW: "Import anyway, as a second lead",
+};
+
 /** CSV paste/upload. `text` is the raw file; the server does the parsing. */
 export const importLeadsSchema = z.object({
   csv: z.string().min(1, "Paste or upload a CSV first").max(2_000_000),
   source: z.enum(LEAD_SOURCES).default("MANUAL"),
-  skipDuplicatePhones: z.boolean().default(true),
+  onDuplicate: z.enum(IMPORT_DUPLICATE_MODES).default("SKIP"),
+  /** The old flag, still accepted: `false` meant "import anyway". */
+  skipDuplicatePhones: z.boolean().optional(),
 });
 
 /** Delete the duplicate rows an admin ticked in the duplicates dialog. */

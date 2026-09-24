@@ -50,15 +50,25 @@ export function StudentQuizzesClient({ quizzes }: { quizzes: StudentQuiz[] }) {
 
           <div className="grid gap-4 lg:grid-cols-2">
             {quizzes.map((q) => {
-              const exhausted = q.attemptsUsed >= q.maxAttempts;
+              // 0 is unlimited — a practice set must not read as "used up".
+              const exhausted = q.maxAttempts > 0 && q.attemptsUsed >= q.maxAttempts;
               const cta = q.attemptsUsed === 0 ? "Start quiz" : exhausted ? "View result" : "Retake";
               const Icon = q.attemptsUsed === 0 ? PlayCircle : exhausted ? Award : RefreshCw;
               return (
                 <Card key={q.id} className="p-5">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <h3 className="font-semibold">{q.title}</h3>
-                      <p className="text-muted-foreground truncate text-xs">{q.courseTitle}</p>
+                      <h3 className="font-semibold">
+                        {q.sequence > 0 && (
+                          <span className="text-muted-foreground">{q.sequence}. </span>
+                        )}
+                        {q.title}
+                      </h3>
+                      <p className="text-muted-foreground truncate text-xs">
+                        {[q.categoryName, q.subCategoryName, q.courseTitle]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </p>
                     </div>
                     <div className="flex shrink-0 items-center gap-1">
                       {q.bestPercent != null && (
@@ -84,7 +94,9 @@ export function StudentQuizzesClient({ quizzes }: { quizzes: StudentQuiz[] }) {
                     </span>
                     <span>Pass {q.passingScore}%</span>
                     <span>
-                      Attempts {q.attemptsUsed}/{q.maxAttempts}
+                      {q.maxAttempts > 0
+                        ? `Attempts ${q.attemptsUsed}/${q.maxAttempts}`
+                        : `Attempts ${q.attemptsUsed} · unlimited`}
                     </span>
                   </div>
 
