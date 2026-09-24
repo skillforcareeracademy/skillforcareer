@@ -77,7 +77,7 @@ export function VerifyOtpForm({ email, next }: { email?: string; next?: string }
       title="Verify your email"
       description={`Enter the 6-digit code sent to ${email}.`}
     >
-      <form onSubmit={onSubmit} className="space-y-5">
+      <form method="post" onSubmit={onSubmit} className="space-y-5">
         <OtpInput value={code} onChange={setCode} autoFocus />
         <SubmitButton loading={loading}>Verify &amp; continue</SubmitButton>
       </form>

@@ -64,7 +64,8 @@ export function RegisterForm({
         </span>
       }
     >
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      {/* method="post": see the sign-in form — never a password in the URL */}
+      <form method="post" onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <Field label="Full name" htmlFor="name" error={errors.name?.message}>
           <IconInput id="name" icon={User} autoComplete="name" placeholder="Aarav Mehta" {...register("name")} />
         </Field>

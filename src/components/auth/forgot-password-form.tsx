@@ -49,7 +49,7 @@ export function ForgotPasswordForm() {
         </Link>
       }
     >
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      <form method="post" onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <Field label="Email" htmlFor="email" error={errors.email?.message}>
           <IconInput id="email" icon={Mail} type="email" autoComplete="email" placeholder="you@example.com" {...register("email")} />
         </Field>

@@ -76,7 +76,7 @@ export function ResetPasswordForm({ email }: { email?: string }) {
         </Link>
       }
     >
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+      <form method="post" onSubmit={handleSubmit(onSubmit)} className="space-y-5">
         <div className="space-y-2">
           <p className="text-sm font-medium">Verification code</p>
           <OtpInput value={code} onChange={setCode} autoFocus />

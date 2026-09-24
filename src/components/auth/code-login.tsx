@@ -120,7 +120,7 @@ export function CodeLogin({
 
   if (!sentTo) {
     return (
-      <form onSubmit={send} className="space-y-4" noValidate>
+      <form method="post" onSubmit={send} className="space-y-4" noValidate>
         <Field label="Email" htmlFor="code-email" error={emailError}>
           <IconInput
             id="code-email"
@@ -143,7 +143,7 @@ export function CodeLogin({
   }
 
   return (
-    <form onSubmit={verify} className="space-y-5">
+    <form method="post" onSubmit={verify} className="space-y-5">
       <div className="bg-muted/60 flex items-start gap-3 rounded-lg p-3 text-sm">
         <Send className="text-primary mt-0.5 size-4 shrink-0" aria-hidden />
         <p className="flex-1">

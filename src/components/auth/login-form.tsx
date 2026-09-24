@@ -145,7 +145,9 @@ export function LoginForm({
       {mode === "code" ? (
         <CodeLogin initialEmail={codeEmail} onSignedIn={signedIn} />
       ) : (
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        // method="post" so a submit that beats hydration can never put the
+        // password in the URL as a query string.
+        <form method="post" onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <Field label="Email" htmlFor="email" error={errors.email?.message}>
             <IconInput
               id="email"
