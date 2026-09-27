@@ -221,6 +221,13 @@ export function CheckoutPanel({
         setPaying(false);
         return;
       }
+      // Arrived on somebody's referral code: say so before the payment window
+      // opens, so the smaller amount isn't a surprise.
+      if ((session.referralDiscount ?? 0) > 0) {
+        toast.success(
+          `Referral discount applied — ₹${(session.referralDiscount ?? 0).toLocaleString("en-IN")} off.`,
+        );
+      }
       const ready = await loadRazorpay();
       if (!ready) {
         toast.error("Couldn't load the payment window. Check your connection.");

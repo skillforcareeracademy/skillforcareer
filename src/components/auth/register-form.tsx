@@ -21,11 +21,14 @@ export function RegisterForm({
   next,
   title = "Create your account",
   description = "Start learning in minutes.",
+  showReferral = true,
 }: {
   next?: string;
   /** Both come from Admin → Homepage → Sign-in panel. */
   title?: string;
   description?: string;
+  /** Refer and earn is on (Admin → Referral System). */
+  showReferral?: boolean;
 }) {
   const router = useRouter();
   const nextQuery = safeNext(next) ? `&next=${encodeURIComponent(next!)}` : "";
@@ -86,6 +89,7 @@ export function RegisterForm({
         {/* Refer and earn: a friend's code, if they were given one. A code
             that doesn't exist is quietly ignored rather than blocking a
             sign-up. */}
+        {showReferral && (
         <Field
           label="Referral code (optional)"
           htmlFor="referralCode"
@@ -98,6 +102,7 @@ export function RegisterForm({
             {...register("referralCode")}
           />
         </Field>
+        )}
         <SubmitButton loading={isSubmitting} className="h-11">
           Create account
         </SubmitButton>

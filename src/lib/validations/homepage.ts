@@ -1104,6 +1104,7 @@ const headerDefaults: z.infer<typeof headerSchema> = {
     { label: "Categories", href: "/courses", menu: "categories" },
     { label: "Live Classes", href: "/live-classes", menu: "none" },
     { label: "For Business", href: "/for-business", menu: "none" },
+    { label: "Refer Now", href: "/refer", menu: "none" },
   ],
   showSearch: true,
   showThemeToggle: true,

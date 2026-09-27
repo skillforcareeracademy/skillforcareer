@@ -37,6 +37,8 @@ export interface CheckoutSession {
   keyId: string | null;
   courseTitle?: string;
   prefill: { name: string; email: string };
+  /** Money off for arriving on somebody's referral code; 0 when there is none. */
+  referralDiscount?: number;
 }
 
 /** Inject Razorpay's script once. Resolves false when it can't be reached. */

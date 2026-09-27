@@ -34,6 +34,7 @@ import {
   Flag,
   Wallet,
   BookMarked,
+  Share2,
 } from "lucide-react";
 import { ROLES, type Role } from "./roles";
 
@@ -160,6 +161,9 @@ export const NAV_SECTIONS: NavSection[] = [
       { title: "Careers", href: "/careers", icon: Briefcase, roles: STAFF },
       { title: "Holidays", href: "/holidays", icon: PartyPopper, roles: STAFF },
       { title: "Schedule", href: "/schedule", icon: CalendarClock, roles: TEACHING },
+      // Refer and earn, as its own option: the rules, what it has paid, and
+      // every referral. Wallets below is the payout side of the same money.
+      { title: "Referral System", href: "/referrals", icon: Share2, roles: STAFF },
       { title: "Wallets", href: "/wallets", icon: Wallet, roles: STAFF },
       { title: "Payments", href: "/payments", icon: CreditCard, roles: STAFF },
       { title: "Fees", href: "/payments", icon: CreditCard, roles: [ROLES.STUDENT] },

@@ -89,6 +89,24 @@ export interface LearningStats {
   certificates: number;
 }
 
+/**
+ * Has this learner actually bought a seat yet?
+ *
+ * A registration with no money against it is not an enrolment (the same rule
+ * the dashboard's activity feed follows), and their panel says so until one of
+ * these is true: a payment has been recorded for them, or they are on a course
+ * that costs nothing.
+ */
+export async function hasPaidEnrolment(userId: string): Promise<boolean> {
+  const [paid, free] = await Promise.all([
+    prisma.payment.count({ where: { userId, status: "PAID" } }),
+    prisma.enrollment.count({
+      where: { userId, status: { in: ["ACTIVE", "COMPLETED"] }, course: { price: { lte: 0 } } },
+    }),
+  ]);
+  return paid > 0 || free > 0;
+}
+
 export async function getLearningStats(userId: string): Promise<LearningStats> {
   const [enrolled, completed, inProgress, certificates] = await Promise.all([
     prisma.enrollment.count({ where: { userId } }),

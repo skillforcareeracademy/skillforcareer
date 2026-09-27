@@ -45,8 +45,12 @@ export const settingsSchema = z.object({
     .regex(/^#[0-9a-fA-F]{6}$/, "Use a hex colour like #E11D48"),
 
   // ── Refer and earn ───────────────────────────────────────────────────────
+  /** The whole programme. Off hides the codes and pays nothing out. */
+  referralEnabled: z.boolean(),
   /** What a learner earns when someone they referred pays for a seat. */
   referralRewardAmount: z.coerce.number().int().min(0).max(1_000_000),
+  /** What the referred friend gets off their first enrolment. 0 = no discount. */
+  referralDiscountAmount: z.coerce.number().int().min(0).max(1_000_000),
   /** Below this, a withdrawal can't be asked for. 0 = any amount. */
   walletMinWithdrawal: z.coerce.number().int().min(0).max(1_000_000),
   /** Off, learners see their balance but can't ask for a payout. */
@@ -146,7 +150,9 @@ export const DEFAULT_SETTINGS: Settings = {
   faviconUrl: "/images/brand/favicon.png",
   primaryColor: "#E11D48",
 
+  referralEnabled: true,
   referralRewardAmount: 5000,
+  referralDiscountAmount: 0,
   walletMinWithdrawal: 500,
   walletWithdrawalsEnabled: true,
   allowRegistration: true,

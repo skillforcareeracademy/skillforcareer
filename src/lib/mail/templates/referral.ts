@@ -47,8 +47,9 @@ function voucher(code: string, reward: number): string {
 
 export function birthdayGreeting(d: {
   name: string;
-  code: string;
-  reward: number;
+  /** Left out when refer-and-earn is switched off — the wishes still go. */
+  code?: string | null;
+  reward?: number;
   siteName: string;
 }) {
   const first = d.name.split(" ")[0] || d.name;
@@ -62,13 +63,17 @@ export function birthdayGreeting(d: {
           `Everyone at ${esc(d.siteName)} wishes you a wonderful year ahead — may this one take ` +
             `you closer to the career you are working towards.`,
         ),
-        p("Here is a little something from us:"),
-        voucher(d.code, d.reward),
-        p(
-          `The money can be withdrawn from your wallet whenever you like, or kept towards your ` +
-            `next course.`,
-        ),
-        button(`${APP_URL}/student/wallet`, "Open your wallet"),
+        ...(d.code
+          ? [
+              p("Here is a little something from us:"),
+              voucher(d.code, d.reward ?? 0),
+              p(
+                `The money can be withdrawn from your wallet whenever you like, or kept towards ` +
+                  `your next course.`,
+              ),
+              button(`${APP_URL}/student/wallet`, "Open your wallet"),
+            ]
+          : [button(`${APP_URL}/student`, "Carry on learning")]),
       ].join(""),
     }),
   };

@@ -12,12 +12,14 @@ export const metadata: Metadata = { title: "Wallet" };
 
 export default async function StudentWalletPage() {
   const user = await requireRole([ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.STUDENT]);
-  const [wallet, code, { settings }, referredCount] = await Promise.all([
+  const [wallet, { settings }, referredCount] = await Promise.all([
     getWalletView(user.id),
-    ensureReferralCode(user.id),
     getSettings(),
     prisma.referral.count({ where: { referrerId: user.id, status: "REWARDED" } }),
   ]);
+  // No code is handed out while refer-and-earn is switched off in
+  // Admin → Referral System; the balance and its history still show.
+  const code = settings.referralEnabled ? await ensureReferralCode(user.id) : "";
 
   return (
     <StudentWalletClient
@@ -25,7 +27,9 @@ export default async function StudentWalletPage() {
       transactions={wallet.transactions}
       withdrawals={wallet.withdrawals}
       referralCode={code}
+      referralEnabled={settings.referralEnabled}
       reward={settings.referralRewardAmount}
+      discount={settings.referralDiscountAmount}
       minWithdrawal={wallet.minWithdrawal}
       withdrawalsEnabled={wallet.withdrawalsEnabled}
       referredCount={referredCount}

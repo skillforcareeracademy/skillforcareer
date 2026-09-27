@@ -4,7 +4,7 @@ import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
 import { bumpCourseEnrollmentCount } from "@/server/repositories/counters";
 import { validateCoupon } from "@/server/services/coupon-service";
-import { rewardReferralFor } from "@/server/services/referral-service";
+import { referralDiscountFor, rewardReferralFor } from "@/server/services/referral-service";
 import { getRazorpayAccount } from "@/server/services/payment-account-service";
 import { getSettings } from "@/server/services/settings-service";
 import { ACTIVITY_ACTIONS, logActivity } from "@/server/services/activity-service";
@@ -436,6 +436,8 @@ export interface CheckoutSession {
   keyId: string | null;
   courseTitle: string;
   prefill: { name: string; email: string };
+  /** Money off because they arrived on somebody's referral code. */
+  referralDiscount: number;
 }
 
 export async function createCourseOrder(
@@ -467,6 +469,11 @@ export async function createCourseOrder(
     discountAmount = r.discount ?? 0;
     couponId = r.couponId ?? null;
   }
+  // The friend's side of refer-and-earn: money off their first enrolment, when
+  // the academy has set an amount for it.
+  const referralDiscount = await referralDiscountFor(userId, base - discountAmount);
+  discountAmount += referralDiscount;
+
   const net = Math.max(1, Math.round((base - discountAmount) * 100) / 100);
   const amountPaise = Math.round(net * 100);
 
@@ -512,6 +519,7 @@ export async function createCourseOrder(
     keyId: razorpayKeyId(),
     courseTitle: course.title,
     prefill: { name: user?.name ?? "", email: user?.email ?? "" },
+    referralDiscount,
   };
 }
 
@@ -583,6 +591,8 @@ export async function createWatermarkOrder(
     keyId: razorpayKeyId(),
     courseTitle: `Watermark-free recording — ${title}`,
     prefill: { name: user.name, email: user.email },
+    // Refer-and-earn is about course seats; this buys a recording.
+    referralDiscount: 0,
   };
 }
 

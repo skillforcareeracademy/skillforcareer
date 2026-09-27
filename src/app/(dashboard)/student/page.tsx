@@ -3,7 +3,9 @@ import Link from "next/link";
 import { GraduationCap, PlayCircle, Award, CalendarClock, ArrowRight } from "lucide-react";
 import { requireRole } from "@/lib/auth/require";
 import { ROLES } from "@/config/roles";
-import { getLearningStats, getMyLearning } from "@/server/services/enrollment-service";
+import { getLearningStats, getMyLearning, hasPaidEnrolment } from "@/server/services/enrollment-service";
+import { getSettings } from "@/server/services/settings-service";
+import { UnlockNotice } from "@/components/student/unlock-notice";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,9 +17,11 @@ export const dynamic = "force-dynamic";
 
 export default async function StudentHome() {
   const user = await requireRole([ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.STUDENT]);
-  const [stats, courses] = await Promise.all([
+  const [stats, courses, paid, { settings }] = await Promise.all([
     getLearningStats(user.id),
     getMyLearning(user.id),
+    hasPaidEnrolment(user.id),
+    getSettings(),
   ]);
   const recent = courses.filter((c) => c.progressPercent < 100).slice(0, 4);
 
@@ -28,6 +32,15 @@ export default async function StudentHome() {
         description="Continue where you left off and track your progress."
         actions={<ButtonLink href="/courses">Browse courses</ButtonLink>}
       />
+
+      {/* Registered but nothing paid for yet — what to do about it. */}
+      {!paid && (
+        <UnlockNotice
+          phone={settings.contactPhone || null}
+          email={settings.supportEmail || null}
+          referralEnabled={settings.referralEnabled}
+        />
+      )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="Enrolled courses" value={String(stats.enrolled)} icon={GraduationCap} tint="from-rose-500 to-pink-600" />

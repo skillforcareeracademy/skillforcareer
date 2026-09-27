@@ -50,7 +50,9 @@ export function StudentWalletClient({
   transactions,
   withdrawals,
   referralCode,
+  referralEnabled,
   reward,
+  discount,
   minWithdrawal,
   withdrawalsEnabled,
   referredCount,
@@ -59,7 +61,11 @@ export function StudentWalletClient({
   transactions: Txn[];
   withdrawals: Withdrawal[];
   referralCode: string;
+  /** Off in Admin → Referral System: no code, no earning line. */
+  referralEnabled: boolean;
   reward: number;
+  /** What the friend gets off their first course; 0 = no discount. */
+  discount: number;
   minWithdrawal: number;
   withdrawalsEnabled: boolean;
   referredCount: number;
@@ -125,13 +131,15 @@ export function StudentWalletClient({
         </Card>
 
         {/* The code itself — the gift voucher's code, and the birthday email's. */}
+        {referralEnabled && (
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Gift className="size-4" /> Refer and earn
             </CardTitle>
             <CardDescription>
-              Share your code. When a friend enrolls with it, {rupees(reward)} is added here.
+              Share your code. When a friend enrolls with it, {rupees(reward)} is added here
+              {discount > 0 ? ` — and they get ${rupees(discount)} off their first course` : ""}.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -146,6 +154,7 @@ export function StudentWalletClient({
             </div>
           </CardContent>
         </Card>
+        )}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">

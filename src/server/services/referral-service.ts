@@ -4,6 +4,7 @@ import { logger } from "@/lib/logger";
 import { sendMail } from "@/lib/mail/mailer";
 import { birthdayGreeting, referralRewardEmail } from "@/lib/mail/templates/referral";
 import { creditWallet } from "./wallet-service";
+import { AppError } from "@/lib/api/errors";
 import { notify } from "./notification-service";
 import { getSettings } from "./settings-service";
 import { istDateKey } from "@/lib/ist";
@@ -99,7 +100,9 @@ export async function rewardReferralFor(refereeId: string, referenceId?: string)
       }),
     ]);
     const amount = settings.referralRewardAmount;
-    if (amount <= 0 || !referrer) return;
+    // The academy can switch the whole programme off; nothing is paid while it
+    // is, and the referral simply stays pending.
+    if (!settings.referralEnabled || amount <= 0 || !referrer) return;
 
     // Claim it first: two payments landing at once must not pay twice.
     const claimed = await prisma.referral.updateMany({
@@ -140,6 +143,365 @@ export async function rewardReferralFor(refereeId: string, referenceId?: string)
   }
 }
 
+/**
+ * What a referred learner gets off their first enrolment.
+ *
+ * The academy's own wording to its learners is "share your referral code to
+ * anyone for the enrollment discount", so the code works at both ends: the
+ * friend pays less, and the referrer earns. The amount is a setting and starts
+ * at zero, so nothing comes off a price until the academy says so.
+ *
+ * Only on the first seat they buy, and never more than the price itself.
+ */
+export async function referralDiscountFor(userId: string, payable: number): Promise<number> {
+  try {
+    const { settings } = await getSettings();
+    const off = settings.referralDiscountAmount;
+    if (!settings.referralEnabled || off <= 0 || payable <= 1) return 0;
+
+    const referral = await prisma.referral.findFirst({
+      where: { refereeId: userId, status: "PENDING" },
+      select: { id: true },
+    });
+    if (!referral) return 0;
+
+    // A second enrolment is at full price — this is a welcome, not a standing
+    // discount.
+    const bought = await prisma.payment.count({ where: { userId, status: "PAID" } });
+    if (bought > 0) return 0;
+
+    return Math.min(off, Math.floor(payable) - 1);
+  } catch {
+    return 0; // a discount that can't be worked out is simply not applied
+  }
+}
+
+// ── The academy's view of the programme ──────────────────────────────────────
+
+export interface ReferralRow {
+  id: string;
+  code: string;
+  status: string;
+  rewardAmount: number;
+  at: string;
+  referrerId: string;
+  referrerName: string;
+  referrerEmail: string;
+  refereeName: string | null;
+  refereeEmail: string | null;
+  /** Whether the person they brought in has paid for a seat yet. */
+  refereePaid: boolean;
+}
+
+export interface ReferralOverview {
+  enabled: boolean;
+  reward: number;
+  /** What the referred friend gets off their first course. */
+  discount: number;
+  minWithdrawal: number;
+  withdrawalsEnabled: boolean;
+  stats: {
+    total: number;
+    pending: number;
+    rewarded: number;
+    paidOut: number;
+    heldInWallets: number;
+    withdrawalsWaiting: number;
+  };
+  rows: ReferralRow[];
+  topReferrers: { userId: string; name: string; email: string; code: string | null; rewarded: number; earned: number }[];
+  total: number;
+}
+
+/**
+ * Everything the Referral System page shows: how the programme is set, what it
+ * has paid, and every referral with where it has got to.
+ */
+export async function referralOverview(query: {
+  status?: string;
+  search?: string;
+  page: number;
+  pageSize: number;
+}): Promise<ReferralOverview> {
+  const where = {
+    ...(query.status ? { status: query.status as "PENDING" | "QUALIFIED" | "REWARDED" | "EXPIRED" } : {}),
+    ...(query.search
+      ? {
+          OR: [
+            { code: { contains: query.search } },
+            { referrer: { name: { contains: query.search } } },
+            { referrer: { email: { contains: query.search } } },
+            { referee: { name: { contains: query.search } } },
+            { referee: { email: { contains: query.search } } },
+          ],
+        }
+      : {}),
+  };
+
+  const [{ settings }, total, rows, grouped, rewardedSum, wallets, withdrawalsWaiting] =
+    await Promise.all([
+      getSettings(),
+      prisma.referral.count({ where }),
+      prisma.referral.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip: (query.page - 1) * query.pageSize,
+        take: query.pageSize,
+        select: {
+          id: true,
+          code: true,
+          status: true,
+          rewardAmount: true,
+          createdAt: true,
+          referrerId: true,
+          referrer: { select: { name: true, email: true } },
+          refereeId: true,
+          referee: { select: { name: true, email: true } },
+        },
+      }),
+      prisma.referral.groupBy({ by: ["status"], _count: { _all: true } }),
+      prisma.referral.aggregate({ where: { status: "REWARDED" }, _sum: { rewardAmount: true } }),
+      prisma.wallet.aggregate({ _sum: { balance: true } }),
+      prisma.walletWithdrawal.count({ where: { status: "PENDING" } }),
+    ]);
+
+  // Who has actually paid, so a pending referral can be told from one that is
+  // simply waiting on the person to buy something.
+  const refereeIds = rows.map((r) => r.refereeId).filter((id): id is string => Boolean(id));
+  const paid = refereeIds.length
+    ? await prisma.payment.findMany({
+        where: { userId: { in: refereeIds }, status: "PAID" },
+        select: { userId: true },
+      })
+    : [];
+  const hasPaid = new Set(paid.map((p) => p.userId));
+
+  const counts = new Map(grouped.map((g) => [g.status, g._count._all]));
+
+  // The league table, from the rewarded referrals themselves.
+  const top = await prisma.referral.groupBy({
+    by: ["referrerId"],
+    where: { status: "REWARDED" },
+    _count: { _all: true },
+    _sum: { rewardAmount: true },
+    orderBy: { _count: { referrerId: "desc" } },
+    take: 10,
+  });
+  const topUsers = top.length
+    ? await prisma.user.findMany({
+        where: { id: { in: top.map((t) => t.referrerId) } },
+        select: { id: true, name: true, email: true, referralCode: true },
+      })
+    : [];
+  const byId = new Map(topUsers.map((u) => [u.id, u]));
+
+  return {
+    enabled: settings.referralEnabled,
+    reward: settings.referralRewardAmount,
+    discount: settings.referralDiscountAmount,
+    minWithdrawal: settings.walletMinWithdrawal,
+    withdrawalsEnabled: settings.walletWithdrawalsEnabled,
+    stats: {
+      total: [...counts.values()].reduce((a, b) => a + b, 0),
+      pending: counts.get("PENDING") ?? 0,
+      rewarded: counts.get("REWARDED") ?? 0,
+      paidOut: Number(rewardedSum._sum.rewardAmount ?? 0),
+      heldInWallets: Number(wallets._sum.balance ?? 0),
+      withdrawalsWaiting,
+    },
+    rows: rows.map((r) => ({
+      id: r.id,
+      code: r.code,
+      status: r.status,
+      rewardAmount: Number(r.rewardAmount),
+      at: r.createdAt.toISOString(),
+      referrerId: r.referrerId,
+      referrerName: r.referrer.name,
+      referrerEmail: r.referrer.email,
+      refereeName: r.referee?.name ?? null,
+      refereeEmail: r.referee?.email ?? null,
+      refereePaid: r.refereeId ? hasPaid.has(r.refereeId) : false,
+    })),
+    topReferrers: top.map((t) => {
+      const u = byId.get(t.referrerId);
+      return {
+        userId: t.referrerId,
+        name: u?.name ?? "—",
+        email: u?.email ?? "",
+        code: u?.referralCode ?? null,
+        rewarded: t._count._all,
+        earned: Number(t._sum.rewardAmount ?? 0),
+      };
+    }),
+    total,
+  };
+}
+
+/**
+ * Pay a referral by hand — for the case the academy honours one that never
+ * qualified on its own (an offline admission, say).
+ */
+export async function payReferralByHand(id: string): Promise<void> {
+  const referral = await prisma.referral.findUnique({
+    where: { id },
+    select: { id: true, status: true, referrerId: true, referee: { select: { name: true } } },
+  });
+  if (!referral) throw AppError.notFound("Referral not found.");
+  if (referral.status === "REWARDED") throw AppError.badRequest("This one has already been paid.");
+
+  const { settings } = await getSettings();
+  const amount = settings.referralRewardAmount;
+  if (amount <= 0) throw AppError.badRequest("Set a reward amount first.");
+
+  const claimed = await prisma.referral.updateMany({
+    where: { id, status: { not: "REWARDED" } },
+    data: { status: "REWARDED", rewardAmount: amount },
+  });
+  if (claimed.count === 0) throw AppError.badRequest("This one has already been paid.");
+
+  const balance = await creditWallet(
+    referral.referrerId,
+    amount,
+    `Refer and earn — ${referral.referee?.name ?? "a learner"} (paid by the academy)`,
+    id,
+  );
+  void notify({
+    userIds: [referral.referrerId],
+    type: "PAYMENT",
+    title: `₹${amount.toLocaleString("en-IN")} added to your wallet`,
+    message: `Your referral has been honoured. Your balance is now ₹${balance.toLocaleString("en-IN")}.`,
+    actionUrl: "/student/wallet",
+  });
+}
+
+/**
+ * Give a learner a code from the panel — the academy's "referral code also can
+ * be created from admin side". A code they choose themselves is allowed as long
+ * as nobody else holds it; leave it blank and one is generated.
+ */
+export async function setReferralCodeByAdmin(
+  userId: string,
+  wanted?: string | null,
+): Promise<string> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, name: true, referralCode: true },
+  });
+  if (!user) throw AppError.notFound("That learner no longer exists.");
+
+  if (!wanted?.trim()) {
+    // Nothing chosen: the usual generated one (and an existing code stands).
+    return ensureReferralCode(userId);
+  }
+
+  const code = wanted.trim().toUpperCase().replace(/\s+/g, "");
+  if (!/^[A-Z0-9-]{4,20}$/.test(code)) {
+    throw AppError.badRequest("A code is 4–20 letters, numbers or dashes.");
+  }
+  const taken = await prisma.user.findUnique({ where: { referralCode: code }, select: { id: true } });
+  if (taken && taken.id !== userId) throw AppError.conflict("Somebody already has that code.");
+
+  await prisma.user.update({ where: { id: userId }, data: { referralCode: code } });
+  void notify({
+    userIds: [userId],
+    type: "SYSTEM",
+    title: "Your referral code is ready",
+    message: `Share ${code} — when a friend enrolls with it, the reward lands in your wallet.`,
+    actionUrl: "/student/wallet",
+  });
+  return code;
+}
+
+export interface ReferralCodeRow {
+  userId: string;
+  name: string;
+  email: string;
+  code: string;
+  /** How many people have signed up on this code, and how many have paid out. */
+  used: number;
+  rewarded: number;
+  earned: number;
+  balance: number;
+}
+
+/**
+ * Every code the academy has handed out, with how hard it is working:
+ * "how many times any code used and how many amount earned by any student".
+ */
+export async function referralCodes(query: {
+  search?: string;
+  page: number;
+  pageSize: number;
+}): Promise<{ rows: ReferralCodeRow[]; total: number }> {
+  const where = {
+    referralCode: { not: null },
+    ...(query.search
+      ? {
+          OR: [
+            { name: { contains: query.search } },
+            { email: { contains: query.search } },
+            { referralCode: { contains: query.search.toUpperCase() } },
+          ],
+        }
+      : {}),
+  };
+
+  const [total, users] = await Promise.all([
+    prisma.user.count({ where }),
+    prisma.user.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip: (query.page - 1) * query.pageSize,
+      take: query.pageSize,
+      select: { id: true, name: true, email: true, referralCode: true },
+    }),
+  ]);
+  const ids = users.map((u) => u.id);
+  if (ids.length === 0) return { rows: [], total };
+
+  const [used, rewarded, wallets] = await Promise.all([
+    prisma.referral.groupBy({
+      by: ["referrerId"],
+      where: { referrerId: { in: ids } },
+      _count: { _all: true },
+    }),
+    prisma.referral.groupBy({
+      by: ["referrerId"],
+      where: { referrerId: { in: ids }, status: "REWARDED" },
+      _count: { _all: true },
+      _sum: { rewardAmount: true },
+    }),
+    prisma.wallet.findMany({ where: { userId: { in: ids } }, select: { userId: true, balance: true } }),
+  ]);
+  const usedBy = new Map(used.map((u) => [u.referrerId, u._count._all]));
+  const rewardedBy = new Map(rewarded.map((r) => [r.referrerId, r]));
+  const balanceBy = new Map(wallets.map((w) => [w.userId, Number(w.balance)]));
+
+  return {
+    total,
+    rows: users.map((u) => ({
+      userId: u.id,
+      name: u.name,
+      email: u.email,
+      code: u.referralCode!,
+      used: usedBy.get(u.id) ?? 0,
+      rewarded: rewardedBy.get(u.id)?._count._all ?? 0,
+      earned: Number(rewardedBy.get(u.id)?._sum.rewardAmount ?? 0),
+      balance: balanceBy.get(u.id) ?? 0,
+    })),
+  };
+}
+
+/** Close a referral without paying it — a duplicate, or one that lapsed. */
+export async function cancelReferral(id: string): Promise<void> {
+  const referral = await prisma.referral.findUnique({ where: { id }, select: { status: true } });
+  if (!referral) throw AppError.notFound("Referral not found.");
+  if (referral.status === "REWARDED") {
+    throw AppError.badRequest("This one has been paid — it can't be cancelled.");
+  }
+  await prisma.referral.update({ where: { id }, data: { status: "EXPIRED" } });
+}
+
 // ── Birthdays ────────────────────────────────────────────────────────────────
 
 export interface BirthdayRunResult {
@@ -170,9 +532,11 @@ export async function sendBirthdayGreetings(now: Date = new Date()): Promise<Bir
   if (rows.length === 0) return result;
 
   const { settings } = await getSettings();
+  // The voucher only goes out while refer-and-earn is on; the wishes always do.
+  const refer = settings.referralEnabled && settings.referralRewardAmount > 0;
   for (const person of rows) {
     try {
-      const code = await ensureReferralCode(person.id);
+      const code = refer ? await ensureReferralCode(person.id) : null;
       await prisma.user.update({
         where: { id: person.id },
         data: { lastBirthdayWishAt: now },
@@ -181,15 +545,17 @@ export async function sendBirthdayGreetings(now: Date = new Date()): Promise<Bir
         userIds: [person.id],
         type: "ANNOUNCEMENT",
         title: `Happy birthday, ${person.name.split(" ")[0]}!`,
-        message: `Everyone at ${settings.siteName} wishes you a wonderful year. Here's your gift: share your referral code ${code} and earn ₹${settings.referralRewardAmount.toLocaleString("en-IN")} in your wallet for every friend who enrolls.`,
-        actionUrl: "/student/wallet",
+        message: code
+          ? `Everyone at ${settings.siteName} wishes you a wonderful year. Here's your gift: share your referral code ${code} and earn ₹${settings.referralRewardAmount.toLocaleString("en-IN")} in your wallet for every friend who enrolls.`
+          : `Everyone at ${settings.siteName} wishes you a wonderful year ahead.`,
+        actionUrl: code ? "/student/wallet" : "/student",
       });
       const sent = await sendMail({
         to: person.email,
         ...birthdayGreeting({
           name: person.name,
           code,
-          reward: settings.referralRewardAmount,
+          reward: refer ? settings.referralRewardAmount : undefined,
           siteName: settings.siteName,
         }),
       });
