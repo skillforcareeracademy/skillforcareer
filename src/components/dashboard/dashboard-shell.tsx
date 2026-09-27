@@ -21,6 +21,7 @@ export function DashboardShell({
   voiceGuideEnabled = true,
   assistantEnabled = true,
   codingPractice = false,
+  curriculum = false,
   children,
 }: {
   user: SessionUser;
@@ -31,9 +32,14 @@ export function DashboardShell({
   assistantEnabled?: boolean;
   /** Show the Coding Practice link — on, and this person is in its audience. */
   codingPractice?: boolean;
+  /** This viewer may write the academy's curriculums. */
+  curriculum?: boolean;
   children: ReactNode;
 }) {
-  const navFeatures: NavFeature[] = codingPractice ? ["codingPractice"] : [];
+  const navFeatures: NavFeature[] = [
+    ...(codingPractice ? (["codingPractice"] as const) : []),
+    ...(curriculum ? (["curriculum"] as const) : []),
+  ];
   return (
     <SidebarProvider>
       <AuthHydrator user={user} />

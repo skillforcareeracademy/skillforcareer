@@ -9,6 +9,7 @@ import { User, Mail } from "lucide-react";
 import { registerSchema, type RegisterInput } from "@/lib/validations/auth";
 import { api, ApiError } from "@/lib/api-client";
 import { AuthCard } from "./auth-card";
+import { Input } from "@/components/ui/input";
 import { Field } from "./field";
 import { IconInput } from "./icon-input";
 import { PasswordInput } from "./password-input";
@@ -81,6 +82,21 @@ export function RegisterForm({
           error={errors.confirmPassword?.message}
         >
           <PasswordInput id="confirmPassword" autoComplete="new-password" placeholder="••••••••" {...register("confirmPassword")} />
+        </Field>
+        {/* Refer and earn: a friend's code, if they were given one. A code
+            that doesn't exist is quietly ignored rather than blocking a
+            sign-up. */}
+        <Field
+          label="Referral code (optional)"
+          htmlFor="referralCode"
+          error={errors.referralCode?.message}
+        >
+          <Input
+            id="referralCode"
+            placeholder="SFCXXXXXX"
+            autoCapitalize="characters"
+            {...register("referralCode")}
+          />
         </Field>
         <SubmitButton loading={isSubmitting} className="h-11">
           Create account

@@ -7,10 +7,18 @@ import { CtaBandSlot } from "@/components/marketing/cta-band-slot";
 import { getHomeSection } from "@/server/services/homepage-service";
 import { getSettings } from "@/server/services/settings-service";
 import { AmiWidget } from "@/components/chatbot/ami-widget";
+import { MobileBottomNav } from "@/components/layout/mobile-bottom-nav";
+import { getSessionUser } from "@/lib/auth/api-guard";
+import { ROLE_HOME } from "@/config/roles";
+import { whatsappLink } from "@/lib/whatsapp";
 
 export default async function MarketingLayout({ children }: { children: ReactNode }) {
   // Shares the single homepage read with the page below it.
-  const [cta, { settings }] = await Promise.all([getHomeSection("cta"), getSettings()]);
+  const [cta, { settings }, user] = await Promise.all([
+    getHomeSection("cta"),
+    getSettings(),
+    getSessionUser(),
+  ]);
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -31,6 +39,13 @@ export default async function MarketingLayout({ children }: { children: ReactNod
         )}
       </main>
       <MarketingFooter />
+      {/* Phone-only: the header has room for one button, so Home, Courses,
+          WhatsApp and signing in live down here. */}
+      <MobileBottomNav
+        signedIn={Boolean(user)}
+        whatsappUrl={whatsappLink(settings.whatsappNumber || settings.contactPhone)}
+        dashboardHref={user ? (ROLE_HOME[user.role] ?? "/student") : "/student"}
+      />
       {/* "Website pr Ami name se chatbot bhi hona chahiye" — trained from
           Admin → Assistant, and switchable there too. */}
       {settings.chatbotEnabled && <AmiWidget />}

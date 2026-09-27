@@ -10,6 +10,13 @@ interface LogoProps {
   /** Show the site name beside the mark. Off by default — the client's logo is
    *  a full lockup that already contains the wordmark. */
   showText?: boolean;
+  /**
+   * Rendering on a dark surface (the live class room). Uses the dark-surface
+   * mark from Admin → Settings → Branding when one has been uploaded — a logo
+   * drawn in dark ink disappears on black, and the academy's answer to that is
+   * its own light version.
+   */
+  onDark?: boolean;
   className?: string;
 }
 
@@ -17,8 +24,9 @@ interface LogoProps {
  * Brand mark — whatever is set in Admin > Settings > Branding, falling back to
  * the bundled default. Reused in headers, auth pages and the live room.
  */
-export function Logo({ href = "/", showText = false, className }: LogoProps) {
-  const { logoUrl, siteName } = useBranding();
+export function Logo({ href = "/", showText = false, onDark = false, className }: LogoProps) {
+  const { logoUrl, logoDarkUrl, siteName } = useBranding();
+  const src = onDark && logoDarkUrl ? logoDarkUrl : logoUrl;
 
   {
     /* Deliberately not next/image: the logo is replaceable at runtime, so its
@@ -34,7 +42,7 @@ export function Logo({ href = "/", showText = false, className }: LogoProps) {
   const image = (
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      {...imageProps(logoUrl, 256)}
+      {...imageProps(src, 256)}
       alt={siteName}
       // cn() merges through tailwind-merge, so a caller passing `h-14` wins.
       className={cn(

@@ -13,8 +13,9 @@ import {
   learnerRecordingStates,
   type RecordingState,
 } from "@/server/services/recording-service";
-import { parseAcademyDateTime } from "@/lib/ist";
+import { istDateKey, parseAcademyDateTime } from "@/lib/ist";
 import { isJoinLinkOpen, joinLinkOpensAt } from "@/lib/class-link";
+import { closedDates } from "./holiday-service";
 import {
   announceClassEvent,
   deliverClassAnnouncement,
@@ -239,6 +240,10 @@ export async function listStudentMeetings(userId: string): Promise<StudentMeetin
   // which is what lets an empty audience mean "everyone who could attend".
   const recordings = await learnerRecordingStates(userId, rows, batchIds);
 
+  // Days the academy is closed. A class still on the books for one of them
+  // hands out no link — the same rule the reminder emails follow.
+  const closed = await closedDates(rows.map((m) => istDateKey(m.scheduledStart)));
+
   const now = new Date();
   return rows.map((m) => ({
     id: m.id,
@@ -257,7 +262,9 @@ export async function listStudentMeetings(userId: string): Promise<StudentMeetin
     // The host (an instructor who is also learning) always has their own link.
     joinLinkOpen:
       m.hostId === userId ||
-      (m.status !== "CANCELLED" && (m.status === "LIVE" || isJoinLinkOpen(m.scheduledStart, now))),
+      (m.status !== "CANCELLED" &&
+        !closed.has(istDateKey(m.scheduledStart)) &&
+        (m.status === "LIVE" || isJoinLinkOpen(m.scheduledStart, now))),
     joinLinkOpensAt: joinLinkOpensAt(m.scheduledStart).toISOString(),
     cancelReason: m.cancelReason,
     recording: recordings.get(m.id)!,

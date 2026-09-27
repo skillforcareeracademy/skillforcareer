@@ -5,6 +5,7 @@ import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { WakeSignalling } from "@/components/live/wake-signalling";
 import { getSettings } from "@/server/services/settings-service";
 import { showsCodingPractice } from "@/server/services/coding-practice-service";
+import { PERMISSIONS } from "@/config/roles";
 
 /**
  * Authenticated app shell. Guards every dashboard route (redirects to /login if
@@ -24,6 +25,8 @@ export default async function DashboardLayout({
   // Free unless it's switched on for an enrolled-only audience and this is a
   // learner — then it's one small lookup.
   const codingPractice = await showsCodingPractice(user, settings);
+  // Instructors get the Curriculum link only when an admin has granted it.
+  const curriculum = user.permissions.includes(PERMISSIONS.MANAGE_CURRICULUM);
   return (
     <DashboardShell
       user={user}
@@ -32,6 +35,7 @@ export default async function DashboardLayout({
       voiceGuideEnabled={settings.voiceGuideEnabled}
       assistantEnabled={settings.chatbotEnabled}
       codingPractice={codingPractice}
+      curriculum={curriculum}
     >
       {/* Read at request time, like the live room page does. */}
       <WakeSignalling url={process.env.SIGNAL_URL || "http://localhost:4001"} />

@@ -7,6 +7,7 @@ import {
   listCoursesForSelect,
   listBatchesForSelect,
   backfillQuizSequences,
+  backfillQuizNumbers,
 } from "@/server/services/quiz-service";
 import { listQuizCategoryOptions } from "@/server/services/quiz-category-service";
 import { QuizzesClient } from "@/components/admin/quizzes/quizzes-client";
@@ -36,9 +37,10 @@ export default async function QuizzesPage({
     sort: str(sp.sort),
   };
 
-  // Anything still unnumbered gets its number here, so the list an admin sees
-  // and the order the learners get are never out of step.
-  await backfillQuizSequences();
+  // Anything still unnumbered gets its numbers here — the permanent quiz
+  // number and the order inside its group — so the list an admin sees and the
+  // order the learners get are never out of step.
+  await Promise.all([backfillQuizSequences(), backfillQuizNumbers()]);
 
   const [{ quizzes, total }, stats, courses, batches, categories] = await Promise.all([
     listQuizzesAdmin(query),

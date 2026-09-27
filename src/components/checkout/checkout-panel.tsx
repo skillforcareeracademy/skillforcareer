@@ -201,7 +201,7 @@ export function CheckoutPanel({
     setPaying(true);
     try {
       await api.post("/api/enrollments", { courseId: course.id });
-      toast.success("You're enrolled! 🎉");
+      toast.success("You're enrolled.");
       router.push(`/student/learn/${course.slug}`);
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Couldn't enroll.");
@@ -244,7 +244,7 @@ export function CheckoutPanel({
               razorpayPaymentId: resp.razorpay_payment_id,
               razorpaySignature: resp.razorpay_signature,
             });
-            toast.success("Payment successful — you're enrolled! 🎉");
+            toast.success("Payment successful — you're enrolled.");
             router.push(`/student/learn/${course.slug}`);
           } catch (err) {
             // The webhook still reconciles; say it's processing rather than failed.

@@ -1028,6 +1028,12 @@ const headerSchema = z.object({
   signInHref: link(200),
   ctaLabel: text(30),
   ctaHref: link(200),
+  /**
+   * The main button opens the callback popup instead of following its link —
+   * the academy's "Get started ka button ko hata kr enquiry now ka button kr
+   * do, enquiry form k popup k sath".
+   */
+  ctaOpensEnquiry: z.boolean().default(true),
   /** The callback popup in the header. Blank label = no button. */
   enquiryLabel: text(30),
 });
@@ -1079,6 +1085,12 @@ const headerFields: AnyField[] = [
   },
   { name: "ctaHref", label: "Main button links to", type: "text" },
   {
+    name: "ctaOpensEnquiry",
+    label: "Main button opens the enquiry form",
+    type: "switch",
+    hint: "On, it opens the callback popup and the link above is ignored. Off, it follows the link.",
+  },
+  {
     name: "enquiryLabel",
     label: "Enquiry button text",
     type: "text",
@@ -1097,9 +1109,10 @@ const headerDefaults: z.infer<typeof headerSchema> = {
   showThemeToggle: true,
   signInLabel: "Sign in",
   signInHref: "/login",
-  ctaLabel: "Get started",
+  ctaLabel: "Enquiry Now",
   ctaHref: "/register",
-  enquiryLabel: "Enquiry",
+  ctaOpensEnquiry: true,
+  enquiryLabel: "",
 };
 
 // ── Section: footer (site-wide) ──────────────────────────────────────────────

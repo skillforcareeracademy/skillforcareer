@@ -41,6 +41,12 @@ export const PERMISSIONS = {
   MANAGE_HOMEPAGE: "homepage:manage",
   VIEW_REPORTS: "reports:view",
   MANAGE_LEADS: "leads:manage",
+  /**
+   * Writing the academy's curriculums. Admins hold it by default; an admin can
+   * grant it to instructors from Roles — the academy's "admin and instructor
+   * (if admin allows)".
+   */
+  MANAGE_CURRICULUM: "curriculum:manage",
   MANAGE_PLACEMENTS: "placements:manage",
 
   // Catalog
@@ -82,6 +88,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     P.VIEW_REPORTS,
     P.MANAGE_LEADS,
     P.MANAGE_PLACEMENTS,
+    P.MANAGE_CURRICULUM,
     P.MANAGE_CATEGORIES,
     P.CREATE_COURSE,
     P.UPDATE_ANY_COURSE,

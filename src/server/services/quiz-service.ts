@@ -75,6 +75,7 @@ export async function listQuizzesAdmin(q: QuizListQuery) {
     quizzes: rows.map((z) => ({
       id: z.id,
       title: z.title,
+      quizNo: z.quizNo,
       sequence: z.sequence,
       courseId: z.courseId,
       courseTitle: z.course?.title ?? null,
@@ -87,6 +88,7 @@ export async function listQuizzesAdmin(q: QuizListQuery) {
       createdByName: z.createdBy.name,
       passingScore: z.passingScore,
       timeLimitMinutes: z.timeLimitMinutes,
+      perQuestionSeconds: z.perQuestionSeconds,
       isPublished: z.isPublished,
       questions: z._count.questions,
       attempts: z._count.attempts,
@@ -143,6 +145,7 @@ export async function getQuizEdit(id: string) {
     description: z.description,
     courseId: z.courseId,
     timeLimitMinutes: z.timeLimitMinutes,
+    perQuestionSeconds: z.perQuestionSeconds,
     passingScore: z.passingScore,
     gradingMode: z.gradingMode,
     maxAttempts: z.maxAttempts,
@@ -152,6 +155,7 @@ export async function getQuizEdit(id: string) {
     categoryId: z.categoryId,
     subCategoryId: z.subCategoryId,
     sequence: z.sequence,
+    quizNo: z.quizNo,
     isPublished: z.isPublished,
     // datetime-local wants local wall clock without the zone or seconds.
     releaseAt: z.releaseAt ? toLocalInput(z.releaseAt) : "",
@@ -197,6 +201,8 @@ export async function createQuiz(input: CreateQuizInput, createdById: string): P
       courseId: input.courseId || null,
       categoryId,
       subCategoryId,
+      // Its permanent number, the academy's own handle on the paper.
+      quizNo: await nextQuizNo(),
       // Numbered as it is created, so a new paper lands at the end of its group
       // rather than at "0" among everything else.
       sequence: await nextSequence(categoryId, subCategoryId),
@@ -205,6 +211,19 @@ export async function createQuiz(input: CreateQuizInput, createdById: string): P
     select: { id: true },
   });
   return z.id;
+}
+
+/**
+ * The next permanent quiz number — one sequence across the whole academy, and
+ * never reused or renumbered. (`sequence`, below, is the order inside a group
+ * and can be rearranged; this cannot.)
+ */
+async function nextQuizNo(): Promise<number> {
+  const top = await prisma.quiz.findFirst({
+    orderBy: { quizNo: "desc" },
+    select: { quizNo: true },
+  });
+  return (top?.quizNo ?? 0) + 1;
 }
 
 /**
@@ -252,6 +271,7 @@ export async function updateQuiz(id: string, input: UpdateQuizInput): Promise<vo
       // quizzes numbered 3 in the same group would make the order arbitrary.
       ...(moved ? { sequence: await nextSequence(categoryId, subCategoryId) } : {}),
       timeLimitMinutes: input.timeLimitMinutes ?? null,
+      perQuestionSeconds: input.perQuestionSeconds ?? null,
       passingScore: input.passingScore,
       gradingMode: input.gradingMode,
       maxAttempts: input.maxAttempts,
@@ -300,6 +320,24 @@ export async function reorderQuizzes(ids: string[], ownerId?: string): Promise<n
  * and any row a failed reorder left behind. Runs on the quizzes page, so the
  * numbers an admin sees are always the numbers in the table.
  */
+export async function backfillQuizNumbers(): Promise<number> {
+  const rows = await prisma.quiz.findMany({
+    where: { quizNo: { lte: 0 } },
+    orderBy: { createdAt: "asc" },
+    select: { id: true },
+  });
+  if (rows.length === 0) return 0;
+  let next = await nextQuizNo();
+  const cases = rows.map((r) => Prisma.sql`WHEN ${r.id} THEN ${next++}`);
+  // One statement, for the reason given on `reorderQuizzes`.
+  await prisma.$executeRaw`
+    UPDATE \`Quiz\`
+    SET quizNo = CASE id ${Prisma.join(cases, " ")} END
+    WHERE id IN (${Prisma.join(rows.map((r) => Prisma.sql`${r.id}`))})
+  `;
+  return rows.length;
+}
+
 export async function backfillQuizSequences(): Promise<number> {
   const rows = await prisma.quiz.findMany({
     where: { sequence: { lte: 0 } },

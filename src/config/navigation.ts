@@ -31,11 +31,14 @@ import {
   PartyPopper,
   Stethoscope,
   type LucideIcon,
+  Flag,
+  Wallet,
+  BookMarked,
 } from "lucide-react";
 import { ROLES, type Role } from "./roles";
 
 /** Nav items that only appear when something is switched on for the viewer. */
-export type NavFeature = "codingPractice";
+export type NavFeature = "codingPractice" | "curriculum";
 
 export interface NavItem {
   title: string;
@@ -98,8 +101,34 @@ export const NAV_SECTIONS: NavSection[] = [
         icon: Presentation,
         roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.STUDENT],
       },
+      // What a course covers, written by the academy. Instructors see it only
+      // when an admin has granted them the permission.
+      {
+        title: "Curriculum",
+        href: "/curriculum",
+        icon: BookMarked,
+        // Learners and staff always; an instructor only when an admin has
+        // granted them `curriculum:manage` (the shell passes the feature).
+        roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.STUDENT],
+      },
+      {
+        title: "Curriculum",
+        href: "/curriculum",
+        icon: BookMarked,
+        roles: [ROLES.INSTRUCTOR],
+        feature: "curriculum",
+      },
       { title: "Assignments", href: "/assignments", icon: ClipboardList, roles: ALL },
       { title: "Quizzes", href: "/quizzes", icon: FileQuestion, roles: ALL },
+      // Where a learner's "this question looks wrong" lands. Staff and the
+      // course's own instructor answer it; learners hear back by email and in
+      // their notifications, so they need no page of their own.
+      {
+        title: "Question reviews",
+        href: "/quiz-reviews",
+        icon: Flag,
+        roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.INSTRUCTOR],
+      },
       // The separate practice product, signed in through the LMS. Switched on
       // and aimed at an audience under Settings → Coding Practice; the launch
       // route re-checks both, so this is only about who sees the link.
@@ -112,6 +141,8 @@ export const NAV_SECTIONS: NavSection[] = [
         feature: "codingPractice",
       },
       { title: "Notes", href: "/notes", icon: NotebookPen, roles: [ROLES.STUDENT] },
+      // Refer-and-earn pays into here, and this is where a learner asks for it.
+      { title: "Wallet", href: "/wallet", icon: Wallet, roles: [ROLES.STUDENT] },
       { title: "Attendance", href: "/attendance", icon: CalendarCheck, roles: [ROLES.STUDENT] },
       { title: "Discussions", href: "/discussions", icon: MessageSquare, roles: ALL },
       { title: "Certificates", href: "/certificates", icon: Award, roles: ALL },
@@ -129,6 +160,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { title: "Careers", href: "/careers", icon: Briefcase, roles: STAFF },
       { title: "Holidays", href: "/holidays", icon: PartyPopper, roles: STAFF },
       { title: "Schedule", href: "/schedule", icon: CalendarClock, roles: TEACHING },
+      { title: "Wallets", href: "/wallets", icon: Wallet, roles: STAFF },
       { title: "Payments", href: "/payments", icon: CreditCard, roles: STAFF },
       { title: "Fees", href: "/payments", icon: CreditCard, roles: [ROLES.STUDENT] },
       { title: "Activity", href: "/activity", icon: Activity, roles: STAFF },

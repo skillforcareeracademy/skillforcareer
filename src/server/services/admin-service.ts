@@ -95,7 +95,7 @@ export interface ActivityItem {
   title: string;
   subtitle: string;
   at: string; // ISO
-  kind: "user" | "payment" | "enrollment";
+  kind: "user" | "payment" | "enrollment" | "registration";
 }
 
 /** A lightweight recent-activity feed assembled from recent domain records. */
@@ -119,7 +119,9 @@ export async function getRecentActivity(limit = 8): Promise<ActivityItem[]> {
         id: true,
         createdAt: true,
         user: { select: { name: true } },
-        course: { select: { title: true } },
+        course: { select: { title: true, price: true } },
+        // What separates a registration from an enrolment (see below).
+        payments: { where: { status: "PAID" }, select: { id: true }, take: 1 },
       },
     }),
   ]);
@@ -139,13 +141,23 @@ export async function getRecentActivity(limit = 8): Promise<ActivityItem[]> {
       at: (p.paidAt ?? new Date()).toISOString(),
       kind: "payment" as const,
     })),
-    ...enrollments.map((e) => ({
-      id: `e_${e.id}`,
-      title: `New enrollment`,
-      subtitle: `${e.user.name} · ${e.course.title}`,
-      at: e.createdAt.toISOString(),
-      kind: "enrollment" as const,
-    })),
+    // Signing up for a course is not yet an enrolment. The academy: "jab tak
+    // payment update nhi hogi tab tak ye new enrollment nhi, new registration
+    // hua" — so a seat with no money against it reads as a registration until
+    // the payment lands (online or recorded by an admin). A free course has
+    // nothing to wait for and enrols straight away.
+    ...enrollments.map((e) => {
+      const paid = e.payments.length > 0 || e.course.price.toNumber() <= 0;
+      return {
+        id: `e_${e.id}`,
+        title: paid ? "New enrollment" : "New registration",
+        subtitle: paid
+          ? `${e.user.name} · ${e.course.title}`
+          : `${e.user.name} · ${e.course.title} · payment pending`,
+        at: e.createdAt.toISOString(),
+        kind: paid ? ("enrollment" as const) : ("registration" as const),
+      };
+    }),
   ];
 
   return items

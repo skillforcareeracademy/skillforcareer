@@ -225,7 +225,7 @@ export function CoursePlayer({
       const r = res as { progressPercent: number; certificateIssued?: boolean };
       setPct(r.progressPercent);
       if (r.certificateIssued) {
-        toast.success("🎉 Course complete — your certificate has been issued!");
+        toast.success("Course complete — your certificate has been issued!");
       }
     }
     setMarking(false);

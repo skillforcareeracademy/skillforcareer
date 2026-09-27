@@ -15,6 +15,9 @@ import {
   Clock,
   Eye,
   NotebookText,
+  Timer,
+  Lightbulb,
+  ListChecks,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
@@ -23,6 +26,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { QuizNotesBar } from "./quiz-notes-bar";
+import { QuestionReportDialog } from "./question-report-dialog";
 import { cn } from "@/lib/utils";
 
 interface Option {
@@ -42,6 +46,8 @@ interface QuizData {
   description: string | null;
   courseTitle: string | null;
   timeLimitMinutes: number | null;
+  /** Seconds per question; null = only the whole-paper clock applies. */
+  perQuestionSeconds: number | null;
   passingScore: number;
   maxAttempts: number;
   attemptsUsed: number;
@@ -70,13 +76,23 @@ interface Result {
   passingScore: number;
   attemptNo: number;
   showAnswers: boolean;
+  showAnswerPerQuestion: boolean;
   breakdown: {
     questionId: string;
     isCorrect: boolean | null;
     correctOptionIds: string[];
     yourOptionIds: string[];
     explanation: string | null;
+    points: number;
+    pointsAwarded: number;
   }[];
+}
+
+/** Option ids → the words the learner actually saw, for a summary line. */
+function answerTextFor(question: Question, optionIds: string[], text: string): string {
+  if (question.type === "SHORT_ANSWER") return text.trim() || "Not answered";
+  const chosen = question.options.filter((o) => optionIds.includes(o.id)).map((o) => o.text);
+  return chosen.length > 0 ? chosen.join(", ") : "Not answered";
 }
 
 export function QuizRunner({ quiz }: { quiz: QuizData }) {
@@ -84,6 +100,19 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
   const [answers, setAnswers] = useState<Record<string, { optionIds: string[]; text: string }>>({});
   const [checked, setChecked] = useState<Record<string, Checked>>({});
   const [checking, setChecking] = useState<string | null>(null);
+  /** Questions whose summary the learner has opened mid-attempt. */
+  const [summaryOpen, setSummaryOpen] = useState<Record<string, boolean>>({});
+  /**
+   * A per-question limit paces the paper: one question on screen, its own
+   * countdown, and no going back once its seconds are up. The whole-paper clock
+   * (if the academy set one too) still runs alongside.
+   */
+  const paced = (quiz.perQuestionSeconds ?? 0) > 0;
+  const [index, setIndex] = useState(0);
+  const [locked, setLocked] = useState<Record<string, true>>({});
+  const [questionLeft, setQuestionLeft] = useState<number | null>(
+    paced ? (quiz.perQuestionSeconds as number) : null,
+  );
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<Result | null>(null);
   // Timer: only when the admin set a time limit — otherwise unlimited.
@@ -115,6 +144,24 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
     return () => clearInterval(id);
   }, [quiz.timeLimitMinutes, quiz.canAttempt]);
 
+  // The question's own clock. Runs down while the question is on screen and
+  // locks it at zero — the answer as it stands is the answer.
+  useEffect(() => {
+    if (!paced || !quiz.canAttempt || result) return;
+    const question = quiz.questions[index];
+    if (!question || locked[question.id]) return;
+    const deadline = Date.now() + (quiz.perQuestionSeconds as number) * 1000;
+    const id = setInterval(() => {
+      const left = Math.max(0, Math.round((deadline - Date.now()) / 1000));
+      setQuestionLeft(left);
+      if (left <= 0) {
+        clearInterval(id);
+        setLocked((p) => ({ ...p, [question.id]: true }));
+      }
+    }, 250);
+    return () => clearInterval(id);
+  }, [paced, index, quiz.canAttempt, quiz.questions, quiz.perQuestionSeconds, locked, result]);
+
   if (!quiz.canAttempt && !result) {
     return (
       <div className="mx-auto max-w-xl space-y-4 py-10 text-center">
@@ -138,11 +185,11 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
   }
 
   function setSingle(qid: string, optId: string) {
-    if (checked[qid]) return; // marked already — the answer stands
+    if (checked[qid] || locked[qid]) return; // marked or timed out — it stands
     setAnswers((p) => ({ ...p, [qid]: { optionIds: [optId], text: "" } }));
   }
   function toggleMulti(qid: string, optId: string) {
-    if (checked[qid]) return;
+    if (checked[qid] || locked[qid]) return;
     setAnswers((p) => {
       const cur = p[qid]?.optionIds ?? [];
       const next = cur.includes(optId) ? cur.filter((x) => x !== optId) : [...cur, optId];
@@ -150,7 +197,7 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
     });
   }
   function setText(qid: string, text: string) {
-    if (checked[qid]) return;
+    if (checked[qid] || locked[qid]) return;
     setAnswers((p) => ({ ...p, [qid]: { optionIds: [], text } }));
   }
 
@@ -173,6 +220,16 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
       toast.error(err instanceof ApiError ? err.message : "Couldn't check that just now.");
     } finally {
       setChecking(null);
+    }
+  }
+
+  /** Lock what is on screen and move to the next question. */
+  function nextQuestion() {
+    const question = quiz.questions[index];
+    if (question) setLocked((p) => ({ ...p, [question.id]: true }));
+    if (index < quiz.questions.length - 1) {
+      setIndex(index + 1);
+      setQuestionLeft(quiz.perQuestionSeconds ?? null);
     }
   }
 
@@ -206,6 +263,21 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
   // ── Result screen ──────────────────────────────────────────────────────────
   if (result) {
     const bd = new Map(result.breakdown.map((b) => [b.questionId, b]));
+    const tally = result.breakdown.reduce(
+      (acc, b) => {
+        const answered = b.yourOptionIds.length > 0;
+        if (b.isCorrect === null) acc.manual += 1;
+        else if (b.isCorrect) acc.correct += 1;
+        else if (answered) acc.incorrect += 1;
+        else acc.unanswered += 1;
+        return acc;
+      },
+      { correct: 0, incorrect: 0, unanswered: 0, manual: 0 },
+    );
+    // A paper answered as it went has already shown every key, so the summary
+    // at the end shows them too — "last me submit krne ke baad to summary with
+    // all answers aayegi hi". Otherwise the admin's setting decides.
+    const showSummary = result.showAnswers || result.showAnswerPerQuestion;
     return (
       <div className="mx-auto max-w-2xl space-y-6 py-2">
         <Link href="/student/quizzes" className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 text-sm">
@@ -239,7 +311,13 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
                 : "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
             )}
           >
-            {result.passed ? "Passed 🎉" : "Not passed"}
+            {result.passed ? (
+              <>
+                <CheckCircle2 className="size-3.5" /> Passed
+              </>
+            ) : (
+              "Not passed"
+            )}
           </Badge>
           <div className="mt-5 flex justify-center gap-2">
             <Button variant="outline" nativeButton={false} render={<Link href="/student/quizzes" />}>
@@ -253,11 +331,35 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
           </div>
         </Card>
 
+        {/* The analysis the academy asked for: what was right, what wasn't, and
+            what is still with the instructor — every time, whatever the answer
+            key setting says. */}
+        <Card className="p-5">
+          <h2 className="mb-3 text-lg font-semibold">Analysis</h2>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {[
+              { label: "Correct", value: tally.correct, tone: "text-emerald-600 dark:text-emerald-400" },
+              { label: "Incorrect", value: tally.incorrect, tone: "text-rose-600 dark:text-rose-400" },
+              { label: "Unanswered", value: tally.unanswered, tone: "text-muted-foreground" },
+              { label: "Being marked", value: tally.manual, tone: "text-amber-600 dark:text-amber-400" },
+            ].map((s) => (
+              <div key={s.label} className="rounded-xl border p-3 text-center">
+                <p className={cn("text-2xl font-semibold tabular-nums", s.tone)}>{s.value}</p>
+                <p className="text-muted-foreground mt-0.5 text-xs">{s.label}</p>
+              </div>
+            ))}
+          </div>
+          <p className="text-muted-foreground mt-3 text-xs">
+            Attempt {result.attemptNo} · {result.score} of {result.maxScore} points ·{" "}
+            {quiz.questions.length} question{quiz.questions.length === 1 ? "" : "s"}
+          </p>
+        </Card>
+
         <QuizNotesBar quizId={quiz.id} bookmarked={quiz.bookmarked} />
 
-        {result.showAnswers && (
+        {showSummary ? (
           <div className="space-y-3">
-            <h2 className="text-lg font-semibold">Review</h2>
+            <h2 className="text-lg font-semibold">Summary — every question</h2>
             {quiz.questions.map((q, i) => {
               const b = bd.get(q.id);
               return (
@@ -302,13 +404,56 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
                         <p className="text-muted-foreground mt-1 text-xs">Short answers are reviewed by your instructor.</p>
                       )}
                       {b?.explanation && (
-                        <p className="text-muted-foreground mt-2 text-xs">💡 {b.explanation}</p>
+                        <p className="text-muted-foreground mt-2 flex items-start gap-1.5 text-xs">
+                          <Lightbulb className="mt-0.5 size-3.5 shrink-0" />
+                          <span>{b.explanation}</span>
+                        </p>
                       )}
+                      <div className="mt-2">
+                        <QuestionReportDialog
+                          quizId={quiz.id}
+                          questionId={q.id}
+                          questionNo={i + 1}
+                        />
+                      </div>
                     </div>
                   </div>
                 </Card>
               );
             })}
+          </div>
+        ) : (
+          // The academy chose not to show the answers. The learner still gets
+          // their own paper back, question by question, without the key.
+          <div className="space-y-3">
+            <h2 className="text-lg font-semibold">Summary</h2>
+            {quiz.questions.map((q, i) => {
+              const b = bd.get(q.id);
+              return (
+                <Card key={q.id} className="flex items-start gap-2 p-4">
+                  {b?.isCorrect === null ? (
+                    <Clock className="mt-0.5 size-4 shrink-0 text-amber-500" />
+                  ) : b?.isCorrect ? (
+                    <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-500" />
+                  ) : (
+                    <XCircle className="mt-0.5 size-4 shrink-0 text-rose-500" />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium">
+                      {i + 1}. {q.text}
+                    </p>
+                    <p className="text-muted-foreground mt-1 text-xs">
+                      {b?.isCorrect === null
+                        ? "Your instructor is marking this one."
+                        : `${b?.pointsAwarded ?? 0} of ${b?.points ?? q.points} point${(b?.points ?? q.points) === 1 ? "" : "s"}`}
+                    </p>
+                  </div>
+                </Card>
+              );
+            })}
+            <p className="text-muted-foreground text-xs">
+              The answer key isn&apos;t shown for this quiz.
+            </p>
           </div>
         )}
       </div>
@@ -335,27 +480,45 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
             </p>
           )}
         </div>
-        {remaining != null && (
-          <div
-            className={`sticky top-4 flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-2 font-mono text-sm font-semibold tabular-nums ${
-              remaining <= 60
-                ? "border-rose-500/40 bg-rose-500/10 text-rose-600 dark:text-rose-400"
-                : "bg-muted"
-            }`}
-            aria-label="Time remaining"
-          >
-            <Clock className="size-4" />
-            {String(Math.floor(remaining / 60)).padStart(2, "0")}:{String(remaining % 60).padStart(2, "0")}
-          </div>
-        )}
+        <div className="sticky top-4 flex shrink-0 flex-col items-end gap-1.5">
+          {remaining != null && (
+            <div
+              className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 font-mono text-sm font-semibold tabular-nums ${
+                remaining <= 60
+                  ? "border-rose-500/40 bg-rose-500/10 text-rose-600 dark:text-rose-400"
+                  : "bg-muted"
+              }`}
+              aria-label="Time remaining"
+            >
+              <Clock className="size-4" />
+              {String(Math.floor(remaining / 60)).padStart(2, "0")}:{String(remaining % 60).padStart(2, "0")}
+            </div>
+          )}
+          {/* The question's own clock, when the academy set one. */}
+          {paced && questionLeft != null && (
+            <div
+              className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 font-mono text-xs font-semibold tabular-nums ${
+                questionLeft <= 5
+                  ? "border-rose-500/40 bg-rose-500/10 text-rose-600 dark:text-rose-400"
+                  : "bg-muted"
+              }`}
+              aria-label="Time left on this question"
+            >
+              <Timer className="size-3.5" />
+              {questionLeft}s
+            </div>
+          )}
+        </div>
       </div>
 
       <QuizNotesBar quizId={quiz.id} bookmarked={quiz.bookmarked} />
 
-      {quiz.questions.map((q, i) => {
+      {(paced ? quiz.questions.slice(index, index + 1) : quiz.questions).map((q) => {
+        const i = quiz.questions.indexOf(q);
         const a = answers[q.id];
         const isMulti = q.type === "MULTIPLE_CHOICE";
         const verdict = checked[q.id];
+        const isLocked = Boolean(locked[q.id]);
         const answered = Boolean(a && (a.optionIds.length > 0 || a.text.trim()));
         return (
           <Card key={q.id} className="p-5">
@@ -374,6 +537,7 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
                 value={a?.text ?? ""}
                 onChange={(e) => setText(q.id, e.target.value)}
                 placeholder="Your answer…"
+                disabled={Boolean(verdict) || isLocked}
               />
             ) : (
               <div className="space-y-2">
@@ -385,7 +549,7 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
                     <button
                       key={o.id}
                       type="button"
-                      disabled={Boolean(verdict)}
+                      disabled={Boolean(verdict) || isLocked}
                       onClick={() => (isMulti ? toggleMulti(q.id, o.id) : setSingle(q.id, o.id))}
                       className={cn(
                         "flex w-full items-center gap-3 rounded-lg border p-3 text-left text-sm transition-colors",
@@ -430,6 +594,16 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
               </div>
             )}
 
+            <div className="mt-3">
+              <QuestionReportDialog quizId={quiz.id} questionId={q.id} questionNo={i + 1} />
+            </div>
+
+            {paced && isLocked && !verdict && (
+              <p className="text-muted-foreground mt-3 flex items-center gap-1.5 text-xs">
+                <Timer className="size-3.5" /> Time up on this question — your answer is locked in.
+              </p>
+            )}
+
             {/* Answer as you go, when the quiz is set that way. Checking locks
                 the answer — seeing the key and then changing your mind isn't
                 practice. */}
@@ -463,7 +637,47 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
                       )}
                     </p>
                     {verdict.explanation && (
-                      <p className="text-muted-foreground text-xs">💡 {verdict.explanation}</p>
+                      <p className="text-muted-foreground flex items-start gap-1.5 text-xs">
+                        <Lightbulb className="mt-0.5 size-3.5 shrink-0" />
+                        <span>{verdict.explanation}</span>
+                      </p>
+                    )}
+
+                    {/* "View summary ka option aana chahiye if anyone wants to
+                        see the summary question wise" — the question's own
+                        summary, without leaving the paper. */}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSummaryOpen((p) => ({ ...p, [q.id]: !p[q.id] }))
+                      }
+                      className="text-primary inline-flex items-center gap-1.5 text-xs font-medium hover:underline"
+                    >
+                      <ListChecks className="size-3.5" />
+                      {summaryOpen[q.id] ? "Hide summary" : "View summary"}
+                    </button>
+
+                    {summaryOpen[q.id] && (
+                      <div className="bg-muted/40 space-y-1 rounded-lg p-3 text-xs">
+                        <p>
+                          <span className="text-muted-foreground">Your answer: </span>
+                          {answerTextFor(q, a?.optionIds ?? [], a?.text ?? "")}
+                        </p>
+                        {q.type !== "SHORT_ANSWER" && (
+                          <p>
+                            <span className="text-muted-foreground">Correct answer: </span>
+                            {answerTextFor(q, verdict.correctOptionIds, "")}
+                          </p>
+                        )}
+                        <p className="text-muted-foreground">
+                          Worth {q.points} point{q.points === 1 ? "" : "s"} ·{" "}
+                          {verdict.isCorrect === null
+                            ? "marked by your instructor"
+                            : verdict.isCorrect
+                              ? "you got this one"
+                              : "not this time"}
+                        </p>
+                      </div>
                     )}
                   </div>
                 ) : (
@@ -490,12 +704,20 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
 
       <div className="bg-background/80 sticky bottom-0 flex items-center justify-between gap-3 border-t py-3 backdrop-blur">
         <p className="text-muted-foreground text-sm">
-          {answeredCount}/{quiz.questions.length} answered
+          {paced
+            ? `Question ${index + 1} of ${quiz.questions.length}`
+            : `${answeredCount}/${quiz.questions.length} answered`}
         </p>
-        <Button type="submit" disabled={submitting || answeredCount === 0}>
-          {submitting && <Loader2 className="size-4 animate-spin" />}
-          Submit quiz
-        </Button>
+        {paced && index < quiz.questions.length - 1 ? (
+          <Button type="button" onClick={nextQuestion}>
+            Next question
+          </Button>
+        ) : (
+          <Button type="submit" disabled={submitting || answeredCount === 0}>
+            {submitting && <Loader2 className="size-4 animate-spin" />}
+            Submit quiz
+          </Button>
+        )}
       </div>
     </form>
   );

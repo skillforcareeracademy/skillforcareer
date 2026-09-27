@@ -13,7 +13,8 @@ import { ROLES } from "@/config/roles";
 import { isStaffRole } from "@/lib/auth/api-guard";
 import { isBatchTeachingTeam } from "@/lib/auth/class-guard";
 import { isJoinLinkOpen, joinLinkOpensAt, JOIN_LINK_LEAD_HOURS } from "@/lib/class-link";
-import { formatIstSlot } from "@/lib/ist";
+import { closedForHoliday } from "@/server/services/holiday-service";
+import { formatIstSlot, istDateKey } from "@/lib/ist";
 
 export const dynamic = "force-dynamic";
 
@@ -29,10 +30,15 @@ export async function generateMetadata({
 
 export default async function LiveRoomPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ code: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { code } = await params;
+  // `?join=1` comes from the class email (and survives the sign-in round trip),
+  // and means "open the class, not the lobby".
+  const autoJoin = (await searchParams).join === "1";
   const user = await requireUser();
   const meeting = await getMeetingByRoomCode(code);
   if (!meeting) notFound();
@@ -75,6 +81,20 @@ export default async function LiveRoomPage({
         />
       );
     }
+    // A day the academy has closed takes its classes with it, whoever put them
+    // on the calendar ("class ka link generate nhi hona chahiye usdin").
+    const holiday = await closedForHoliday(istDateKey(new Date(meeting.scheduledStart)));
+    if (holiday && meeting.status !== "LIVE") {
+      return (
+        <RoomNotOpen
+          icon="cancelled"
+          heading={`No class today — ${holiday.name}`}
+          title={meeting.title}
+          when={formatIstSlot(meeting.scheduledStart, meeting.scheduledEnd)}
+          detail="Enjoy your holiday. Your teacher will let you know when this class is made up."
+        />
+      );
+    }
     if (meeting.status === "SCHEDULED" && !isJoinLinkOpen(meeting.scheduledStart)) {
       return (
         <RoomNotOpen
@@ -110,6 +130,7 @@ export default async function LiveRoomPage({
         isHost={isHost}
         token={token}
         signalUrl={signalUrl}
+        autoJoin={autoJoin}
       />
     </>
   );
@@ -131,7 +152,7 @@ function RoomNotOpen({
   const Icon = icon === "early" ? CalendarClock : CalendarX;
   return (
     <div className="flex min-h-svh flex-col items-center justify-center gap-8 bg-neutral-950 px-4 text-center text-white">
-      <Logo />
+      <Logo onDark className="h-9" />
       <div className="max-w-md space-y-4">
         <span className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-white/10">
           <Icon className={icon === "early" ? "size-7 text-sky-300" : "size-7 text-rose-400"} />
@@ -169,7 +190,7 @@ function RoomAccessDenied({
 }) {
   return (
     <div className="flex min-h-svh flex-col items-center justify-center gap-8 bg-neutral-950 px-4 text-center text-white">
-      <Logo />
+      <Logo onDark className="h-9" />
       <div className="max-w-md space-y-4">
         <span className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-white/10">
           <Lock className="size-7 text-rose-400" />

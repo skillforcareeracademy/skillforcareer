@@ -152,6 +152,44 @@ export async function deleteHoliday(id: string): Promise<HolidayChangeResult> {
   return { id, classesCancelled: t.cancelled, classesRestored: t.restored };
 }
 
+/**
+ * Is this date a day the academy has closed?
+ *
+ * A "no classes" holiday stops the timetable creating classes, but a class put
+ * there by hand — or one already on the books when the holiday was added —
+ * would still email its link and open its room. The academy's rule is simpler
+ * than that: on such a day the wish goes out and nothing else does. This is the
+ * one question the reminder sweep, the learner's list and the room all ask.
+ *
+ * Takes an IST date key ("YYYY-MM-DD") and returns the holiday, or null.
+ */
+export async function closedForHoliday(dateKey: string): Promise<{ name: string } | null> {
+  const rows = await prisma.holiday.findMany({
+    where: { date: dateKeyToUtcMidnight(dateKey), noClasses: true },
+    select: { name: true, message: true },
+  });
+  const h = rows.find((r) => !needsDateCheck(r.message));
+  return h ? { name: h.name } : null;
+}
+
+/** The same question for a set of dates, in one query. */
+export async function closedDates(dateKeys: string[]): Promise<Map<string, string>> {
+  if (dateKeys.length === 0) return new Map();
+  const rows = await prisma.holiday.findMany({
+    where: {
+      noClasses: true,
+      date: { in: [...new Set(dateKeys)].map(dateKeyToUtcMidnight) },
+    },
+    select: { date: true, name: true, message: true },
+  });
+  const map = new Map<string, string>();
+  for (const r of rows) {
+    if (needsDateCheck(r.message)) continue;
+    map.set(utcMidnightToDateKey(r.date), r.name);
+  }
+  return map;
+}
+
 export interface HolidayToday {
   name: string;
   message: string | null;

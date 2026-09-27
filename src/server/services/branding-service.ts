@@ -10,6 +10,12 @@ function pick(stored: Record<string, unknown>, key: keyof Branding): string {
     : DEFAULT_BRANDING[key];
 }
 
+/** Blank is a real answer here: it means "no dark mark set, use the normal one". */
+function optional(stored: Record<string, unknown>, key: keyof Branding): string {
+  const value = stored[key];
+  return typeof value === "string" ? value.trim() : "";
+}
+
 /**
  * Branding is read on *every* request — the root layout wraps the marketing
  * site and the dashboard alike — but it only changes when an admin uploads a
@@ -45,6 +51,7 @@ export const getBranding = cache(async (): Promise<Branding> => {
     const stored = (row?.data ?? {}) as Record<string, unknown>;
     const value: Branding = {
       logoUrl: pick(stored, "logoUrl"),
+      logoDarkUrl: optional(stored, "logoDarkUrl"),
       faviconUrl: pick(stored, "faviconUrl"),
       siteName: pick(stored, "siteName"),
     };

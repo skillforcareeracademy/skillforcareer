@@ -9,12 +9,19 @@ import { DEFAULT_SETTINGS } from "@/lib/validations/settings";
  */
 export interface Branding {
   logoUrl: string;
+  /**
+   * The mark to use on a dark surface — the live class room. Blank means "use
+   * the normal one", which is right for a logo with a transparent background
+   * and wrong for one drawn in dark ink, hence the separate slot.
+   */
+  logoDarkUrl: string;
   faviconUrl: string;
   siteName: string;
 }
 
 export const DEFAULT_BRANDING: Branding = {
   logoUrl: DEFAULT_SETTINGS.logoUrl,
+  logoDarkUrl: DEFAULT_SETTINGS.logoDarkUrl,
   faviconUrl: DEFAULT_SETTINGS.faviconUrl,
   siteName: DEFAULT_SETTINGS.siteName,
 };

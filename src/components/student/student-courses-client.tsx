@@ -181,7 +181,7 @@ function CourseCard({ course, isEnrolled }: { course: Course; isEnrolled: boolea
     setLoading(true);
     try {
       await api.post("/api/enrollments", { courseId: course.id });
-      toast.success("You're enrolled! 🎉");
+      toast.success("You're enrolled.");
       router.push(`/student/learn/${course.slug}`);
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Couldn't enroll.");

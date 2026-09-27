@@ -37,6 +37,8 @@ export const registerSchema = z
     email: emailSchema,
     password: passwordSchema,
     confirmPassword: z.string(),
+    /** A friend's refer-and-earn code. Wrong codes are ignored, not refused. */
+    referralCode: z.string().trim().max(20).optional().or(z.literal("")),
   })
   .refine((d) => d.password === d.confirmPassword, {
     message: "Passwords do not match",

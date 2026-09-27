@@ -187,6 +187,12 @@ enum WalletTxnType {
   DEBIT
 }
 
+enum WithdrawalStatus {
+  PENDING
+  PAID
+  REJECTED
+}
+
 enum ReferralStatus {
   PENDING
   QUALIFIED
@@ -200,6 +206,15 @@ enum SubmissionStatus {
   GRADED
   RESUBMIT_REQUESTED
   LATE
+}
+
+enum QuestionReviewStatus {
+  /// Waiting for an admin or instructor.
+  OPEN
+  /// The learner was right and the question has been corrected.
+  RECTIFIED
+  /// The question is right as it stands.
+  INVALID
 }
 
 enum QuestionType {
@@ -313,6 +328,12 @@ model User {
   roleId String
   role   Role   @relation(fields: [roleId], references: [id], onUpdate: NoAction)
 
+  /// Birthday. The academy sends wishes and a referral voucher on the day.
+  dateOfBirth        DateTime?
+  /// When the last birthday greeting went out — one a year, however often the
+  /// morning sweep runs.
+  lastBirthdayWishAt DateTime?
+
   // Refer-and-earn
   referralCode String? @unique
 
@@ -331,51 +352,57 @@ model User {
   updatedAt   DateTime  @updatedAt
 
   // Relations
-  coursesAuthored    Course[]               @relation("CourseInstructor")
-  batchesLed         Batch[]                @relation("BatchInstructor")
-  enrollments        Enrollment[]
-  lessonProgress     LessonProgress[]
-  notes              Note[]
-  bookmarks          Bookmark[]
-  reviews            Review[]
-  discussions        Discussion[]
-  payments           Payment[]
-  wallet             Wallet?
-  referralsMade      Referral[]             @relation("Referrer")
-  referralsReceived  Referral[]             @relation("Referee")
-  assignmentsCreated Assignment[]           @relation("AssignmentCreator")
-  submissions        AssignmentSubmission[] @relation("SubmissionStudent")
-  gradedSubmissions  AssignmentSubmission[] @relation("SubmissionGrader")
-  quizzesCreated     Quiz[]                 @relation("QuizCreator")
-  quizAttempts       QuizAttempt[]
-  certificates       Certificate[]
-  notifications      Notification[]
-  activityLogs       ActivityLog[]
-  refreshTokens      RefreshToken[]
-  otpTokens          OtpToken[]
-  meetingsHosted     Meeting[]              @relation("MeetingHost")
-  meetingParts       MeetingParticipant[]
-  attendance         Attendance[]
-  liveChatMessages   LiveChatMessage[]
-  leadsAssigned      Lead[]                 @relation("LeadAssignee")
-  leadFollowUps      LeadFollowUp[]         @relation("LeadFollowUpAuthor")
-  leadDocuments      LeadDocument[]         @relation("LeadDocumentUploader")
-  leadContacts       LeadContact[]          @relation("LeadContactAgent")
-  leadsConvertedFrom Lead[]                 @relation("LeadConvertedStudent")
-  webinarsHosted     Webinar[]              @relation("WebinarHost")
-  webinarsAttended   WebinarRegistration[]  @relation("WebinarAttendee")
-  assignmentsSet     AssignmentStudent[]    @relation("AssignmentAssignee")
-  blogPosts          BlogPost[]             @relation("BlogAuthor")
-  mediaUploads       MediaFile[]            @relation("MediaUploader")
-  quizzesSet         QuizStudent[]          @relation("QuizAssignee")
-  lessonAccess       LessonAccess[]         @relation("LessonAccessUser")
-  chatMessages       ChatMessage[]          @relation("ChatMessageUser")
-  recordingAccess    RecordingAccess[]      @relation("RecordingAccessUser")
-  recordingViews     RecordingView[]        @relation("RecordingViewUser")
-  recordingDevices   RecordingDevice[]      @relation("RecordingDeviceUser")
-  extraRoles         UserRole[]             @relation("UserExtraRoles")
-  batchesAssisted    BatchInstructor[]      @relation("BatchAssociate")
-  batchNotes         BatchNote[]            @relation("BatchNoteAuthor")
+  coursesAuthored      Course[]               @relation("CourseInstructor")
+  batchesLed           Batch[]                @relation("BatchInstructor")
+  enrollments          Enrollment[]
+  lessonProgress       LessonProgress[]
+  notes                Note[]
+  bookmarks            Bookmark[]
+  reviews              Review[]
+  discussions          Discussion[]
+  payments             Payment[]
+  wallet               Wallet?
+  referralsMade        Referral[]             @relation("Referrer")
+  referralsReceived    Referral[]             @relation("Referee")
+  questionReviews      QuestionReview[]       @relation("QuestionReviewStudent")
+  questionReviewsFixed QuestionReview[]       @relation("QuestionReviewResolver")
+  assignmentsCreated   Assignment[]           @relation("AssignmentCreator")
+  submissions          AssignmentSubmission[] @relation("SubmissionStudent")
+  gradedSubmissions    AssignmentSubmission[] @relation("SubmissionGrader")
+  quizzesCreated       Quiz[]                 @relation("QuizCreator")
+  quizAttempts         QuizAttempt[]
+  certificates         Certificate[]
+  notifications        Notification[]
+  activityLogs         ActivityLog[]
+  refreshTokens        RefreshToken[]
+  otpTokens            OtpToken[]
+  meetingsHosted       Meeting[]              @relation("MeetingHost")
+  meetingParts         MeetingParticipant[]
+  attendance           Attendance[]
+  liveChatMessages     LiveChatMessage[]
+  leadsAssigned        Lead[]                 @relation("LeadAssignee")
+  leadFollowUps        LeadFollowUp[]         @relation("LeadFollowUpAuthor")
+  leadDocuments        LeadDocument[]         @relation("LeadDocumentUploader")
+  leadContacts         LeadContact[]          @relation("LeadContactAgent")
+  leadsConvertedFrom   Lead[]                 @relation("LeadConvertedStudent")
+  webinarsHosted       Webinar[]              @relation("WebinarHost")
+  webinarsAttended     WebinarRegistration[]  @relation("WebinarAttendee")
+  assignmentsSet       AssignmentStudent[]    @relation("AssignmentAssignee")
+  blogPosts            BlogPost[]             @relation("BlogAuthor")
+  mediaUploads         MediaFile[]            @relation("MediaUploader")
+  quizzesSet           QuizStudent[]          @relation("QuizAssignee")
+  lessonAccess         LessonAccess[]         @relation("LessonAccessUser")
+  chatMessages         ChatMessage[]          @relation("ChatMessageUser")
+  recordingAccess      RecordingAccess[]      @relation("RecordingAccessUser")
+  recordingViews       RecordingView[]        @relation("RecordingViewUser")
+  recordingDevices     RecordingDevice[]      @relation("RecordingDeviceUser")
+  extraRoles           UserRole[]             @relation("UserExtraRoles")
+  batchesAssisted      BatchInstructor[]      @relation("BatchAssociate")
+  batchNotes           BatchNote[]            @relation("BatchNoteAuthor")
+  withdrawals          WalletWithdrawal[]     @relation("WalletWithdrawalUser")
+  curriculums          Curriculum[]           @relation("CurriculumAuthor")
+  curriculumChanges    CurriculumChange[]     @relation("CurriculumChangeAuthor")
+  withdrawalsHandled   WalletWithdrawal[]     @relation("WalletWithdrawalAdmin")
 
   @@index([roleId])
   @@index([status])
@@ -520,19 +547,20 @@ model Course {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  chapters     Chapter[]
-  batches      Batch[]
-  enrollments  Enrollment[]
-  reviews      Review[]
-  discussions  Discussion[]
-  assignments  Assignment[]
-  quizzes      Quiz[]
-  attachments  Attachment[]
-  certificates Certificate[]
-  meetings     Meeting[]
-  payments     Payment[]
-  coupons      Coupon[]
-  leads        Lead[]
+  chapters          Chapter[]
+  batches           Batch[]
+  enrollments       Enrollment[]
+  reviews           Review[]
+  discussions       Discussion[]
+  assignments       Assignment[]
+  quizzes           Quiz[]
+  attachments       Attachment[]
+  certificates      Certificate[]
+  meetings          Meeting[]
+  payments          Payment[]
+  coupons           Coupon[]
+  leads             Lead[]
+  curriculumCourses CurriculumCourse[]
 
   @@index([categoryId])
   @@index([instructorId])
@@ -556,17 +584,18 @@ model Batch {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  course          Course            @relation(fields: [courseId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  instructor      User?             @relation("BatchInstructor", fields: [instructorId], references: [id], onUpdate: NoAction)
-  enrollments     Enrollment[]
-  meetings        Meeting[]
-  attendance      Attendance[]
-  assignments     AssignmentBatch[]
-  quizzes         QuizBatch[]
-  lessonAccess    LessonAccess[]
-  recordingAccess RecordingAccess[]
-  associates      BatchInstructor[]
-  notes           BatchNote[]
+  course            Course            @relation(fields: [courseId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  instructor        User?             @relation("BatchInstructor", fields: [instructorId], references: [id], onUpdate: NoAction)
+  enrollments       Enrollment[]
+  meetings          Meeting[]
+  attendance        Attendance[]
+  assignments       AssignmentBatch[]
+  quizzes           QuizBatch[]
+  lessonAccess      LessonAccess[]
+  recordingAccess   RecordingAccess[]
+  associates        BatchInstructor[]
+  notes             BatchNote[]
+  curriculumBatches CurriculumBatch[]
 
   @@index([courseId])
   @@index([instructorId])
@@ -996,6 +1025,17 @@ model Quiz {
   /// once the paper is submitted.
   showAnswerPerQuestion Boolean @default(false)
 
+  /// Seconds allowed on each question, independent of `timeLimitMinutes` (the
+  /// whole paper). Null = no per-question limit. With one set the paper is sat
+  /// one question at a time; the academy can use either clock, or both.
+  perQuestionSeconds Int?
+
+  /// The quiz's permanent number, handed out when it is created and never
+  /// changed — "Quiz number can not be changed". It is how the academy refers
+  /// to a paper between themselves; `sequence` below is the order learners work
+  /// through, and that can be rearranged.
+  quizNo Int @default(0)
+
   /// Grouping. A quiz sits in a category and, optionally, one of its
   /// sub-categories; `sequence` is its number inside that group and is what the
   /// list is ordered by, so "Quiz 1, Quiz 2, Quiz 3" is the academy's own order
@@ -1011,10 +1051,11 @@ model Quiz {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  course    Course?       @relation(fields: [courseId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  lesson    Lesson?       @relation(fields: [lessonId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  createdBy User          @relation("QuizCreator", fields: [createdById], references: [id], onUpdate: NoAction)
+  course    Course?          @relation(fields: [courseId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  lesson    Lesson?          @relation(fields: [lessonId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  createdBy User             @relation("QuizCreator", fields: [createdById], references: [id], onUpdate: NoAction)
   questions Question[]
+  reviews   QuestionReview[]
   attempts  QuizAttempt[]
   batches   QuizBatch[]
   students  QuizStudent[]
@@ -1029,6 +1070,43 @@ model Quiz {
   @@index([createdById])
   @@index([categoryId])
   @@index([subCategoryId])
+}
+
+/// A learner's "this question looks wrong" — raised from the quiz, answered by
+/// an admin or the course's instructor.
+///
+/// The academy wanted it to work like a support ticket: the learner gets a
+/// reference number (SFC2001, SFC2002, …) and a message the moment they raise
+/// it, the teaching team gets an email and a dashboard message, and the reply
+/// goes back to the learner the same two ways.
+model QuestionReview {
+  id           String               @id @default(cuid())
+  /// The reference the learner is given, e.g. "SFC2001".
+  ref          String
+  quizId       String
+  questionId   String
+  studentId    String
+  /// What the learner says is wrong. Optional — some just flag the question.
+  message      String?              @db.Text
+  status       QuestionReviewStatus @default(OPEN)
+  /// What the admin or instructor wrote back.
+  reply        String?              @db.Text
+  resolvedById String?
+  resolvedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  quiz       Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  student    User     @relation("QuestionReviewStudent", fields: [studentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  resolvedBy User?    @relation("QuestionReviewResolver", fields: [resolvedById], references: [id], onUpdate: NoAction)
+
+  @@index([quizId])
+  @@index([questionId])
+  @@index([studentId])
+  @@index([status])
+  @@index([ref])
 }
 
 /// A quiz group, two levels deep: a row with no `parentId` is a category, one
@@ -1126,6 +1204,7 @@ model Question {
   quiz      Quiz             @relation(fields: [quizId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   options   QuestionOption[]
   responses QuizResponse[]
+  reviews   QuestionReview[]
 
   @@index([quizId])
 }
@@ -1362,6 +1441,31 @@ model WalletTransaction {
   @@index([walletId])
 }
 
+/// Money going out of a wallet: the learner asks, an admin pays it and marks it
+/// here. The balance is held the moment the request is made, and given back if
+/// the request is turned down.
+model WalletWithdrawal {
+  id            String           @id @default(cuid())
+  userId        String
+  amount        Decimal          @db.Decimal(10, 2)
+  status        WithdrawalStatus @default(PENDING)
+  /// Where the learner wants it — a UPI id, or bank details, as they typed it.
+  payoutNote    String?          @db.Text
+  /// What the admin wrote when paying or refusing it.
+  adminNote     String?          @db.Text
+  processedById String?
+  processedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user        User  @relation("WalletWithdrawalUser", fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  processedBy User? @relation("WalletWithdrawalAdmin", fields: [processedById], references: [id], onUpdate: NoAction)
+
+  @@index([userId])
+  @@index([status])
+}
+
 model Referral {
   id           String         @id @default(cuid())
   referrerId   String
@@ -1379,6 +1483,93 @@ model Referral {
   @@index([referrerId])
   @@index([refereeId])
   @@index([code])
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// CURRICULUM
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// A curriculum the academy publishes to its learners: what a course covers,
+/// in the academy's own words, for a given year.
+///
+/// One curriculum can be set for several courses and several batches at once
+/// ("I can select it is for which course, which batch. I can tick all also"),
+/// and only learners on those courses or in those batches see it. `number` is
+/// handed out once and never changes; `sequence` is the order they are listed
+/// in, and can be rearranged.
+model Curriculum {
+  id          String  @id @default(cuid())
+  number      Int     @default(0)
+  sequence    Int     @default(0)
+  title       String
+  /// "2026", "2026-27" — whatever the academy writes on it.
+  year        String?
+  createdById String
+  /// Off keeps it out of sight while it is being written.
+  isPublished Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  createdBy User               @relation("CurriculumAuthor", fields: [createdById], references: [id], onUpdate: NoAction)
+  tabs      CurriculumTab[]
+  courses   CurriculumCourse[]
+  batches   CurriculumBatch[]
+  changes   CurriculumChange[]
+
+  @@index([createdById])
+}
+
+/// One section of a curriculum — a heading and what sits under it.
+model CurriculumTab {
+  id           String  @id @default(cuid())
+  curriculumId String
+  heading      String
+  description  String? @db.Text
+  order        Int     @default(0)
+
+  curriculum Curriculum @relation(fields: [curriculumId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([curriculumId])
+}
+
+model CurriculumCourse {
+  id           String @id @default(cuid())
+  curriculumId String
+  courseId     String
+
+  curriculum Curriculum @relation(fields: [curriculumId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  course     Course     @relation(fields: [courseId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([curriculumId])
+  @@index([courseId])
+}
+
+model CurriculumBatch {
+  id           String @id @default(cuid())
+  curriculumId String
+  batchId      String
+
+  curriculum Curriculum @relation(fields: [curriculumId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  batch      Batch      @relation(fields: [batchId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([curriculumId])
+  @@index([batchId])
+}
+
+/// What changed, when, and who did it — "record of changes in the curriculum
+/// should be maintained".
+model CurriculumChange {
+  id           String   @id @default(cuid())
+  curriculumId String
+  summary      String   @db.Text
+  byId         String?
+  createdAt    DateTime @default(now())
+
+  curriculum Curriculum @relation(fields: [curriculumId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  by         User?      @relation("CurriculumChangeAuthor", fields: [byId], references: [id], onUpdate: NoAction)
+
+  @@index([curriculumId])
 }
 
 // ══════════════════════════════════════════════════════════════════════════════

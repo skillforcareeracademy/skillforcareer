@@ -112,19 +112,28 @@ export function LiveRoom({
   isHost,
   token,
   signalUrl,
+  autoJoin = false,
 }: {
   meeting: Meeting;
   me: Me;
   isHost: boolean;
   token: string;
   signalUrl: string;
+  /**
+   * Skip the lobby and join on arrival — what a click on the class link in an
+   * email means. Mic and camera still start in whatever state the room's own
+   * controls say; nothing is published before the browser grants them.
+   */
+  autoJoin?: boolean;
 }) {
   const router = useRouter();
   const selfVideoRef = useRef<HTMLVideoElement>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
 
-  const [joined, setJoined] = useState(false);
+  // A cancelled class has its own screen; anything else opens straight into the
+  // room when the link said so.
+  const [joined, setJoined] = useState(autoJoin && meeting.status !== "CANCELLED");
   const [elapsed, setElapsed] = useState(0);
   const [panel, setPanel] = useState<"chat" | "people" | null>(null);
   const [draft, setDraft] = useState("");
@@ -367,7 +376,7 @@ export function LiveRoom({
           >
             <ArrowLeft className="size-5" />
           </Button>
-          <Logo href="/" />
+          <Logo href="/" onDark className="h-8 max-w-[150px]" />
         </header>
 
         <div className="relative flex flex-1 items-center justify-center p-4 sm:p-6">
@@ -510,7 +519,9 @@ export function LiveRoom({
       {/* Header */}
       <header className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 px-3 py-2.5 sm:px-4 sm:py-3">
         <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-          <Logo href="/" showText={false} />
+          {/* Small on purpose: this row also carries the class title, the REC
+              dot and the controls. */}
+          <Logo href="/" showText={false} onDark className="h-7 max-w-[120px]" />
           <span className="truncate text-sm font-semibold sm:text-base">{meeting.title}</span>
           {recording && (
             <span className="flex shrink-0 items-center gap-1.5 text-xs text-rose-300">
@@ -708,7 +719,7 @@ export function LiveRoom({
               <>
                 <div className="flex-1 space-y-3 overflow-y-auto p-4">
                   {messages.length === 0 ? (
-                    <p className="text-center text-xs text-white/40">No messages yet. Say hello 👋</p>
+                    <p className="text-center text-xs text-white/40">No messages yet — say hello.</p>
                   ) : (
                     messages.map((m) => (
                       <div key={m.id} className={cn("text-sm", m.me && "text-right")}>
@@ -1105,7 +1116,7 @@ function RoomMessage({
       className="fixed inset-0 flex flex-col items-center justify-center gap-6 bg-neutral-950 px-4 text-center text-white"
       data-testid="room-message"
     >
-      <Logo />
+      <Logo onDark className="h-9" />
       <span className="flex size-14 items-center justify-center rounded-2xl bg-white/10">{icon}</span>
       <div className="max-w-md space-y-3">
         <h1 className="text-2xl font-semibold">{title}</h1>

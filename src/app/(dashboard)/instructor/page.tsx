@@ -116,7 +116,7 @@ export default async function InstructorHome() {
           </CardHeader>
           <CardContent>
             {grading.length === 0 ? (
-              <p className="text-muted-foreground py-6 text-center text-sm">Nothing to grade — you&apos;re all caught up. 🎉</p>
+              <p className="text-muted-foreground py-6 text-center text-sm">Nothing to grade — you&apos;re all caught up.</p>
             ) : (
               <ul className="space-y-3">
                 {grading.map((g) => (

@@ -63,6 +63,8 @@ import {
 interface QuizRow {
   id: string;
   title: string;
+  /** Permanent, never renumbered. */
+  quizNo: number;
   sequence: number;
   courseId: string | null;
   courseTitle: string | null;
@@ -373,6 +375,17 @@ export function QuizzesClient({
       },
     },
     {
+      key: "quizNo",
+      header: "Quiz no.",
+      headerClassName: "w-24",
+      className: "tabular-nums",
+      cell: (z) => (
+        <span className="text-muted-foreground text-sm">
+          {z.quizNo > 0 ? `Q${z.quizNo}` : "—"}
+        </span>
+      ),
+    },
+    {
       key: "title",
       header: "Quiz",
       cell: (z) => (
@@ -475,6 +488,9 @@ export function QuizzesClient({
               {z.sequence > 0 && <span className="text-muted-foreground">{z.sequence}. </span>}
               {z.title}
             </p>
+            {z.quizNo > 0 && (
+              <p className="text-muted-foreground text-[11px]">Quiz no. Q{z.quizNo}</p>
+            )}
             <p className="text-muted-foreground truncate text-xs">
               {z.categoryName
                 ? `${z.categoryName}${z.subCategoryName ? ` · ${z.subCategoryName}` : ""}`

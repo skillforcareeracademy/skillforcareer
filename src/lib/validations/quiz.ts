@@ -43,6 +43,8 @@ export const updateQuizSchema = z.object({
     .optional()
     .or(z.literal("")),
   timeLimitMinutes: z.coerce.number().int().min(1).max(1440).optional(),
+  /** Seconds per question. Independent of the whole-paper clock above. */
+  perQuestionSeconds: z.coerce.number().int().min(5).max(600).optional(),
   passingScore: z.coerce.number().int().min(0).max(100).default(60),
   gradingMode: z.enum(GRADING_MODES).default("AUTO"),
   /** 0 = unlimited, falling back to the platform default in Settings. */

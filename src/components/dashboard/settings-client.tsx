@@ -284,6 +284,17 @@ export function SettingsClient({
                     onChange={(v) => set("contactPhone", v)}
                   />
                 </Field>
+                <Field
+                  label="WhatsApp number"
+                  htmlFor="whatsappNumber"
+                  hint="Used by the WhatsApp button in the phone navigation. Blank uses the contact phone."
+                >
+                  <PhoneInput
+                    id="whatsappNumber"
+                    value={form.whatsappNumber}
+                    onChange={(v) => set("whatsappNumber", v)}
+                  />
+                </Field>
                 <Field label="Default currency">
                   <Select
                     value={form.currency}
@@ -357,6 +368,18 @@ export function SettingsClient({
                   label="logo"
                   value={form.logoUrl}
                   onChange={(url) => set("logoUrl", url)}
+                />
+              </Field>
+              <Separator />
+              <Field
+                label="Logo for dark backgrounds"
+                hint="Optional. Used in the live class room, where the screen is black — a logo drawn in dark ink needs a light version (a white circular mark works well). Left empty, the normal logo is used."
+              >
+                <ImageUpload
+                  label="dark logo"
+                  value={form.logoDarkUrl}
+                  onChange={(url) => set("logoDarkUrl", url)}
+                  previewClassName="bg-neutral-900"
                 />
               </Field>
               <Separator />

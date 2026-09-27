@@ -1,4 +1,4 @@
-import { UserPlus, CreditCard, GraduationCap, type LucideIcon } from "lucide-react";
+import { UserPlus, CreditCard, GraduationCap, ClipboardList, type LucideIcon } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { EmptyState } from "@/components/shared/empty-state";
 
@@ -7,13 +7,15 @@ export interface ActivityFeedItem {
   title: string;
   subtitle: string;
   at: string;
-  kind: "user" | "payment" | "enrollment";
+  kind: "user" | "payment" | "enrollment" | "registration";
 }
 
 const ICONS: Record<ActivityFeedItem["kind"], LucideIcon> = {
   user: UserPlus,
   payment: CreditCard,
   enrollment: GraduationCap,
+  // A seat taken but not yet paid for — a clipboard, not a graduation cap.
+  registration: ClipboardList,
 };
 
 export function RecentActivity({ items }: { items: ActivityFeedItem[] }) {
@@ -21,7 +23,7 @@ export function RecentActivity({ items }: { items: ActivityFeedItem[] }) {
     return (
       <EmptyState
         title="No activity yet"
-        description="New signups, enrollments and payments will show up here."
+        description="New signups, registrations, enrollments and payments will show up here."
         className="border-0 bg-transparent py-8"
       />
     );

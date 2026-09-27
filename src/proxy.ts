@@ -30,6 +30,19 @@ const SECTION_ROLES: Record<string, Role[]> = {
   "/student": [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.STUDENT],
 };
 
+/**
+ * Pages that need a signed-in user but belong to no panel. Without these, the
+ * page's own `requireUser()` bounced to a bare /login and the visitor landed on
+ * their dashboard — which is what happens when somebody opens the class link
+ * from their email ("agar hum login is link k through kr rhe hain to direct
+ * meet start hona chahiye"). Listed here, they come back to the link.
+ */
+const AUTH_ONLY_PREFIXES = ["/live/room"];
+
+function needsSignIn(pathname: string): boolean {
+  return AUTH_ONLY_PREFIXES.some((base) => pathname === base || pathname.startsWith(`${base}/`));
+}
+
 function sectionFor(pathname: string): string | null {
   return (
     Object.keys(SECTION_ROLES).find(
@@ -48,11 +61,16 @@ export async function proxy(req: NextRequest) {
   if (pathname.startsWith("/api/auth/")) return NextResponse.next();
 
   const section = sectionFor(pathname);
+  const guarded = section !== null || needsSignIn(pathname);
 
   const toLogin = () => {
     const url = req.nextUrl.clone();
     url.pathname = "/login";
-    url.searchParams.set("next", pathname);
+    // Carry the whole destination, query string included — the class link's
+    // own `?join=1` is what takes the learner straight into the room.
+    const destination = `${pathname}${req.nextUrl.search}`;
+    url.search = "";
+    url.searchParams.set("next", destination);
     const res = NextResponse.redirect(url);
     // The refresh token is spent — drop both so we don't retry it every request.
     res.cookies.delete(ACCESS_TOKEN_COOKIE);
@@ -72,13 +90,13 @@ export async function proxy(req: NextRequest) {
 
   const refreshToken = req.cookies.get(REFRESH_TOKEN_COOKIE)?.value;
   if (!refreshToken) {
-    return section ? toLogin() : NextResponse.next();
+    return guarded ? toLogin() : NextResponse.next();
   }
 
   const renewed = await renewFromRefreshToken(refreshToken);
   if (!renewed) {
     // Genuinely signed out: token revoked, lapsed, or unknown to the DB.
-    return section ? toLogin() : NextResponse.next();
+    return guarded ? toLogin() : NextResponse.next();
   }
 
   // Hand the fresh token to the app *within this same request*, so the Server
@@ -135,6 +153,9 @@ export const config = {
     "/admin/:path*",
     "/instructor/:path*",
     "/student/:path*",
+    // The live class room: signed in only, and a signed-out visitor has to come
+    // back here afterwards — it is the link inside the class email.
+    "/live/:path*",
     // Renewal only (no role gate) — keeps client-side fetches from 401-ing once
     // the access token lapses while a tab sits open.
     "/api/:path*",

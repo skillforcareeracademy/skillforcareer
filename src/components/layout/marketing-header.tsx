@@ -38,6 +38,7 @@ export async function MarketingHeader() {
     signInHref,
     ctaLabel,
     ctaHref,
+    ctaOpensEnquiry,
     enquiryLabel,
   } = section.data;
 
@@ -95,11 +96,16 @@ export async function MarketingHeader() {
                   {signInLabel}
                 </ButtonLink>
               )}
-              {ctaLabel.trim() && (
-                <ButtonLink href={ctaHref || "/register"} size="sm">
-                  {ctaLabel}
-                </ButtonLink>
-              )}
+              {ctaLabel.trim() &&
+                (ctaOpensEnquiry ? (
+                  // The academy's main button is a conversation, not a sign-up
+                  // wall: it opens the same callback popup as the course pages.
+                  <EnquiryDialog trigger={<Button size="sm">{ctaLabel}</Button>} />
+                ) : (
+                  <ButtonLink href={ctaHref || "/register"} size="sm">
+                    {ctaLabel}
+                  </ButtonLink>
+                ))}
             </>
           )}
         </div>

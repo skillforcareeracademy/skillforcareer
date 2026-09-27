@@ -17,6 +17,7 @@ import {
   addDaysToKey,
 } from "@/lib/ist";
 import { isJoinLinkOpen, joinLinkOpensAt, JOIN_LINK_LEAD_HOURS } from "@/lib/class-link";
+import { closedDates } from "./holiday-service";
 import { needsDateCheck, stripDateCheck } from "@/lib/validations/holiday";
 import { notify } from "./notification-service";
 
@@ -310,7 +311,13 @@ export type ClassEvent =
   | { kind: "ended" };
 
 const isOffline = (c: ClassSnapshot) => c.provider === "offline";
-const roomUrl = (c: ClassSnapshot) => `${APP_URL}/live/room/${c.roomCode}`;
+/**
+ * `join=1` so the link out of an email opens the class itself rather than the
+ * lobby — the academy's "agar hum login is link k through kr rhe hain to direct
+ * meet start hona chahiye". A signed-out click goes through /login and comes
+ * back here with the flag intact (see `proxy.ts`).
+ */
+const roomUrl = (c: ClassSnapshot) => `${APP_URL}/live/room/${c.roomCode}?join=1`;
 
 interface EventCopy {
   subject: string;
@@ -662,6 +669,8 @@ export interface ReminderRunResult {
   classes: number;
   emailsSent: number;
   emailsFailed: number;
+  /** Classes left alone because the academy is closed that day. */
+  skippedForHoliday: number;
 }
 
 function reminderEmail(person: Person, c: ClassSnapshot, forTeam: boolean) {
@@ -720,13 +729,22 @@ export async function sendClassReminders(now: Date = new Date()): Promise<Remind
     select: SNAPSHOT_SELECT,
   });
 
-  const result: ReminderRunResult = { classes: 0, emailsSent: 0, emailsFailed: 0 };
+  const result: ReminderRunResult = { classes: 0, emailsSent: 0, emailsFailed: 0, skippedForHoliday: 0 };
+  // Nothing goes out for a class sitting on a day the academy has closed — no
+  // reminder, and no link inside one ("holiday wale din ... class ka email bhi
+  // nhi jaana chahiye"). The festival wishes go instead, from the next step.
+  const closed = await closedDates(due.map((row) => istDateKey(row.scheduledStart)));
+
   for (const row of due) {
     const c = toSnapshot(row);
     const claimed = await prisma.$executeRaw`
       UPDATE Meeting SET reminderSentAt = ${now}, updatedAt = ${now}
        WHERE id = ${c.id} AND reminderSentAt IS NULL`;
     if (!claimed) continue;
+    if (closed.has(istDateKey(c.scheduledStart))) {
+      result.skippedForHoliday += 1;
+      continue;
+    }
     result.classes += 1;
 
     try {

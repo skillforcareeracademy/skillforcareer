@@ -22,6 +22,7 @@ import {
   type ReminderRunResult,
   type WishesRunResult,
 } from "./class-notifications";
+import { sendBirthdayGreetings, type BirthdayRunResult } from "./referral-service";
 
 /**
  * A batch's class timetable.
@@ -919,6 +920,7 @@ export interface DailyClassJobsResult {
   timetables: { batches: number; created: number; removed: number; holidayCancelled: number } | null;
   reminders: ReminderRunResult | null;
   wishes: WishesRunResult | null;
+  birthdays: BirthdayRunResult | null;
   errors: string[];
 }
 
@@ -956,7 +958,13 @@ async function syncRunningTimetables(now: Date): Promise<NonNullable<DailyClassJ
 
 /** The morning job: timetables, then tomorrow's reminders, then festival wishes. */
 export async function runDailyClassJobs(now: Date = new Date()): Promise<DailyClassJobsResult> {
-  const result: DailyClassJobsResult = { timetables: null, reminders: null, wishes: null, errors: [] };
+  const result: DailyClassJobsResult = {
+    timetables: null,
+    reminders: null,
+    wishes: null,
+    birthdays: null,
+    errors: [],
+  };
   const step = async <T>(name: string, fn: () => Promise<T>): Promise<T | null> => {
     try {
       return await fn();
@@ -970,5 +978,8 @@ export async function runDailyClassJobs(now: Date = new Date()): Promise<DailyCl
   result.timetables = await step("timetables", () => syncRunningTimetables(now));
   result.reminders = await step("reminders", () => sendClassReminders(now));
   result.wishes = await step("wishes", () => sendFestivalWishes(now));
+  // Birthdays ride along with the morning sweep — it is the one job that runs
+  // every day, and a greeting is only worth anything on the day itself.
+  result.birthdays = await step("birthdays", () => sendBirthdayGreetings(now));
   return result;
 }

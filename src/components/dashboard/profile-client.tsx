@@ -83,6 +83,7 @@ export function ProfileClient({ profile }: { profile: Profile }) {
   const router = useRouter();
   const [avatarUrl, setAvatarUrl] = useState(profile.avatarUrl ?? "");
   const [phone, setPhone] = useState(profile.phone ?? "");
+  const [dateOfBirth, setDateOfBirth] = useState(profile.dateOfBirth ?? "");
   const [timezone, setTimezone] = useState(profile.timezone || "Asia/Kolkata");
   const [locale, setLocale] = useState(profile.locale || "en");
   const [savingProfile, setSavingProfile] = useState(false);
@@ -108,6 +109,7 @@ export function ProfileClient({ profile }: { profile: Profile }) {
       await api.patch("/api/profile", {
         name: v.name,
         phone,
+        dateOfBirth,
         headline: v.headline,
         bio: v.bio,
         avatarUrl,
@@ -169,6 +171,17 @@ export function ProfileClient({ profile }: { profile: Profile }) {
                   </Field>
                   <Field label="Phone" htmlFor="phone">
                     <PhoneInput id="phone" value={phone} onChange={setPhone} />
+                  </Field>
+                  {/* Birthday — the academy sends wishes and a referral
+                      voucher on the day. */}
+                  <Field label="Date of birth" htmlFor="dateOfBirth">
+                    <Input
+                      id="dateOfBirth"
+                      type="date"
+                      value={dateOfBirth}
+                      max={new Date().toISOString().slice(0, 10)}
+                      onChange={(e) => setDateOfBirth(e.target.value)}
+                    />
                   </Field>
                 </div>
 

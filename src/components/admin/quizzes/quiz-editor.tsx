@@ -67,6 +67,7 @@ interface Quiz {
   description: string | null;
   courseId: string | null;
   timeLimitMinutes: number | null;
+  perQuestionSeconds: number | null;
   passingScore: number;
   gradingMode: string;
   maxAttempts: number;
@@ -76,6 +77,8 @@ interface Quiz {
   categoryId: string | null;
   subCategoryId: string | null;
   sequence: number;
+  /** Permanent, never renumbered — the academy's handle on this paper. */
+  quizNo: number;
   isPublished: boolean;
   releaseAt: string;
   batchIds: string[];
@@ -130,6 +133,7 @@ export function QuizEditor({
     description: quiz.description ?? "",
     courseId: quiz.courseId ?? "",
     timeLimitMinutes: quiz.timeLimitMinutes != null ? String(quiz.timeLimitMinutes) : "",
+    perQuestionSeconds: quiz.perQuestionSeconds != null ? String(quiz.perQuestionSeconds) : "",
     passingScore: String(quiz.passingScore),
     gradingMode: quiz.gradingMode,
     maxAttempts: String(quiz.maxAttempts),
@@ -249,6 +253,7 @@ export function QuizEditor({
         description: form.description || undefined,
         courseId: form.courseId || undefined,
         timeLimitMinutes: form.timeLimitMinutes ? Number(form.timeLimitMinutes) : undefined,
+        perQuestionSeconds: form.perQuestionSeconds ? Number(form.perQuestionSeconds) : undefined,
         passingScore: Number(form.passingScore) || 0,
         gradingMode: form.gradingMode,
         maxAttempts: Number(form.maxAttempts) || 0,
@@ -318,7 +323,7 @@ export function QuizEditor({
         </Link>
         <PageHeader
           title={quiz.sequence > 0 ? `${quiz.sequence}. ${quiz.title}` : quiz.title}
-          description={quiz.isPublished ? "Published" : "Draft"}
+          description={`${quiz.quizNo > 0 ? `Quiz no. Q${quiz.quizNo} · ` : ""}${quiz.isPublished ? "Published" : "Draft"}`}
           actions={
             <Button
               variant={quiz.isPublished ? "outline" : "default"}
@@ -497,7 +502,7 @@ export function QuizEditor({
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="q-time">Time (min)</Label>
+                <Label htmlFor="q-time">Whole quiz (min)</Label>
                 <Input
                   id="q-time"
                   type="number"
@@ -507,6 +512,27 @@ export function QuizEditor({
                   placeholder="none"
                 />
               </div>
+            </div>
+            {/* Two clocks, either or both — the academy's own wording: "per
+                question ka time bhi hona chahiye aur puri quiz ka total time
+                bhi ... admin ki choice hai". A per-question limit paces the
+                paper one question at a time. */}
+            <div className="space-y-1.5">
+              <Label htmlFor="q-perq">Each question (sec)</Label>
+              <Input
+                id="q-perq"
+                type="number"
+                min={5}
+                max={600}
+                value={form.perQuestionSeconds}
+                onChange={(e) => set("perQuestionSeconds", e.target.value)}
+                placeholder="none"
+              />
+              <p className="text-muted-foreground text-xs">
+                {form.perQuestionSeconds
+                  ? "Learners get one question at a time, and it locks when its seconds run out."
+                  : "Leave blank for no per-question limit. Set both clocks if you want each."}
+              </p>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">

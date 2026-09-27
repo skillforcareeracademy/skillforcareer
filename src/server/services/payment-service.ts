@@ -1,10 +1,10 @@
-import { randomBytes } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { notify, notifyStaff } from "./notification-service";
 import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
 import { bumpCourseEnrollmentCount } from "@/server/repositories/counters";
 import { validateCoupon } from "@/server/services/coupon-service";
+import { rewardReferralFor } from "@/server/services/referral-service";
 import { getRazorpayAccount } from "@/server/services/payment-account-service";
 import { getSettings } from "@/server/services/settings-service";
 import { ACTIVITY_ACTIONS, logActivity } from "@/server/services/activity-service";
@@ -23,19 +23,41 @@ import type { RecordPaymentInput, RefundInput } from "@/lib/validations/payment"
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Shared with the lead-payment flow, which raises its own invoices. */
-export async function uniqueInvoice(year: number): Promise<string> {
-  for (let i = 0; i < 50; i += 1) {
-    const n = randomBytes(3).readUIntBE(0, 3) % 1_000_000;
-    const invoice = `INV-${year}-${String(n).padStart(6, "0")}`;
+/**
+ * The academy's invoice numbers: SFC0001, SFC0002, … — the client's own
+ * numbering ("invoice number SFC0003 hona chahiye"), running in one sequence
+ * rather than per year, so an invoice can be quoted over the phone.
+ *
+ * The next number is read from the highest one already issued and checked for
+ * a clash before it is used, which is what makes two admissions taken at the
+ * same second land on different invoices. Shared with the lead-payment flow,
+ * which raises its own invoices.
+ */
+export const INVOICE_PREFIX = "SFC";
+
+export async function uniqueInvoice(_year?: number): Promise<string> {
+  void _year; // the numbering no longer restarts each year
+  const rows = await prisma.$queryRaw<{ maxNo: bigint | number | null }[]>`
+    SELECT MAX(CAST(SUBSTRING(invoiceNumber, ${INVOICE_PREFIX.length + 1}) AS UNSIGNED)) AS maxNo
+    FROM Payment
+    WHERE invoiceNumber LIKE ${`${INVOICE_PREFIX}%`}
+  `;
+  let seq = Number(rows[0]?.maxNo ?? 0) + 1;
+
+  for (let i = 0; i < 50; i += 1, seq += 1) {
+    const invoice = invoiceNoFor(seq);
     const clash = await prisma.payment.findUnique({
       where: { invoiceNumber: invoice },
       select: { id: true },
     });
     if (!clash) return invoice;
   }
-  return `INV-${year}-${Date.now().toString().slice(-8)}`;
+  // Fifty taken in a row means something is very wrong with the sequence; fall
+  // back to something unique rather than failing the payment.
+  return `${INVOICE_PREFIX}${Date.now().toString().slice(-8)}`;
 }
+
+export const invoiceNoFor = (seq: number) => `${INVOICE_PREFIX}${String(seq).padStart(4, "0")}`;
 
 const num = (d: Prisma.Decimal) => d.toNumber();
 
@@ -298,6 +320,8 @@ export async function recordPayment(input: RecordPaymentInput): Promise<string> 
         actionUrl: "/admin/payments",
       }),
     ]);
+    // Same rule as the online path: money in means the referral has earned out.
+    void rewardReferralFor(input.userId, payment.id);
   }
 
   // EMI → generate a monthly instalment schedule.
@@ -636,6 +660,8 @@ export async function fulfillPaidCheckout(
       await bumpCourseEnrollmentCount(payment.courseId, 1);
     }
     await prisma.payment.update({ where: { id: paymentId }, data: { enrollmentId } });
+    // Whoever referred this learner gets paid now that the academy has been.
+    void rewardReferralFor(payment.userId, payment.id);
   }
   if (payment.couponId) {
     await prisma.coupon.update({ where: { id: payment.couponId }, data: { usedCount: { increment: 1 } } });

@@ -8,6 +8,8 @@ export interface Profile {
   name: string;
   email: string;
   phone: string | null;
+  /** "YYYY-MM-DD", or "" when the learner hasn't given one. */
+  dateOfBirth: string;
   headline: string | null;
   bio: string | null;
   avatarUrl: string | null;
@@ -31,6 +33,8 @@ export async function getProfile(userId: string): Promise<Profile> {
     name: u.name,
     email: u.email,
     phone: u.phone,
+    /** "YYYY-MM-DD" for the date input, or "" when it isn't set. */
+    dateOfBirth: u.dateOfBirth ? u.dateOfBirth.toISOString().slice(0, 10) : "",
     headline: u.headline,
     bio: u.bio,
     avatarUrl: u.avatarUrl,
@@ -52,6 +56,8 @@ export async function updateProfile(
     data: {
       name: input.name,
       phone: input.phone || null,
+      // Stored at UTC midnight so the day never shifts when it is read back.
+      dateOfBirth: input.dateOfBirth ? new Date(`${input.dateOfBirth}T00:00:00Z`) : null,
       headline: input.headline || null,
       bio: input.bio || null,
       avatarUrl: input.avatarUrl || null,

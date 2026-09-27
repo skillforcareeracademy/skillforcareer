@@ -7,6 +7,7 @@ import {
   listCoursesForSelect,
   listBatchesForSelect,
   backfillQuizSequences,
+  backfillQuizNumbers,
 } from "@/server/services/quiz-service";
 import { listQuizCategoryOptions } from "@/server/services/quiz-category-service";
 import { QuizzesClient } from "@/components/admin/quizzes/quizzes-client";
@@ -38,7 +39,7 @@ export default async function InstructorQuizzesPage({
     ownerId: user.id,
   };
 
-  await backfillQuizSequences();
+  await Promise.all([backfillQuizSequences(), backfillQuizNumbers()]);
 
   const [{ quizzes, total }, stats, courses, batches, categories] = await Promise.all([
     listQuizzesAdmin(query),

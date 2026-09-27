@@ -4,6 +4,13 @@ import { passwordSchema } from "./auth";
 export const updateProfileSchema = z.object({
   name: z.string().trim().min(2, "Enter your full name").max(80),
   phone: z.string().trim().max(20).optional().or(z.literal("")),
+  /** Birthday, "YYYY-MM-DD". The academy sends wishes and a voucher on the day. */
+  dateOfBirth: z
+    .string()
+    .trim()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Use the date picker")
+    .optional()
+    .or(z.literal("")),
   headline: z.string().trim().max(120).optional().or(z.literal("")),
   bio: z.string().trim().max(500).optional().or(z.literal("")),
   // Accepts an uploaded path (/api/files/…) or an external URL.

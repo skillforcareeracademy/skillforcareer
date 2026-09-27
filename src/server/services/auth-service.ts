@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { prisma } from "@/lib/prisma";
+import { attachReferral } from "./referral-service";
 import { hashPassword, verifyPassword, needsRehash } from "@/lib/auth/password";
 import { signAuthTokens, verifyToken } from "@/lib/auth/jwt";
 import { hashRefreshToken } from "@/lib/auth/renew";
@@ -242,6 +243,8 @@ export async function register(input: {
   name: string;
   email: string;
   password: string;
+  /** Somebody's refer-and-earn code, if they arrived with one. */
+  referralCode?: string;
 }): Promise<{ email: string; code: string }> {
   // Registration never needs the caller's permissions — a plain lookup is enough.
   const existing = await prisma.user.findUnique({
@@ -280,6 +283,12 @@ export async function register(input: {
       },
       select: { id: true, email: true, name: true },
     });
+  }
+
+  // Remembered now, paid when they enrol — a code typed at sign-up is the only
+  // moment we can be sure whose it was.
+  if (input.referralCode?.trim()) {
+    void attachReferral(input.referralCode, user.id).catch(() => undefined);
   }
 
   const code = await createAndSendOtp(user.id, user.email, "verify-email", user.name);
@@ -479,8 +488,13 @@ async function touchLogin(userId: string, passwordHash?: string): Promise<void> 
   `;
 }
 
-/** A second sign-in code for the same address inside this window is not sent. */
-const LOGIN_CODE_COOLDOWN_MS = 5 * 60_000;
+/**
+ * A second sign-in code for the same address inside this window is not sent.
+ * Thirty seconds, at the academy's asking: long enough to stop a button being
+ * hammered, short enough that a code lost to a slow inbox isn't a five-minute
+ * wait. The code itself still lives ten minutes.
+ */
+const LOGIN_CODE_COOLDOWN_MS = 30_000;
 
 /**
  * Email a one-time sign-in code — the "Email code" option on the apps'

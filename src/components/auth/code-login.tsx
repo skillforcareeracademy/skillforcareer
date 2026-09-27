@@ -12,13 +12,14 @@ import { OtpInput } from "./otp-input";
 import { SubmitButton } from "./submit-button";
 
 /**
- * Seconds before "Resend code" comes back — five minutes, the same as the
- * server, which won't email another code sooner. A code stays valid for ten.
+ * Seconds before "Resend code" comes back — thirty, the same as the server,
+ * which won't email another code sooner. A code stays valid for ten minutes.
  */
-const RESEND_AFTER = 5 * 60;
+const RESEND_AFTER = 30;
 const CODE_LENGTH = 6;
 
 function clock(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
@@ -144,22 +145,27 @@ export function CodeLogin({
 
   return (
     <form method="post" onSubmit={verify} className="space-y-5">
+      {/* "Change" sits under the sentence, not beside it: a long address wraps
+          to three lines and a right-aligned link was left floating against the
+          first of them. */}
       <div className="bg-muted/60 flex items-start gap-3 rounded-lg p-3 text-sm">
         <Send className="text-primary mt-0.5 size-4 shrink-0" aria-hidden />
-        <p className="flex-1">
-          If <span className="font-medium">{sentTo}</span> has an account, a
-          code is on its way. Check spam too.
-        </p>
-        <button
-          type="button"
-          onClick={() => {
-            setSentTo(null);
-            setCode("");
-          }}
-          className="text-primary shrink-0 font-medium hover:underline"
-        >
-          Change
-        </button>
+        <div className="min-w-0 flex-1">
+          <p>
+            If <span className="font-medium break-all">{sentTo}</span> has an
+            account, a code is on its way. Check spam too.
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              setSentTo(null);
+              setCode("");
+            }}
+            className="text-primary mt-1 font-medium hover:underline"
+          >
+            Use a different email
+          </button>
+        </div>
       </div>
       <div className="space-y-1.5">
         <p className="text-sm font-medium">Code from the email</p>

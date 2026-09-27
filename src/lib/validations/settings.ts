@@ -26,6 +26,8 @@ export const settingsSchema = z.object({
   tagline: z.string().trim().max(160),
   supportEmail: optionalEmail,
   contactPhone: z.string().trim().max(30),
+  /** Where the site's WhatsApp buttons go. Blank falls back to the phone above. */
+  whatsappNumber: z.string().trim().max(30),
 
   // ── Localization ─────────────────────────────────────────────────────────
   defaultTimezone: z.string().trim().max(60),
@@ -34,11 +36,21 @@ export const settingsSchema = z.object({
 
   // ── Branding ─────────────────────────────────────────────────────────────
   logoUrl: z.string().trim().max(500),
+  /** Used wherever the chrome is dark — the live class room, mainly. */
+  logoDarkUrl: z.string().trim().max(500),
   faviconUrl: z.string().trim().max(500),
   primaryColor: z
     .string()
     .trim()
     .regex(/^#[0-9a-fA-F]{6}$/, "Use a hex colour like #E11D48"),
+
+  // ── Refer and earn ───────────────────────────────────────────────────────
+  /** What a learner earns when someone they referred pays for a seat. */
+  referralRewardAmount: z.coerce.number().int().min(0).max(1_000_000),
+  /** Below this, a withdrawal can't be asked for. 0 = any amount. */
+  walletMinWithdrawal: z.coerce.number().int().min(0).max(1_000_000),
+  /** Off, learners see their balance but can't ask for a payout. */
+  walletWithdrawalsEnabled: z.boolean(),
 
   // ── Registration & access ────────────────────────────────────────────────
   allowRegistration: z.boolean(),
@@ -121,6 +133,7 @@ export const DEFAULT_SETTINGS: Settings = {
   tagline: "Learn the skills that get you hired.",
   supportEmail: "support@skillforcareer.com",
   contactPhone: "",
+  whatsappNumber: "",
 
   defaultTimezone: "Asia/Kolkata",
   defaultLocale: "en",
@@ -129,9 +142,13 @@ export const DEFAULT_SETTINGS: Settings = {
   // The client's own brand assets, bundled so a fresh install is on-brand
   // before anything is uploaded. Admin > Settings > Branding overrides these.
   logoUrl: "/images/brand/logo.png",
+  logoDarkUrl: "",
   faviconUrl: "/images/brand/favicon.png",
   primaryColor: "#E11D48",
 
+  referralRewardAmount: 5000,
+  walletMinWithdrawal: 500,
+  walletWithdrawalsEnabled: true,
   allowRegistration: true,
   requireEmailVerification: true,
   defaultRole: "STUDENT",

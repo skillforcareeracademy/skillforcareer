@@ -150,6 +150,8 @@ export async function getQuizForAttempt(userId: string, quizId: string) {
     description: quiz.description,
     courseTitle: quiz.course?.title ?? null,
     timeLimitMinutes: quiz.timeLimitMinutes,
+    /** Seconds per question; null means only the whole-paper clock applies. */
+    perQuestionSeconds: quiz.perQuestionSeconds,
     passingScore: quiz.passingScore,
     maxAttempts: cap,
     attemptsUsed,
@@ -258,8 +260,17 @@ export interface QuizResult {
     correctOptionIds: string[];
     yourOptionIds: string[];
     explanation: string | null;
+    /** What the question was worth, and what it earned. */
+    points: number;
+    pointsAwarded: number;
   }[];
+  /** The whole answer key on the result screen. */
   showAnswers: boolean;
+  /**
+   * The paper answered as it went, so the learner has already seen every key —
+   * the end-of-quiz summary shows them again whatever `showAnswers` says.
+   */
+  showAnswerPerQuestion: boolean;
 }
 
 export async function submitQuizAttempt(
@@ -324,6 +335,8 @@ export async function submitQuizAttempt(
       correctOptionIds: correctIds,
       yourOptionIds: selected,
       explanation: q.explanation,
+      points: q.points,
+      pointsAwarded: points,
     });
   }
 
@@ -374,5 +387,6 @@ export async function submitQuizAttempt(
     attemptNo,
     breakdown,
     showAnswers: quiz.showAnswers,
+    showAnswerPerQuestion: quiz.showAnswerPerQuestion,
   };
 }
