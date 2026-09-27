@@ -1,6 +1,8 @@
 import { randomBytes } from "node:crypto";
 import { prisma } from "@/lib/prisma";
-import { attachReferral } from "./referral-service";
+import { attachReferral, ensureReferralCode } from "./referral-service";
+import { getSettings } from "./settings-service";
+import { logger } from "@/lib/logger";
 import { hashPassword, verifyPassword, needsRehash } from "@/lib/auth/password";
 import { signAuthTokens, verifyToken } from "@/lib/auth/jwt";
 import { hashRefreshToken } from "@/lib/auth/renew";
@@ -15,6 +17,8 @@ import {
 } from "@/lib/auth/otp";
 import { sendMail } from "@/lib/mail/mailer";
 import { otpEmail, type OtpPurpose } from "@/lib/mail/templates/otp";
+import { verifyEmailMail, welcomeMail } from "@/lib/mail/templates/signup";
+import { mailBrand } from "./mail-brand";
 import { emitEvent } from "@/lib/events";
 import { AppError } from "@/lib/api/errors";
 import { ROLES, type Role } from "@/config/roles";
@@ -197,9 +201,39 @@ async function createAndSendOtp(
     },
   });
 
-  const mail = otpEmail({ code, purpose, expiryMinutes: otpExpiryMinutes(), name });
+  const brand = await mailBrand();
+  // Signing up gets a letter written for that moment — what the code is for and
+  // what happens once it is entered. The other purposes keep the short form.
+  const mail =
+    purpose === "verify-email"
+      ? verifyEmailMail({ name, code, expiryMinutes: otpExpiryMinutes(), brand })
+      : otpEmail({ code, purpose, expiryMinutes: otpExpiryMinutes(), name, brand });
   await sendMail({ to: email, subject: mail.subject, html: mail.html, text: mail.text });
   return code;
+}
+
+/**
+ * "Your account is ready", with the learner's own referral code in it. Never
+ * throws: a welcome that doesn't send must not take the sign-up with it.
+ */
+async function sendWelcome(userId: string, name: string, email: string): Promise<void> {
+  try {
+    const [brand, { settings }] = await Promise.all([mailBrand(), getSettings()]);
+    const code = await ensureReferralCode(userId).catch(() => null);
+    const mail = welcomeMail({
+      name,
+      email,
+      referralCode: code,
+      referralReward: settings.referralRewardAmount,
+      brand,
+    });
+    await sendMail({ to: email, subject: mail.subject, html: mail.html, text: mail.text });
+  } catch (error) {
+    logger.warn("welcome_email.failed", {
+      email,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 /** Validate + consume the latest OTP for an email/purpose. Returns the userId. */
@@ -380,6 +414,9 @@ export async function identifyForCheckout(input: {
   const user = await loadAuthUserById(created.id);
   if (!user) throw AppError.internal("Couldn't create that account.");
   await emitEvent("user.registered", { userId: user.id, email: user.email });
+  // Express checkout makes the account on the spot, with no verification step
+  // to carry the welcome — so it goes from here.
+  void sendWelcome(user.id, user.name, user.email);
   const tokens = await issueTokens(user);
   await recordLogin(user.id);
   return { status: "SIGNED_IN", user: toPublicUser(user), tokens, created: true };
@@ -414,6 +451,9 @@ export async function verifyEmailOtp(input: {
   if (!updated) throw AppError.notFound("User not found.");
 
   await emitEvent("user.verified", { userId: updated.id, email: updated.email });
+  // The account is real now, so the welcome can say what to do with it. Sent
+  // without waiting: a slow mail server must not hold up the sign-in.
+  void sendWelcome(updated.id, updated.name, updated.email);
   const tokens = await issueTokens(updated);
   await recordLogin(updated.id);
   return { user: toPublicUser(updated), tokens };

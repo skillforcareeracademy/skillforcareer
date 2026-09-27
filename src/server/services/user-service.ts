@@ -2,9 +2,9 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
 import { hashPassword } from "@/lib/auth/password";
-import { env } from "@/lib/env";
 import { sendMail } from "@/lib/mail/mailer";
-import { emailLayout } from "@/lib/mail/templates/layout";
+import { welcomeMail } from "@/lib/mail/templates/signup";
+import { mailBrand } from "./mail-brand";
 import { logger } from "@/lib/logger";
 import type {
   ListUsersQuery,
@@ -161,9 +161,6 @@ export async function createUserAdmin(
   return user;
 }
 
-const escapeHtml = (text: string) =>
-  text.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
-
 /**
  * "Your account is ready" for an account an admin made. It never carries the
  * password: the person signs in with the one they were given, or with an
@@ -171,24 +168,18 @@ const escapeHtml = (text: string) =>
  * A mail failure is logged, never thrown — the account exists either way.
  */
 export async function sendWelcomeEmail(input: { name: string; email: string; roleLabel: string }): Promise<void> {
-  const appUrl = env.NEXT_PUBLIC_APP_URL;
-  const name = escapeHtml(input.name);
-  const html = emailLayout({
-    heading: "Your account is ready",
-    previewText: `Welcome to Skill For Career, ${input.name}`,
-    bodyHtml: `
-      <p>Hi ${name},</p>
-      <p>An account has been created for you on Skill For Career as <strong>${escapeHtml(input.roleLabel)}</strong>.</p>
-      <p>Sign in with <strong>${escapeHtml(input.email)}</strong> and the password your academy gave you — or choose
-         <strong>Email code</strong> on the sign-in page and we'll send you a one-time code instead.</p>
-      <p style="margin:24px 0">
-        <a href="${appUrl}/login" style="background:#e11d48;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none">Sign in</a>
-      </p>
-      <p style="color:#666;font-size:13px">The Skill For Career app on Android and iPhone uses the same sign-in.</p>`,
-  });
-  const text = `Hi ${input.name}, an account has been created for you on Skill For Career as ${input.roleLabel}. Sign in at ${appUrl}/login with ${input.email} and the password your academy gave you, or choose "Email code" to get a one-time code.`;
   try {
-    await sendMail({ to: input.email, subject: "Your Skill For Career account is ready", html, text });
+    // The same welcome a learner who signed up themselves gets, with the line
+    // about how this account came about and how to get in without a password.
+    const brand = await mailBrand();
+    const mail = welcomeMail({
+      name: input.name,
+      email: input.email,
+      roleLabel: input.roleLabel,
+      createdByAcademy: true,
+      brand,
+    });
+    await sendMail({ to: input.email, subject: mail.subject, html: mail.html, text: mail.text });
   } catch (error) {
     logger.warn("Couldn't send the welcome email", { to: input.email, error: error instanceof Error ? error.message : String(error) });
   }

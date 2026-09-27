@@ -1,4 +1,4 @@
-import { emailLayout } from "./layout";
+import { emailLayout, DEFAULT_MAIL_BRAND, type MailBrand } from "./layout";
 
 export type OtpPurpose = "verify-email" | "reset-password" | "login";
 
@@ -13,8 +13,11 @@ export function otpEmail(input: {
   purpose: OtpPurpose;
   expiryMinutes: number;
   name?: string;
+  /** The academy's letterhead, when the caller has it. */
+  brand?: MailBrand;
 }): { subject: string; html: string; text: string } {
   const { code, purpose, expiryMinutes, name } = input;
+  const brand = input.brand ?? DEFAULT_MAIL_BRAND;
   const heading = HEADINGS[purpose];
   const greeting = name ? `Hi ${name},` : "Hi,";
 
@@ -34,10 +37,13 @@ export function otpEmail(input: {
     </p>`;
 
   return {
-    subject: `${code} is your ${
-      process.env.NEXT_PUBLIC_APP_NAME ?? "SkillForCareer"
-    } code`,
-    html: emailLayout({ heading, bodyHtml, previewText: `${code} — expires in ${expiryMinutes} min` }),
+    subject: `${code} is your ${brand.siteName} code`,
+    html: emailLayout({
+      heading,
+      bodyHtml,
+      brand,
+      previewText: `${code} — expires in ${expiryMinutes} min`,
+    }),
     text: `${greeting}\n\nYour code is ${code}. It expires in ${expiryMinutes} minutes.\n\nIf you didn't request this, ignore this email.`,
   };
 }
