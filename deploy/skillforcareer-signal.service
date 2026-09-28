@@ -1,0 +1,20 @@
+# The live-class signalling server (WebSocket). Vercel can't hold an open
+# socket; this VPS can, which is what ends the cold-start wait before a class.
+[Unit]
+Description=Skill For Career live signalling
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/var/www/skillforcareer/signal
+EnvironmentFile=/etc/skillforcareer/signal.env
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node signalling-server.js
+Restart=always
+RestartSec=3
+User=www-data
+Group=www-data
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

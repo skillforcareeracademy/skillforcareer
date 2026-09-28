@@ -3,6 +3,15 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  /**
+   * A self-contained server build (`.next/standalone`) — what the academy's own
+   * VPS runs. Only the built output is copied there: no repository, no git
+   * history, no source. The code lives in one place, and that is GitHub.
+   *
+   * Set only for that build (`scripts/deploy-vps.sh` exports SFC_VPS_BUILD), so
+   * the hosted deployment keeps building exactly as it does today.
+   */
+  ...(process.env.SFC_VPS_BUILD === "1" ? { output: "standalone" as const } : {}),
   images: {
     formats: ["image/avif", "image/webp"],
     remotePatterns: [

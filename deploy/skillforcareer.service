@@ -1,0 +1,30 @@
+# The academy's website and panels, as a service.
+#
+# Runs the standalone Next.js build that `scripts/deploy-vps.sh` copies to
+# /var/www/skillforcareer. No repository, no git, no build tools on the server —
+# the source lives in GitHub and nowhere else.
+[Unit]
+Description=Skill For Career LMS
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/var/www/skillforcareer/current
+# Secrets live in one root-only file, never in the app directory.
+EnvironmentFile=/etc/skillforcareer/app.env
+Environment=NODE_ENV=production
+Environment=PORT=3000
+Environment=HOSTNAME=127.0.0.1
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=3
+# A crash loop shouldn't take the box with it.
+StartLimitBurst=10
+StartLimitIntervalSec=120
+User=www-data
+Group=www-data
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
