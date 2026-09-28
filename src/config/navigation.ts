@@ -35,6 +35,7 @@ import {
   Wallet,
   BookMarked,
   Share2,
+  ClipboardCheck,
 } from "lucide-react";
 import { ROLES, type Role } from "./roles";
 
@@ -81,6 +82,14 @@ export const NAV_SECTIONS: NavSection[] = [
       { title: "Dashboard", href: "", icon: LayoutDashboard, roles: ALL },
       { title: "Analytics", href: "/analytics", icon: BarChart3, roles: STAFF },
       { title: "Performance", href: "/performance", icon: Activity, roles: TEACHING },
+      // A learner's own figures, course by course — printable, and the same
+      // sheet the office downloads from their profile.
+      {
+        title: "Report card",
+        href: "/report-card",
+        icon: ClipboardCheck,
+        roles: [ROLES.STUDENT],
+      },
     ],
   },
   {

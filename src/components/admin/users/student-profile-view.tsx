@@ -22,6 +22,7 @@ import {
   UserRound,
   Wallet,
   Activity as ActivityIcon,
+  ClipboardCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
@@ -190,9 +191,18 @@ export function StudentProfileView({ profile }: { profile: StudentProfile }) {
         title={profile.name}
         description={`${profile.role} · joined ${day(profile.createdAt)}`}
         actions={
-          <Button variant="outline" render={<Link href="/admin/users" />} nativeButton={false}>
-            Back to users
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            {/* The course-wise card the academy downloads for a learner. */}
+            <Button
+              render={<Link href={`/admin/users/${profile.id}/report-card`} />}
+              nativeButton={false}
+            >
+              <ClipboardCheck className="size-4" /> Report card
+            </Button>
+            <Button variant="outline" render={<Link href="/admin/users" />} nativeButton={false}>
+              Back to users
+            </Button>
+          </div>
         }
       />
 

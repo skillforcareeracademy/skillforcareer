@@ -414,6 +414,7 @@ model User {
   extraRoles           UserRole[]             @relation("UserExtraRoles")
   batchesAssisted      BatchInstructor[]      @relation("BatchAssociate")
   batchNotes           BatchNote[]            @relation("BatchNoteAuthor")
+  noteReads            NoteRead[]             @relation("NoteReader")
   withdrawals          WalletWithdrawal[]     @relation("WalletWithdrawalUser")
   curriculums          Curriculum[]           @relation("CurriculumAuthor")
   curriculumChanges    CurriculumChange[]     @relation("CurriculumChangeAuthor")
@@ -2485,9 +2486,32 @@ model BatchNote {
   batch       Batch        @relation(fields: [batchId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   createdBy   User         @relation("BatchNoteAuthor", fields: [createdById], references: [id], onUpdate: NoAction)
   quizSources QuizSource[]
+  reads       NoteRead[]
 
   @@index([batchId])
   @@index([createdById])
+}
+
+/// How long a learner has actually spent with a note, and how often they came
+/// back to it. One row per learner per note, added to as they read: the panel
+/// reports reading time, and an instructor can see who has opened what.
+///
+/// Time is counted only while the note is open and the tab is in front, in
+/// short heartbeats, so a note left open overnight cannot inflate it.
+model NoteRead {
+  id          String   @id @default(cuid())
+  noteId      String
+  userId      String
+  opens       Int      @default(1)
+  seconds     Int      @default(0)
+  firstReadAt DateTime @default(now())
+  lastReadAt  DateTime @default(now())
+
+  note BatchNote @relation(fields: [noteId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user User      @relation("NoteReader", fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([noteId, userId])
+  @@index([userId])
 }
 
 /// A festival or holiday. On the day, wishes go to every student and

@@ -134,6 +134,9 @@ export interface StudentBatchNote {
   batchName: string;
   courseTitle: string;
   createdAt: string;
+  /** This learner's own reading of it — see `note-read-service`. */
+  readSeconds: number;
+  opens: number;
 }
 
 /**
@@ -154,16 +157,20 @@ export async function listStudentBatchNotes(
       batchName: string;
       courseTitle: string;
       createdAt: Date;
+      readSeconds: number | null;
+      opens: number | null;
     }[]
   >`
     SELECT n.id, n.title, n.body, n.fileUrl, n.fileName, n.createdAt,
-           b.name AS batchName, c.title AS courseTitle
+           b.name AS batchName, c.title AS courseTitle,
+           r.seconds AS readSeconds, r.opens AS opens
       FROM BatchNote n
       JOIN Batch b ON b.id = n.batchId
       JOIN Course c ON c.id = b.courseId
       JOIN Enrollment e ON e.batchId = n.batchId
                        AND e.userId = ${userId}
                        AND e.status IN ('ACTIVE', 'COMPLETED')
+      LEFT JOIN NoteRead r ON r.noteId = n.id AND r.userId = ${userId}
      ORDER BY n.createdAt DESC
      LIMIT 200`;
   return rows.map((r) => ({
@@ -175,5 +182,7 @@ export async function listStudentBatchNotes(
     batchName: r.batchName,
     courseTitle: r.courseTitle,
     createdAt: new Date(r.createdAt).toISOString(),
+    readSeconds: Number(r.readSeconds ?? 0),
+    opens: Number(r.opens ?? 0),
   }));
 }
