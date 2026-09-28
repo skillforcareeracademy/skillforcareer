@@ -8,6 +8,7 @@ import {
   FileQuestion,
   GraduationCap,
   Layers,
+  Library,
   NotebookPen,
   PlayCircle,
   Presentation,
@@ -422,6 +423,46 @@ export function CourseHubView({ hub }: { hub: CourseHub }) {
                     <p className="text-muted-foreground text-xs">{day(n.createdAt)}</p>
                   </div>
                   {n.readSeconds > 0 && (
+                    <Badge variant="secondary" className="shrink-0 text-[10px]">
+                      Read
+                    </Badge>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </Section>
+
+        {/* ── Study material ────────────────────────────────────────────── */}
+        <Section
+          icon={Library}
+          title="Study material"
+          description={`${hub.materials.length} set for this course`}
+          action={
+            <ButtonLink href="/student/materials" variant="ghost" size="sm">
+              Open
+            </ButtonLink>
+          }
+        >
+          {hub.materials.length === 0 ? (
+            <Empty>No reading set yet.</Empty>
+          ) : (
+            <ul className="space-y-2">
+              {hub.materials.slice(0, 6).map((m) => (
+                <li key={m.id} className="flex items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">
+                      <span className="text-muted-foreground mr-1.5 text-xs tabular-nums">
+                        {m.number}.
+                      </span>
+                      {m.title}
+                    </p>
+                    <p className="text-muted-foreground truncate text-xs">
+                      {[m.categoryName, m.subCategoryName].filter(Boolean).join(" → ") ||
+                        "Ungrouped"}
+                    </p>
+                  </div>
+                  {m.readSeconds > 0 && (
                     <Badge variant="secondary" className="shrink-0 text-[10px]">
                       Read
                     </Badge>

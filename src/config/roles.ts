@@ -69,6 +69,12 @@ export const PERMISSIONS = {
   GRADE_ASSIGNMENT: "assignments:grade",
   TAKE_QUIZ: "quiz:take",
   MANAGE_QUIZ: "quiz:manage",
+  /**
+   * The study material module — uploading the reading, grouping it, and seeing
+   * who has read what. Instructors hold it, limited to their own courses and
+   * batches by the service itself.
+   */
+  MANAGE_MATERIAL: "material:manage",
   ISSUE_CERTIFICATE: "certificates:issue",
   VIEW_OWN_CERTIFICATE: "certificates:view:own",
 } as const;
@@ -98,6 +104,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     P.MANAGE_BATCHES,
     P.HOST_LIVE_CLASS,
     P.MANAGE_QUIZ,
+    P.MANAGE_MATERIAL,
     P.GRADE_ASSIGNMENT,
     P.ISSUE_CERTIFICATE,
   ],
@@ -109,6 +116,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     P.MANAGE_BATCHES,
     P.HOST_LIVE_CLASS,
     P.MANAGE_QUIZ,
+    P.MANAGE_MATERIAL,
     P.GRADE_ASSIGNMENT,
     P.ISSUE_CERTIFICATE,
     P.VIEW_ANALYTICS,

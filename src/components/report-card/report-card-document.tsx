@@ -76,8 +76,18 @@ export function ReportCardDocument({
   academyName: string;
   generatedAt: Date;
 }) {
-  const { totals, attendance, classes, notes, assignments, quizzes, webinars, referrals, fees } =
-    card;
+  const {
+    totals,
+    attendance,
+    classes,
+    notes,
+    materials,
+    assignments,
+    quizzes,
+    webinars,
+    referrals,
+    fees,
+  } = card;
 
   return (
     <div id="report-card" className="bg-background mx-auto max-w-4xl space-y-6 rounded-2xl border p-6 print:border-0 print:p-0">
@@ -232,6 +242,13 @@ export function ReportCardDocument({
               <dd className="tabular-nums">
                 {duration(notes.seconds)}
                 {notes.notesShared > 0 ? ` (${notes.notesRead} of ${notes.notesShared})` : ""}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-3">
+              <dt className="text-muted-foreground">Study material</dt>
+              <dd className="tabular-nums">
+                {duration(materials.seconds)}
+                {materials.read > 0 ? ` (${materials.read} opened)` : ""}
               </dd>
             </div>
             <div className="flex justify-between gap-3">

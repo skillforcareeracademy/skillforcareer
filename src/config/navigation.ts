@@ -37,6 +37,7 @@ import {
   Share2,
   ClipboardCheck,
   IdCard,
+  Library,
 } from "lucide-react";
 import { ROLES, type Role } from "./roles";
 
@@ -157,6 +158,14 @@ export const NAV_SECTIONS: NavSection[] = [
         roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.STUDENT],
         external: true,
         feature: "codingPractice",
+      },
+      // The reading the academy sets: staff and instructors manage it, learners
+      // read it and mark it up.
+      {
+        title: "Study material",
+        href: "/materials",
+        icon: Library,
+        roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.INSTRUCTOR, ROLES.STUDENT],
       },
       { title: "Notes", href: "/notes", icon: NotebookPen, roles: [ROLES.STUDENT] },
       // Refer-and-earn pays into here, and this is where a learner asks for it.

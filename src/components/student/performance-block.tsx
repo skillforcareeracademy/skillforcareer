@@ -77,7 +77,8 @@ function Tile({
 }
 
 export function PerformanceBlock({ card }: { card: StudentScorecard }) {
-  const { attendance, classes, notes, assignments, quizzes, webinars, referrals, fees } = card;
+  const { attendance, classes, notes, materials, assignments, quizzes, webinars, referrals, fees } =
+    card;
 
   return (
     <Card>
@@ -120,13 +121,13 @@ export function PerformanceBlock({ card }: { card: StudentScorecard }) {
             note={`${assignments.submitted} submitted · ${assignments.pending} pending`}
           />
           <Tile
-            href="/student/learning#batch-notes"
+            href="/student/materials"
             icon={NotebookPen}
-            label="Notes read"
-            value={duration(notes.seconds)}
+            label="Reading time"
+            value={duration(notes.seconds + materials.seconds)}
             note={
-              notes.notesShared > 0
-                ? `${notes.notesRead} of ${notes.notesShared} notes opened`
+              notes.notesShared > 0 || materials.read > 0
+                ? `${notes.notesRead} of ${notes.notesShared} notes · ${materials.read} study material opened`
                 : "Nothing shared with your batch yet"
             }
           />

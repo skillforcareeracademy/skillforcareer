@@ -81,6 +81,8 @@ export interface StudentScorecard {
   };
   classes: { next: ClassBrief | null; last: ClassBrief | null; pending: number };
   notes: NoteReadingSummary;
+  /** The study-material library, and how much of it they have read. */
+  materials: { read: number; seconds: number; downloads: number };
   assignments: {
     submitted: number;
     graded: number;
@@ -142,6 +144,7 @@ export async function studentScorecard(userId: string): Promise<StudentScorecard
     classRows,
     pendingClasses,
     notes,
+    materialReads,
     webinars,
     referrals,
     wallet,
@@ -289,6 +292,10 @@ export async function studentScorecard(userId: string): Promise<StudentScorecard
           },
         }),
     noteReadingSummary(userId),
+    prisma.$queryRaw<{ read: bigint; seconds: bigint | null; downloads: bigint | null }[]>`
+      SELECT COUNT(*) AS \`read\`, SUM(seconds) AS seconds, SUM(downloads) AS downloads
+        FROM MaterialRead
+       WHERE userId = ${userId}`,
     prisma.$queryRaw<{ registered: bigint; attended: bigint | null }[]>`
       SELECT COUNT(*) AS registered,
              SUM(CASE WHEN attendedSeconds > 0 OR joinedAt IS NOT NULL THEN 1 ELSE 0 END) AS attended
@@ -396,6 +403,11 @@ export async function studentScorecard(userId: string): Promise<StudentScorecard
     },
     classes: { next: brief("next"), last: brief("last"), pending: pendingClasses },
     notes,
+    materials: {
+      read: n(materialReads[0]?.read),
+      seconds: n(materialReads[0]?.seconds),
+      downloads: n(materialReads[0]?.downloads),
+    },
     assignments: {
       submitted: submittedCount,
       graded: assignmentRows.reduce((s, r) => s + n(r.graded), 0),

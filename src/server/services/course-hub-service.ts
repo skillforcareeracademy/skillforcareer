@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { listStudentMeetings, type StudentMeeting } from "./live-service";
 import { listStudentBatchNotes, type StudentBatchNote } from "./batch-note-service";
+import { listMaterialsForLearner, type LearnerMaterial } from "./material-learner-service";
 import { listStudentAssignments, type StudentAssignment } from "./student-assignment-service";
 import { listStudentQuizzes, type StudentQuiz } from "./student-quiz-service";
 import { listCurriculumsForLearner, type CurriculumRow } from "./curriculum-plan-service";
@@ -69,6 +70,8 @@ export interface CourseHub {
   /** Classes already held whose recording this learner may watch. */
   recordings: StudentMeeting[];
   notes: StudentBatchNote[];
+  /** The reading set for this course. */
+  materials: LearnerMaterial[];
   assignments: StudentAssignment[];
   quizzes: StudentQuiz[];
   curriculums: CurriculumRow[];
@@ -118,8 +121,18 @@ export async function getCourseHub(
   });
   if (!enrolment) return null;
 
-  const [chapters, progress, meetings, notes, assignments, quizzes, curriculums, webinars, attendance] =
-    await Promise.all([
+  const [
+    chapters,
+    progress,
+    meetings,
+    notes,
+    materials,
+    assignments,
+    quizzes,
+    curriculums,
+    webinars,
+    attendance,
+  ] = await Promise.all([
       prisma.chapter.findMany({
         where: { courseId: course.id },
         orderBy: { order: "asc" },
@@ -138,6 +151,7 @@ export async function getCourseHub(
       }),
       listStudentMeetings(userId),
       listStudentBatchNotes(userId),
+      listMaterialsForLearner(userId),
       listStudentAssignments(userId),
       listStudentQuizzes(userId),
       listCurriculumsForLearner(userId),
@@ -222,6 +236,9 @@ export async function getCourseHub(
     notes: enrolment.batch
       ? notes.filter((n) => n.batchName === enrolment.batch!.name)
       : [],
+    // Material filed under this course, plus anything ungrouped by course that
+    // reached them through this cohort.
+    materials: materials.filter((m) => !m.courseTitle || m.courseTitle === course.title),
     assignments: assignments.filter((a) => a.courseId === course.id),
     quizzes: quizzes.filter((q) => q.courseId === course.id),
     curriculums: curriculums.filter(
