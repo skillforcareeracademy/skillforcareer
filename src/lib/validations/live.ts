@@ -71,7 +71,17 @@ export const meetingStudentsSchema = z.object({
 
 export const markAttendanceSchema = z.object({
   records: z
-    .array(z.object({ userId: z.string().min(1), status: z.enum(ATTENDANCE_STATUSES) }))
+    .array(
+      z.object({
+        userId: z.string().min(1),
+        status: z.enum(ATTENDANCE_STATUSES),
+        /**
+         * Minutes the learner was in the class for. Omitted leaves whatever the
+         * room recorded alone — only a staff correction overwrites it.
+         */
+        minutes: z.number().min(0).max(1440).optional(),
+      }),
+    )
     .max(2000),
 });
 

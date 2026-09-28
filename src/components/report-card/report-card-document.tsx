@@ -194,6 +194,15 @@ export function ReportCardDocument({
               </dd>
             </div>
             <div className="flex justify-between gap-3">
+              <dt className="text-muted-foreground">Time in class</dt>
+              <dd className="tabular-nums">
+                {duration(attendance.attendedSeconds)}
+                {attendance.classSeconds > 0
+                  ? ` of ${duration(attendance.classSeconds)}`
+                  : ""}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-3">
               <dt className="text-muted-foreground">Still to come</dt>
               <dd className="tabular-nums">{classes.pending}</dd>
             </div>

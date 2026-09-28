@@ -10,11 +10,11 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=/var/www/skillforcareer/current
-# Secrets live in one root-only file, never in the app directory.
+# Secrets live in one root-only file, never in the app directory. PORT and
+# HOSTNAME come from there too: this box may already be running another site, so
+# nothing about the port is assumed here.
 EnvironmentFile=/etc/skillforcareer/app.env
 Environment=NODE_ENV=production
-Environment=PORT=3000
-Environment=HOSTNAME=127.0.0.1
 ExecStart=/usr/bin/node server.js
 Restart=always
 RestartSec=3

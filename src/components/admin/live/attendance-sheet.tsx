@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import { Loader2, MapPin, CalendarClock, CheckCheck, Save } from "lucide-react";
+import { Loader2, MapPin, CalendarClock, CheckCheck, Clock, Save } from "lucide-react";
 import { api, ApiError } from "@/lib/api-client";
 import { ATTENDANCE_STATUSES, ATTENDANCE_STATUS_LABEL } from "@/lib/validations/live";
 import {
@@ -16,6 +16,8 @@ import {
 } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
@@ -24,12 +26,18 @@ interface Learner {
   name: string;
   avatar: string | null;
   status: string;
+  joinedAt: string | null;
+  leftAt: string | null;
+  attendedMinutes: number;
+  attendedPercent: number | null;
+  marked: boolean;
 }
 interface Roster {
   id: string;
   title: string;
   location: string | null;
   scheduledStart: string;
+  classMinutes: number | null;
   learners: Learner[];
 }
 
@@ -65,6 +73,9 @@ function Body({ meetingId, onClosed }: { meetingId: string; onClosed: () => void
   const [data, setData] = useState<Roster | null>(null);
   const [error, setError] = useState(false);
   const [statuses, setStatuses] = useState<Record<string, string>>({});
+  /** Minutes as typed. Only what staff actually touch is sent. */
+  const [minutes, setMinutes] = useState<Record<string, string>>({});
+  const [edited, setEdited] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -75,6 +86,11 @@ function Body({ meetingId, onClosed }: { meetingId: string; onClosed: () => void
         if (!alive) return;
         setData(d);
         setStatuses(Object.fromEntries(d.learners.map((l) => [l.userId, l.status])));
+        setMinutes(
+          Object.fromEntries(
+            d.learners.map((l) => [l.userId, l.attendedMinutes ? String(l.attendedMinutes) : ""]),
+          ),
+        );
       })
       .catch(() => alive && setError(true));
     return () => {
@@ -85,9 +101,20 @@ function Body({ meetingId, onClosed }: { meetingId: string; onClosed: () => void
   function setStatus(userId: string, status: string) {
     setStatuses((s) => ({ ...s, [userId]: status }));
   }
+  function setMinutesFor(userId: string, value: string) {
+    setMinutes((m) => ({ ...m, [userId]: value.replace(/[^0-9]/g, "") }));
+    setEdited((e) => new Set(e).add(userId));
+  }
   function markAllPresent() {
     if (!data) return;
     setStatuses(Object.fromEntries(data.learners.map((l) => [l.userId, "PRESENT"])));
+  }
+  /** Everyone gets credited the whole class — the common correction. */
+  function fillFullClass() {
+    if (!data?.classMinutes) return;
+    const full = String(data.classMinutes);
+    setMinutes(Object.fromEntries(data.learners.map((l) => [l.userId, full])));
+    setEdited(new Set(data.learners.map((l) => l.userId)));
   }
 
   async function save() {
@@ -95,7 +122,14 @@ function Body({ meetingId, onClosed }: { meetingId: string; onClosed: () => void
     setSaving(true);
     try {
       const res = await api.post<{ count: number }>(`/api/meetings/${meetingId}/attendance`, {
-        records: data.learners.map((l) => ({ userId: l.userId, status: statuses[l.userId] ?? "ABSENT" })),
+        records: data.learners.map((l) => ({
+          userId: l.userId,
+          status: statuses[l.userId] ?? "ABSENT",
+          // Untouched rows leave whatever the room recorded alone.
+          ...(edited.has(l.userId)
+            ? { minutes: Number(minutes[l.userId] || 0) }
+            : {}),
+        })),
       });
       toast.success(`Attendance saved for ${res.count} learner${res.count === 1 ? "" : "s"}.`);
       router.refresh();
@@ -141,6 +175,11 @@ function Body({ meetingId, onClosed }: { meetingId: string; onClosed: () => void
               <MapPin className="size-3.5" /> {data.location}
             </span>
           )}
+          {data.classMinutes != null && (
+            <span className="flex items-center gap-1.5">
+              <Clock className="size-3.5" /> {data.classMinutes} min class
+            </span>
+          )}
         </SheetDescription>
       </SheetHeader>
 
@@ -148,9 +187,16 @@ function Body({ meetingId, onClosed }: { meetingId: string; onClosed: () => void
         <p className="text-muted-foreground text-sm">
           {presentCount} / {data.learners.length} present
         </p>
-        <Button variant="outline" size="sm" onClick={markAllPresent}>
-          <CheckCheck className="size-4" /> Mark all present
-        </Button>
+        <div className="flex gap-2">
+          {data.classMinutes != null && (
+            <Button variant="outline" size="sm" onClick={fillFullClass}>
+              <Clock className="size-4" /> Credit full class
+            </Button>
+          )}
+          <Button variant="outline" size="sm" onClick={markAllPresent}>
+            <CheckCheck className="size-4" /> Mark all present
+          </Button>
+        </div>
       </div>
 
       <div className="divide-y p-6 pt-2">
@@ -161,12 +207,25 @@ function Body({ meetingId, onClosed }: { meetingId: string; onClosed: () => void
           </p>
         ) : (
           data.learners.map((l) => (
-            <div key={l.userId} className="flex items-center gap-3 py-3">
+            <div key={l.userId} className="space-y-2 py-3">
+              <div className="flex items-center gap-3">
               <Avatar className="size-9 shrink-0">
                 {l.avatar && <AvatarImage src={l.avatar} alt={l.name} />}
                 <AvatarFallback className="text-xs">{initials(l.name)}</AvatarFallback>
               </Avatar>
-              <p className="min-w-0 flex-1 truncate text-sm font-medium">{l.name}</p>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">{l.name}</p>
+                {/* What the room itself saw, before anyone corrected it. */}
+                <p className="text-muted-foreground truncate text-xs">
+                  {l.joinedAt
+                    ? `Joined ${format(new Date(l.joinedAt), "h:mm a")}${
+                        l.leftAt ? ` · left ${format(new Date(l.leftAt), "h:mm a")}` : ""
+                      }`
+                    : l.marked
+                      ? "Marked by hand"
+                      : "Register not taken"}
+                </p>
+              </div>
               <div className="flex shrink-0 gap-1">
                 {ATTENDANCE_STATUSES.map((s) => {
                   const active = (statuses[l.userId] ?? "ABSENT") === s;
@@ -185,6 +244,34 @@ function Body({ meetingId, onClosed }: { meetingId: string; onClosed: () => void
                     </button>
                   );
                 })}
+              </div>
+              </div>
+              <div className="flex items-center gap-2 pl-12">
+                <Label htmlFor={`min-${l.userId}`} className="text-muted-foreground text-xs">
+                  Attended
+                </Label>
+                <Input
+                  id={`min-${l.userId}`}
+                  inputMode="numeric"
+                  className="h-8 w-20 text-sm"
+                  value={minutes[l.userId] ?? ""}
+                  placeholder="0"
+                  onChange={(e) => setMinutesFor(l.userId, e.target.value)}
+                />
+                <span className="text-muted-foreground text-xs">
+                  min
+                  {data.classMinutes != null && (
+                    <> of {data.classMinutes} ·{" "}
+                      {Math.min(
+                        100,
+                        Math.round(
+                          ((Number(minutes[l.userId] || 0) || 0) / data.classMinutes) * 100,
+                        ),
+                      )}
+                      %
+                    </>
+                  )}
+                </span>
               </div>
             </div>
           ))

@@ -10,6 +10,7 @@ import {
   Trash2,
   Loader2,
   Video,
+  CalendarCheck,
   CalendarClock,
   Radio,
   CheckCircle2,
@@ -68,6 +69,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { LiveDetailSheet } from "@/components/admin/live/live-detail-sheet";
+import { AttendanceSheet } from "@/components/admin/live/attendance-sheet";
 import { cn } from "@/lib/utils";
 
 interface MeetingRow {
@@ -202,6 +204,7 @@ export function LiveClient({
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<MeetingRow | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [attendId, setAttendId] = useState<string | null>(null);
   const [rescheduling, setRescheduling] = useState<MeetingRow | null>(null);
   const [reForm, setReForm] = useState({ scheduledStart: "", scheduledEnd: "", reason: "" });
   const [reSaving, setReSaving] = useState(false);
@@ -416,6 +419,11 @@ export function LiveClient({
           )}
           <DropdownMenuItem onClick={() => setDetailId(m.id)}>
             <Eye className="size-4" /> View details
+          </DropdownMenuItem>
+          {/* The register: who the room counted in, for how long, and a place
+              to correct it by hand. */}
+          <DropdownMenuItem onClick={() => setAttendId(m.id)}>
+            <CalendarCheck className="size-4" /> Attendance
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => openReschedule(m)}>
             <CalendarClock className="size-4" /> Reschedule
@@ -875,6 +883,8 @@ export function LiveClient({
       </Dialog>
 
       <LiveDetailSheet meetingId={detailId} onOpenChange={(o) => !o && setDetailId(null)} />
+
+      <AttendanceSheet meetingId={attendId} onOpenChange={(o) => !o && setAttendId(null)} />
 
       {/* Reschedule */}
       <Dialog open={rescheduling != null} onOpenChange={(o) => !o && setRescheduling(null)}>

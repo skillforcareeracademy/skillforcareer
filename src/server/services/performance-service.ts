@@ -71,7 +71,14 @@ export interface StudentScorecard {
     watchSeconds: number;
     progressPercent: number | null;
   };
-  attendance: { held: number; attended: number; percent: number | null };
+  attendance: {
+    held: number;
+    attended: number;
+    percent: number | null;
+    /** Time actually spent in class, and the classes' own length. */
+    attendedSeconds: number;
+    classSeconds: number;
+  };
   classes: { next: ClassBrief | null; last: ClassBrief | null; pending: number };
   notes: NoteReadingSummary;
   assignments: {
@@ -160,10 +167,28 @@ export async function studentScorecard(userId: string): Promise<StudentScorecard
     // register shows too.
     batchIds.length === 0
       ? []
-      : prisma.$queryRaw<{ batchId: string; held: bigint; attended: bigint | null }[]>`
+      : prisma.$queryRaw<
+          {
+            batchId: string;
+            held: bigint;
+            attended: bigint | null;
+            attendedSeconds: bigint | null;
+            classSeconds: bigint | null;
+          }[]
+        >`
           SELECT m.batchId,
                  COUNT(*) AS held,
-                 SUM(CASE WHEN a.status IN (${Prisma.join(PRESENT)}) THEN 1 ELSE 0 END) AS attended
+                 SUM(CASE WHEN a.status IN (${Prisma.join(PRESENT)}) THEN 1 ELSE 0 END) AS attended,
+                 COALESCE(SUM(a.durationSeconds), 0) AS attendedSeconds,
+                 -- Only a class with a known finish contributes a length, so the
+                 -- comparison is never against a half-known total.
+                 COALESCE(SUM(
+                   TIMESTAMPDIFF(
+                     SECOND,
+                     COALESCE(m.actualStart, m.scheduledStart),
+                     COALESCE(m.actualEnd, m.scheduledEnd)
+                   )
+                 ), 0) AS classSeconds
             FROM Meeting m
             LEFT JOIN Attendance a ON a.meetingId = m.id AND a.userId = ${userId}
            WHERE m.batchId IN (${Prisma.join(batchIds)})
@@ -366,6 +391,8 @@ export async function studentScorecard(userId: string): Promise<StudentScorecard
       held: heldTotal,
       attended: attendedTotal,
       percent: pct(attendedTotal, heldTotal),
+      attendedSeconds: attendanceRows.reduce((s, r) => s + n(r.attendedSeconds), 0),
+      classSeconds: attendanceRows.reduce((s, r) => s + n(r.classSeconds), 0),
     },
     classes: { next: brief("next"), last: brief("last"), pending: pendingClasses },
     notes,

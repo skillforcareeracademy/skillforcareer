@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { activeStudentWhere } from "@/server/repositories/role-filters";
 import { Prisma } from "@/generated/prisma/client";
@@ -827,21 +828,67 @@ export async function createOfflineClass(input: OfflineClassInput, hostId: strin
   return m.id;
 }
 
+export interface AttendanceRosterLearner {
+  userId: string;
+  name: string;
+  avatar: string | null;
+  status: string;
+  /** Recorded by the room as they came and went. */
+  joinedAt: string | null;
+  leftAt: string | null;
+  /** Minutes the room counted them in for — editable by staff. */
+  attendedMinutes: number;
+  /** Of the class's own length. Null when the class has no known length. */
+  attendedPercent: number | null;
+  /** True once anyone has saved a row for this learner on this class. */
+  marked: boolean;
+}
+
 export interface AttendanceRoster {
   id: string;
   title: string;
   location: string | null;
   scheduledStart: string;
-  learners: { userId: string; name: string; avatar: string | null; status: string }[];
+  /** How long the class actually ran, in minutes, if that is known. */
+  classMinutes: number | null;
+  learners: AttendanceRosterLearner[];
 }
 
-/** The enrolled learners for an (offline) class + their current attendance status. */
+/**
+ * The register for a class: who was expected, who the room counted in, and for
+ * how long against the class's own length.
+ *
+ * "Live class attendance detail — automatically per student with attended time
+ * vs class time, and admin/instructor should be able to change it by hand." The
+ * room writes the times; this reads them back so they can be corrected, and the
+ * corrections are what the report card then counts.
+ */
 export async function getAttendanceRoster(meetingId: string): Promise<AttendanceRoster> {
   const m = await prisma.meeting.findUnique({
     where: { id: meetingId },
-    select: { id: true, title: true, location: true, scheduledStart: true, courseId: true, batchId: true },
+    select: {
+      id: true,
+      title: true,
+      location: true,
+      scheduledStart: true,
+      scheduledEnd: true,
+      actualStart: true,
+      actualEnd: true,
+      courseId: true,
+      batchId: true,
+    },
   });
   if (!m) throw AppError.notFound("Class not found.");
+
+  // What it ran for beats what it was booked for; a class with neither has no
+  // length to measure against, and the percentage is left blank rather than
+  // invented.
+  const ranFrom = m.actualStart ?? m.scheduledStart;
+  const ranTo = m.actualEnd ?? m.scheduledEnd;
+  const classMinutes =
+    ranTo && ranTo > ranFrom
+      ? Math.max(1, Math.round((ranTo.getTime() - ranFrom.getTime()) / 60_000))
+      : null;
 
   const enrollWhere: Prisma.EnrollmentWhereInput | null = m.batchId
     ? { batchId: m.batchId }
@@ -857,9 +904,15 @@ export async function getAttendanceRoster(meetingId: string): Promise<Attendance
     : [];
   const attendance = await prisma.attendance.findMany({
     where: { meetingId },
-    select: { userId: true, status: true },
+    select: {
+      userId: true,
+      status: true,
+      joinedAt: true,
+      leftAt: true,
+      durationSeconds: true,
+    },
   });
-  const statusMap = new Map(attendance.map((a) => [a.userId, a.status]));
+  const rowFor = new Map(attendance.map((a) => [a.userId, a]));
 
   // Learners individually added to this class, on top of whoever the course or
   // batch enrolment implies. An offline class often has no course at all — it's
@@ -876,11 +929,23 @@ export async function getAttendanceRoster(meetingId: string): Promise<Attendance
   for (const u of [...invited.map((p) => p.user), ...enrollments.map((e) => e.user)]) {
     if (seen.has(u.id)) continue;
     seen.add(u.id);
+    const row = rowFor.get(u.id);
+    const attendedMinutes = row ? Math.round(row.durationSeconds / 60) : 0;
     learners.push({
       userId: u.id,
       name: u.name,
       avatar: u.avatarUrl,
-      status: statusMap.get(u.id) ?? "ABSENT",
+      status: row?.status ?? "ABSENT",
+      joinedAt: row?.joinedAt?.toISOString() ?? null,
+      leftAt: row?.leftAt?.toISOString() ?? null,
+      attendedMinutes,
+      attendedPercent:
+        classMinutes && attendedMinutes > 0
+          ? Math.min(100, Math.round((attendedMinutes / classMinutes) * 100))
+          : classMinutes
+            ? 0
+            : null,
+      marked: Boolean(row),
     });
   }
   return {
@@ -888,6 +953,7 @@ export async function getAttendanceRoster(meetingId: string): Promise<Attendance
     title: m.title,
     location: m.location,
     scheduledStart: m.scheduledStart.toISOString(),
+    classMinutes,
     learners,
   };
 }
@@ -985,14 +1051,26 @@ export async function markAttendance(meetingId: string, input: MarkAttendanceInp
   });
   if (!m) throw AppError.notFound("Class not found.");
 
-  await prisma.$transaction(
-    input.records.map((r) =>
-      prisma.attendance.upsert({
-        where: { meetingId_userId: { meetingId, userId: r.userId } },
-        create: { meetingId, userId: r.userId, batchId: m.batchId, status: r.status },
-        update: { status: r.status },
-      }),
-    ),
-  );
+  // INSERT … ON DUPLICATE KEY UPDATE rather than an upsert: an upsert is a
+  // SELECT then an INSERT, and the live room may be writing the same row as the
+  // register is saved. Minutes are only written when staff supplied them, so
+  // saving a status can't wipe what the room counted.
+  const now = new Date();
+  for (const r of input.records) {
+    const seconds = r.minutes == null ? null : Math.max(0, Math.round(r.minutes * 60));
+    const duration =
+      seconds == null
+        ? Prisma.sql`durationSeconds`
+        : Prisma.sql`VALUES(durationSeconds)`;
+    await prisma.$executeRaw`
+      INSERT INTO \`Attendance\`
+        (id, meetingId, userId, batchId, status, date, durationSeconds, createdAt)
+      VALUES (${randomUUID()}, ${meetingId}, ${r.userId}, ${m.batchId}, ${r.status},
+              ${now}, ${seconds ?? 0}, ${now})
+      ON DUPLICATE KEY UPDATE
+        status = VALUES(status),
+        durationSeconds = ${duration}
+    `;
+  }
   return input.records.length;
 }

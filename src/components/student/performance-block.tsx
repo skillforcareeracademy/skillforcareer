@@ -99,7 +99,11 @@ export function PerformanceBlock({ card }: { card: StudentScorecard }) {
             icon={CalendarCheck}
             label="Attendance"
             value={percent(attendance.percent)}
-            note={`${attendance.attended} of ${attendance.held} classes attended`}
+            note={
+              attendance.classSeconds > 0
+                ? `${attendance.attended}/${attendance.held} classes · ${duration(attendance.attendedSeconds)} of ${duration(attendance.classSeconds)}`
+                : `${attendance.attended} of ${attendance.held} classes attended`
+            }
           />
           <Tile
             href="/student/quizzes"

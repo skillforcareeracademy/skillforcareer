@@ -62,7 +62,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { AttendanceSheet } from "@/components/admin/offline/attendance-sheet";
+import { AttendanceSheet } from "@/components/admin/live/attendance-sheet";
 import { StudentsSheet } from "@/components/admin/offline/students-sheet";
 
 interface OfflineRow {
