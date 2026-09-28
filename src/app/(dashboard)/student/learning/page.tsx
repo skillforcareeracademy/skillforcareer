@@ -51,7 +51,7 @@ export default async function MyLearningPage() {
             const done = c.progressPercent >= 100;
             return (
               <Card key={c.enrollmentId} className="gap-0 overflow-hidden p-0">
-                <Link href={`/student/learn/${c.slug}`} className="group block">
+                <Link href={`/student/learning/${c.slug}`} className="group block">
                   <div className="ring-border relative aspect-video overflow-hidden bg-gradient-to-br from-rose-500/15 to-pink-600/15">
                     {c.thumbnailUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
@@ -84,7 +84,7 @@ export default async function MyLearningPage() {
                         </Badge>
                       )}
                     </div>
-                    <Link href={`/student/learn/${c.slug}`}>
+                    <Link href={`/student/learning/${c.slug}`}>
                       <h3 className="line-clamp-2 font-semibold hover:underline">{c.title}</h3>
                     </Link>
                     <p className="text-muted-foreground text-xs">{c.categoryName}</p>
@@ -105,14 +105,26 @@ export default async function MyLearningPage() {
                     </div>
                   </div>
 
-                  <ButtonLink
-                    href={`/student/learn/${c.slug}`}
-                    variant={done ? "outline" : "default"}
-                    className="w-full"
-                    size="sm"
-                  >
-                    {done ? "Review course" : c.progressPercent > 0 ? "Continue" : "Start learning"}
-                  </ButtonLink>
+                  {/* The card opens the course's own home; this stays the way
+                      straight back into the lesson they left off at. */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <ButtonLink
+                      href={`/student/learning/${c.slug}`}
+                      variant="outline"
+                      className="w-full"
+                      size="sm"
+                    >
+                      Course home
+                    </ButtonLink>
+                    <ButtonLink
+                      href={`/student/learn/${c.slug}`}
+                      variant={done ? "outline" : "default"}
+                      className="w-full"
+                      size="sm"
+                    >
+                      {done ? "Review" : c.progressPercent > 0 ? "Continue" : "Start"}
+                    </ButtonLink>
+                  </div>
                 </div>
               </Card>
             );

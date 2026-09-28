@@ -11,6 +11,8 @@ export interface StudentQuiz {
   id: string;
   title: string;
   description: string | null;
+  /** Which course set it — the per-course hub filters on this. */
+  courseId: string | null;
   courseTitle: string | null;
   questionCount: number;
   totalPoints: number;
@@ -96,6 +98,7 @@ export async function listStudentQuizzes(userId: string): Promise<StudentQuiz[]>
       id: z.id,
       title: z.title,
       description: z.description,
+      courseId: z.courseId ?? null,
       courseTitle: z.course?.title ?? null,
       questionCount: z.questions.length,
       totalPoints,

@@ -21,6 +21,8 @@ export interface StudentAssignment {
   type: string;
   description: string | null;
   instructions: string | null;
+  /** Which course set it — the per-course hub filters on this. */
+  courseId: string | null;
   courseTitle: string | null;
   questions: AssignmentQuestionForStudent[];
   maxScore: number;
@@ -91,6 +93,7 @@ export async function listStudentAssignments(userId: string): Promise<StudentAss
       type: a.type,
       description: a.description,
       instructions: a.instructions,
+      courseId: a.courseId ?? null,
       courseTitle: a.course?.title ?? null,
       // Never ship `isCorrect` to the browser — it would hand over the key.
       questions: a.questions.map((q) => ({

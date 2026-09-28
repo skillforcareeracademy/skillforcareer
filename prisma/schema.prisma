@@ -416,6 +416,10 @@ model User {
   batchNotes           BatchNote[]            @relation("BatchNoteAuthor")
   noteReads            NoteRead[]             @relation("NoteReader")
   detail               StudentDetail?
+  materialsAuthored    StudyMaterial[]        @relation("MaterialAuthor")
+  materialsSet         StudyMaterialStudent[] @relation("MaterialAssignee")
+  materialReads        MaterialRead[]         @relation("MaterialReader")
+  materialHighlights   MaterialHighlight[]    @relation("MaterialHighlighter")
   withdrawals          WalletWithdrawal[]     @relation("WalletWithdrawalUser")
   curriculums          Curriculum[]           @relation("CurriculumAuthor")
   curriculumChanges    CurriculumChange[]     @relation("CurriculumChangeAuthor")
@@ -497,6 +501,159 @@ model StudentDetail {
   updatedAt DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// STUDY MATERIAL — the reading a course sets, and what a learner does with it
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// A folder for study material, one level deep like the quiz grouping: a
+/// category and its sub-categories, so a learner sees "Anatomy → Upper limb"
+/// rather than one long list.
+model MaterialCategory {
+  id       String  @id @default(cuid())
+  name     String
+  parentId String?
+  order    Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// NoAction, not Cascade: Prisma forbids a cascading self-relation. Deleting
+  /// a category takes its sub-categories with it in the service.
+  parent      MaterialCategory?  @relation("MaterialCategoryTree", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  children    MaterialCategory[] @relation("MaterialCategoryTree")
+  materials   StudyMaterial[]    @relation("MaterialInCategory")
+  subMaterials StudyMaterial[]   @relation("MaterialInSubCategory")
+
+  @@index([parentId])
+}
+
+/// One piece of reading: a document, a spreadsheet, a PDF, or text written
+/// straight into the panel.
+///
+/// `number` is permanent — Material 1 stays Material 1 however the list is
+/// rearranged — and `sequence` is the order the academy wants it worked
+/// through, exactly as quizzes do it.
+model StudyMaterial {
+  id          String  @id @default(cuid())
+  title       String
+  description String? @db.Text
+  courseId    String?
+
+  categoryId    String?
+  subCategoryId String?
+
+  /// Permanent identity, and the rearrangeable order.
+  number   Int @default(0)
+  sequence Int @default(0)
+
+  /// The file, if it is one.
+  fileUrl  String?
+  fileName String?
+  mimeType String?
+  /// Text written in the panel instead of, or alongside, a file. This is what a
+  /// learner can highlight.
+  body     String? @db.Text
+
+  /// "Download off karne ka option" — reading stays possible, saving a copy
+  /// does not.
+  downloadsEnabled Boolean @default(true)
+  isPublished      Boolean @default(false)
+
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  category    MaterialCategory?        @relation("MaterialInCategory", fields: [categoryId], references: [id], onUpdate: NoAction)
+  subCategory MaterialCategory?        @relation("MaterialInSubCategory", fields: [subCategoryId], references: [id], onUpdate: NoAction)
+  course      Course?                  @relation(fields: [courseId], references: [id], onUpdate: NoAction)
+  createdBy   User                     @relation("MaterialAuthor", fields: [createdById], references: [id], onUpdate: NoAction)
+  batches     StudyMaterialBatch[]
+  students    StudyMaterialStudent[]
+  reads       MaterialRead[]
+  highlights  MaterialHighlight[]
+
+  @@index([courseId])
+  @@index([categoryId])
+  @@index([subCategoryId])
+  @@index([createdById])
+  @@index([isPublished])
+}
+
+/// Set for a cohort. No batch and no named learner means everyone on the
+/// course — the same audience rule quizzes and assignments follow.
+model StudyMaterialBatch {
+  id         String @id @default(cuid())
+  materialId String
+  batchId    String
+
+  createdAt DateTime @default(now())
+
+  material StudyMaterial @relation(fields: [materialId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  batch    Batch         @relation(fields: [batchId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([materialId, batchId])
+  @@index([batchId])
+}
+
+/// Set for one learner by name.
+model StudyMaterialStudent {
+  id         String @id @default(cuid())
+  materialId String
+  userId     String
+
+  createdAt DateTime @default(now())
+
+  material StudyMaterial @relation(fields: [materialId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user     User          @relation("MaterialAssignee", fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([materialId, userId])
+  @@index([userId])
+}
+
+/// "Kisne kitni baar padha" — one row per learner per piece, added to as they
+/// read. Same shape as `NoteRead`, and written the same way.
+model MaterialRead {
+  id          String   @id @default(cuid())
+  materialId  String
+  userId      String
+  opens       Int      @default(1)
+  seconds     Int      @default(0)
+  /// Set when the learner has downloaded it, for the download cap.
+  downloads   Int      @default(0)
+  firstReadAt DateTime @default(now())
+  lastReadAt  DateTime @default(now())
+
+  material StudyMaterial @relation(fields: [materialId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user     User          @relation("MaterialReader", fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([materialId, userId])
+  @@index([userId])
+}
+
+/// A learner's own mark on the reading: the passage they picked out and,
+/// optionally, what they thought about it. Theirs alone — nobody else sees it.
+model MaterialHighlight {
+  id         String  @id @default(cuid())
+  materialId String
+  userId     String
+  /// The exact text they selected, so it can be found again after an edit.
+  quote      String  @db.Text
+  /// Where in the body it started, to place it when the quote repeats.
+  startOffset Int    @default(0)
+  note       String? @db.Text
+  /// yellow / green / blue / pink — the pen they used.
+  color      String  @default("yellow")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  material StudyMaterial @relation(fields: [materialId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user     User          @relation("MaterialHighlighter", fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([materialId, userId])
+  @@index([userId])
 }
 
 model Role {
@@ -645,6 +802,7 @@ model Course {
   discussions       Discussion[]
   assignments       Assignment[]
   quizzes           Quiz[]
+  studyMaterials    StudyMaterial[]
   attachments       Attachment[]
   certificates      Certificate[]
   meetings          Meeting[]
@@ -682,6 +840,7 @@ model Batch {
   attendance        Attendance[]
   assignments       AssignmentBatch[]
   quizzes           QuizBatch[]
+  studyMaterials    StudyMaterialBatch[]
   lessonAccess      LessonAccess[]
   recordingAccess   RecordingAccess[]
   associates        BatchInstructor[]
