@@ -3,6 +3,7 @@ import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
 import { hashPassword } from "@/lib/auth/password";
 import { sendMail } from "@/lib/mail/mailer";
+import { onboardingFormMail } from "@/lib/mail/templates/onboarding";
 import { welcomeMail } from "@/lib/mail/templates/signup";
 import { mailBrand } from "./mail-brand";
 import { logger } from "@/lib/logger";
@@ -182,6 +183,28 @@ export async function sendWelcomeEmail(input: { name: string; email: string; rol
     await sendMail({ to: input.email, subject: mail.subject, html: mail.html, text: mail.text });
   } catch (error) {
     logger.warn("Couldn't send the welcome email", { to: input.email, error: error instanceof Error ? error.message : String(error) });
+  }
+}
+
+/**
+ * "Complete your student profile" — the onboarding form, sent when a learner
+ * signs up and again when their fee is recorded. Failures are logged, never
+ * thrown: the account and the payment both stand without it.
+ */
+export async function sendOnboardingFormEmail(input: {
+  name: string;
+  email: string;
+  reason?: "signup" | "payment";
+}): Promise<void> {
+  try {
+    const brand = await mailBrand();
+    const mail = onboardingFormMail({ name: input.name, reason: input.reason, brand });
+    await sendMail({ to: input.email, subject: mail.subject, html: mail.html, text: mail.text });
+  } catch (error) {
+    logger.warn("Couldn't send the onboarding form email", {
+      to: input.email,
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 }
 

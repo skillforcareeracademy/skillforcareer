@@ -36,6 +36,7 @@ import {
   BookMarked,
   Share2,
   ClipboardCheck,
+  IdCard,
 } from "lucide-react";
 import { ROLES, type Role } from "./roles";
 
@@ -88,6 +89,13 @@ export const NAV_SECTIONS: NavSection[] = [
         title: "Report card",
         href: "/report-card",
         icon: ClipboardCheck,
+        roles: [ROLES.STUDENT],
+      },
+      // The onboarding form: address, documents, schooling, CV.
+      {
+        title: "My details",
+        href: "/profile/details",
+        icon: IdCard,
         roles: [ROLES.STUDENT],
       },
     ],

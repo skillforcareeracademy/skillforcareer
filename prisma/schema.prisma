@@ -415,6 +415,7 @@ model User {
   batchesAssisted      BatchInstructor[]      @relation("BatchAssociate")
   batchNotes           BatchNote[]            @relation("BatchNoteAuthor")
   noteReads            NoteRead[]             @relation("NoteReader")
+  detail               StudentDetail?
   withdrawals          WalletWithdrawal[]     @relation("WalletWithdrawalUser")
   curriculums          Curriculum[]           @relation("CurriculumAuthor")
   curriculumChanges    CurriculumChange[]     @relation("CurriculumChangeAuthor")
@@ -422,6 +423,80 @@ model User {
 
   @@index([roleId])
   @@index([status])
+}
+
+/// Everything the academy needs about a learner beyond a name and an email.
+///
+/// "Student ka detail profile hona chahiye — address, WhatsApp, Aadhaar aur ID
+/// upload, qualification, CV, job status, package, placement preference." Kept
+/// in its own table rather than bolted onto `User`, because only learners fill
+/// it in, it is long, and admissions reads it as one form.
+///
+/// Once the learner presses submit, the fields admissions verifies — the
+/// documents above all — are read-only to them. Staff can still change
+/// anything, and `updatedByStaffAt` records that they did.
+model StudentDetail {
+  id     String @id @default(cuid())
+  userId String @unique
+
+  // ── Reaching them ─────────────────────────────────────────────────────────
+  whatsapp       String?
+  alternatePhone String?
+  addressLine    String? @db.Text
+  city           String?
+  state          String?
+  pincode        String?
+  country        String  @default("India")
+
+  // ── Who they are, on paper ────────────────────────────────────────────────
+  gender        String?
+  fatherName    String?
+  guardianPhone String?
+  /// Stored as given; the panel shows only the last four digits to staff who
+  /// don't hold `users:manage`.
+  aadhaarNumber String?
+  aadhaarUrl    String?
+  /// PAN / passport / driving licence — whatever they uploaded instead.
+  idProofType   String?
+  idProofNumber String?
+  idProofUrl    String?
+
+  // ── What they have studied ────────────────────────────────────────────────
+  highestQualification String?
+  specialization       String?
+  collegeName          String?
+  passingYear          Int?
+  marksPercent         String?
+  cvUrl                String?
+  cvName               String?
+
+  // ── Work, and what they want next ─────────────────────────────────────────
+  /// FRESHER / WORKING / LOOKING / STUDYING — free text so the academy can add
+  /// its own without a migration.
+  jobStatus          String?
+  currentCompany     String?
+  currentRole        String?
+  experienceYears    String?
+  currentPackage     Decimal? @db.Decimal(10, 2)
+  expectedPackage    Decimal? @db.Decimal(10, 2)
+  preferredLocations String?
+  /// ONSITE / REMOTE / HYBRID.
+  preferredMode      String?
+  willingToRelocate  Boolean  @default(false)
+  openToPlacement    Boolean  @default(true)
+
+  /// When the learner submitted the form. Null means still a draft, and
+  /// everything stays editable.
+  submittedAt      DateTime?
+  /// The last time staff changed a submitted form.
+  updatedByStaffAt DateTime?
+  /// Which lead this was filled in from, if admissions converted one.
+  fromLeadId       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 }
 
 model Role {

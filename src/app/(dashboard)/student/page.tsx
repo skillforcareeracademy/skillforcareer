@@ -5,9 +5,11 @@ import { requireRole } from "@/lib/auth/require";
 import { ROLES } from "@/config/roles";
 import { getLearningStats, getMyLearning, hasPaidEnrolment } from "@/server/services/enrollment-service";
 import { studentScorecard } from "@/server/services/performance-service";
+import { getStudentDetail } from "@/server/services/student-detail-service";
 import { getSettings } from "@/server/services/settings-service";
 import { UnlockNotice } from "@/components/student/unlock-notice";
 import { PerformanceBlock } from "@/components/student/performance-block";
+import { ProfileCompletionNotice } from "@/components/student/profile-completion-notice";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,12 +21,13 @@ export const dynamic = "force-dynamic";
 
 export default async function StudentHome() {
   const user = await requireRole([ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.STUDENT]);
-  const [stats, courses, paid, { settings }, card] = await Promise.all([
+  const [stats, courses, paid, { settings }, card, detail] = await Promise.all([
     getLearningStats(user.id),
     getMyLearning(user.id),
     hasPaidEnrolment(user.id),
     getSettings(),
     studentScorecard(user.id),
+    getStudentDetail(user.id),
   ]);
   const recent = courses.filter((c) => c.progressPercent < 100).slice(0, 4);
 
@@ -51,6 +54,8 @@ export default async function StudentHome() {
         <StatCard label="Certificates" value={String(stats.certificates)} icon={Award} tint="from-amber-500 to-orange-600" />
         <StatCard label="Completed" value={String(stats.completed)} icon={CalendarClock} tint="from-sky-500 to-blue-600" />
       </div>
+
+      <ProfileCompletionNotice view={detail} />
 
       <PerformanceBlock card={card} />
 

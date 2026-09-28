@@ -1,7 +1,8 @@
 import { format } from "date-fns";
 import { prisma } from "@/lib/prisma";
 import { notifyStaff } from "./notification-service";
-import { sendWelcomeEmail } from "./user-service";
+import { sendOnboardingFormEmail, sendWelcomeEmail } from "./user-service";
+import { prefillFromLead } from "./student-detail-service";
 import { logger } from "@/lib/logger";
 import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
@@ -315,18 +316,21 @@ export async function onboardIfPaid(leadId: string): Promise<string | null> {
       select: { id: true, name: true, email: true },
     });
 
-    // What the counsellor already knows, carried into the profile.
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        bio: lead.qualification ? `Qualification: ${lead.qualification}` : undefined,
-      },
-    });
+    // What the counsellor already knows, carried into the learner's own
+    // details form — address, WhatsApp, qualification — so admissions doesn't
+    // ask for any of it twice.
+    await prefillFromLead(user.id, lead.id);
 
     void sendWelcomeEmail({
       name: user.name,
       email: user.email,
       roleLabel: "Student",
+    });
+    // The fee is in, so the admission file is what's left: the onboarding form.
+    void sendOnboardingFormEmail({
+      name: user.name,
+      email: user.email,
+      reason: "payment",
     });
     void notifyStaff({
       type: "SYSTEM",

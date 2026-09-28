@@ -18,6 +18,7 @@ import {
 import { sendMail } from "@/lib/mail/mailer";
 import { otpEmail, type OtpPurpose } from "@/lib/mail/templates/otp";
 import { verifyEmailMail, welcomeMail } from "@/lib/mail/templates/signup";
+import { onboardingFormMail } from "@/lib/mail/templates/onboarding";
 import { mailBrand } from "./mail-brand";
 import { emitEvent } from "@/lib/events";
 import { AppError } from "@/lib/api/errors";
@@ -228,6 +229,10 @@ async function sendWelcome(userId: string, name: string, email: string): Promise
       brand,
     });
     await sendMail({ to: email, subject: mail.subject, html: mail.html, text: mail.text });
+    // And, straight after it, the form admissions needs filled in. Separate
+    // letter on purpose: the welcome is about getting in, this one is a task.
+    const form = onboardingFormMail({ name, reason: "signup", brand });
+    await sendMail({ to: email, subject: form.subject, html: form.html, text: form.text });
   } catch (error) {
     logger.warn("welcome_email.failed", {
       email,

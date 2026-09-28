@@ -23,6 +23,7 @@ import {
   Wallet,
   Activity as ActivityIcon,
   ClipboardCheck,
+  IdCard,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
@@ -198,6 +199,13 @@ export function StudentProfileView({ profile }: { profile: StudentProfile }) {
               nativeButton={false}
             >
               <ClipboardCheck className="size-4" /> Report card
+            </Button>
+            <Button
+              variant="outline"
+              render={<Link href={`/admin/users/${profile.id}/details`} />}
+              nativeButton={false}
+            >
+              <IdCard className="size-4" /> Details
             </Button>
             <Button variant="outline" render={<Link href="/admin/users" />} nativeButton={false}>
               Back to users
