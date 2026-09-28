@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { BadgeIndianRupee, Gift, Share2, UserPlus, Wallet } from "lucide-react";
+import { BadgeIndianRupee, Cake, Gift, Share2, UserPlus, Wallet } from "lucide-react";
 import { getSettings } from "@/server/services/settings-service";
 import { getSessionUser } from "@/lib/auth/api-guard";
 import { ensureReferralCode } from "@/server/services/referral-service";
@@ -31,23 +31,25 @@ export default async function ReferPage() {
       ? `₹${settings.referralDiscountAmount.toLocaleString("en-IN")}`
       : null;
 
+  const birthday = `₹${settings.birthdayReferralReward.toLocaleString("en-IN")}`;
+
   const steps = [
     {
       icon: Share2,
       title: "Share your code",
-      body: "Every learner gets a code the moment they sign up — it's in your wallet, and in your birthday voucher.",
+      body: "Every learner gets a code the moment they sign up — it's in your wallet.",
     },
     {
       icon: UserPlus,
       title: "Your friend enrols",
       body: discount
-        ? `They enter your code when they create their account — and ${discount} comes off their first course.`
+        ? `They enter your code when they create their account. They get ${discount}/- discount on enrollment.`
         : "They enter your code when they create their account, and enrol on any course.",
     },
     {
       icon: BadgeIndianRupee,
       title: `You earn ${reward}`,
-      body: "It lands in your wallet as soon as their payment is recorded, and you can withdraw it.",
+      body: "It lands in your wallet as soon as their payment is recorded. You can withdraw it in your bank.",
     },
   ];
 
@@ -105,6 +107,19 @@ export default async function ReferPage() {
           </Card>
         ))}
       </div>
+
+      {settings.referralEnabled && settings.birthdayReferralReward > 0 && (
+        <div className="border-primary/30 bg-primary/5 mx-auto mt-10 max-w-3xl rounded-2xl border p-5 text-center">
+          <p className="flex items-center justify-center gap-2 font-semibold">
+            <Cake className="size-4" /> And on your birthday
+          </p>
+          <p className="text-muted-foreground mt-2 text-sm">
+            On your birthday you get one different referral code, from which you get{" "}
+            <strong className="text-foreground">{birthday}/-</strong> for every referral. This
+            referral code is valid for your birthday only.
+          </p>
+        </div>
+      )}
 
       <p className="text-muted-foreground mx-auto mt-10 max-w-2xl text-center text-xs">
         The reward is paid once per friend, when their payment is recorded — online or by the

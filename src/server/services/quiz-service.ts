@@ -24,6 +24,8 @@ export interface QuizListQuery {
   /** Grouping filters — a category, and one of its sub-categories. */
   categoryId?: string;
   subCategoryId?: string;
+  /** How hard the paper is. */
+  difficulty?: string;
   /** Scope to quizzes an instructor created or owns via the course. */
   ownerId?: string;
   /** "sequence" (the academy's own order) or "recent". */
@@ -40,6 +42,7 @@ export async function listQuizzesAdmin(q: QuizListQuery) {
   if (q.categoryId === NO_CATEGORY) and.push({ categoryId: null });
   else if (q.categoryId) and.push({ categoryId: q.categoryId });
   if (q.subCategoryId) and.push({ subCategoryId: q.subCategoryId });
+  if (q.difficulty) and.push({ difficulty: q.difficulty as Prisma.QuizWhereInput["difficulty"] });
   if (q.ownerId) {
     and.push({ OR: [{ createdById: q.ownerId }, { course: { instructorId: q.ownerId } }] });
   }
@@ -77,6 +80,7 @@ export async function listQuizzesAdmin(q: QuizListQuery) {
       title: z.title,
       quizNo: z.quizNo,
       sequence: z.sequence,
+      difficulty: z.difficulty,
       courseId: z.courseId,
       courseTitle: z.course?.title ?? null,
       categoryId: z.categoryId,
@@ -156,6 +160,7 @@ export async function getQuizEdit(id: string) {
     subCategoryId: z.subCategoryId,
     sequence: z.sequence,
     quizNo: z.quizNo,
+    difficulty: z.difficulty,
     isPublished: z.isPublished,
     // datetime-local wants local wall clock without the zone or seconds.
     releaseAt: z.releaseAt ? toLocalInput(z.releaseAt) : "",
@@ -278,6 +283,7 @@ export async function updateQuiz(id: string, input: UpdateQuizInput): Promise<vo
       shuffleQuestions: input.shuffleQuestions,
       showAnswers: input.showAnswers,
       showAnswerPerQuestion: input.showAnswerPerQuestion,
+      difficulty: input.difficulty,
       releaseAt: input.releaseAt ? new Date(input.releaseAt) : null,
     },
   });

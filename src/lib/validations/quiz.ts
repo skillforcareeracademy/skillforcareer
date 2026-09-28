@@ -7,6 +7,20 @@ export const QUESTION_TYPES = [
   "SHORT_ANSWER",
 ] as const;
 export const GRADING_MODES = ["AUTO", "MANUAL"] as const;
+export const QUIZ_DIFFICULTIES = [
+  "EASY",
+  "INTERMEDIATE",
+  "DIFFICULT",
+  "VERY_DIFFICULT",
+  "SUPER_DIFFICULT",
+] as const;
+export const QUIZ_DIFFICULTY_LABEL: Record<string, string> = {
+  EASY: "Easy",
+  INTERMEDIATE: "Intermediate",
+  DIFFICULT: "Difficult",
+  VERY_DIFFICULT: "Very difficult",
+  SUPER_DIFFICULT: "Super difficult",
+};
 
 export const QUESTION_TYPE_LABEL: Record<string, string> = {
   SINGLE_CHOICE: "Single choice",
@@ -56,6 +70,7 @@ export const updateQuizSchema = z.object({
   showAnswerPerQuestion: z.boolean().default(false),
   categoryId: z.string().optional().or(z.literal("")),
   subCategoryId: z.string().optional().or(z.literal("")),
+  difficulty: z.enum(QUIZ_DIFFICULTIES).default("EASY"),
 });
 
 // ── Grouping, sequencing and notes ───────────────────────────────────────────

@@ -107,7 +107,9 @@ export function LeadStatCards({
                 <p className="text-2xl leading-none font-semibold tabular-nums">
                   {stats[key]}
                 </p>
-                <p className="text-muted-foreground mt-1 truncate text-xs">
+                {/* Wraps rather than truncates — the card has the room, and
+                    "Received this month" cut to "Received t…" says nothing. */}
+                <p className="text-muted-foreground mt-1 text-xs leading-tight">
                   {LEAD_STAT_CARD_LABELS[key]}
                 </p>
               </div>

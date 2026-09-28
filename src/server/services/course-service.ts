@@ -194,6 +194,11 @@ export interface CourseListQuery {
   categoryId?: string;
   /** Scope to a single instructor's courses (for the instructor workspace). */
   instructorId?: string;
+  /** Live, self-paced, hybrid or offline. */
+  deliveryMode?: string;
+  /** Created between these days, "YYYY-MM-DD" in academy time. */
+  from?: string;
+  to?: string;
 }
 
 export async function listCoursesAdmin(q: CourseListQuery) {
@@ -202,6 +207,17 @@ export async function listCoursesAdmin(q: CourseListQuery) {
   if (q.status) and.push({ status: q.status as Prisma.CourseWhereInput["status"] });
   if (q.categoryId) and.push({ categoryId: q.categoryId });
   if (q.instructorId) and.push({ instructorId: q.instructorId });
+  if (q.deliveryMode) {
+    and.push({ deliveryMode: q.deliveryMode as Prisma.CourseWhereInput["deliveryMode"] });
+  }
+  if (q.from || q.to) {
+    and.push({
+      createdAt: {
+        ...(q.from ? { gte: new Date(`${q.from}T00:00:00+05:30`) } : {}),
+        ...(q.to ? { lt: new Date(new Date(`${q.to}T00:00:00+05:30`).getTime() + 86_400_000) } : {}),
+      },
+    });
+  }
   const where: Prisma.CourseWhereInput = and.length ? { AND: and } : {};
 
   const [total, rows] = await Promise.all([
@@ -228,9 +244,11 @@ export async function listCoursesAdmin(q: CourseListQuery) {
       subtitle: c.subtitle,
       status: c.status,
       level: c.level,
+      deliveryMode: c.deliveryMode,
       thumbnailUrl: c.thumbnailUrl,
       categoryName: c.category.name,
       instructorName: c.instructor.name,
+      instructorId: c.instructorId,
       price: c.price.toNumber(),
       discountPrice: c.discountPrice ? c.discountPrice.toNumber() : null,
       pricingType: c.pricingType,

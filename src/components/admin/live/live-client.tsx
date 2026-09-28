@@ -100,6 +100,9 @@ interface Query {
   status?: string;
   courseId?: string;
   batchId?: string;
+  /** Class-date window, "YYYY-MM-DD". */
+  from?: string;
+  to?: string;
 }
 interface Opt {
   id: string;
@@ -233,7 +236,7 @@ export function LiveClient({
 
   const totalPages = Math.max(1, Math.ceil(total / query.pageSize));
   const hasFilters = Boolean(
-    query.search || query.status || query.courseId || query.batchId,
+    query.search || query.status || query.courseId || query.batchId || query.from || query.to,
   );
   /** Once a course is picked the batch list narrows to that course's cohorts. */
   const batchOptions = query.courseId
@@ -247,6 +250,8 @@ export function LiveClient({
         status: query.status,
         course: query.courseId,
         batch: query.batchId,
+        from: query.from,
+        to: query.to,
         page: query.page,
         ...next,
       };
@@ -255,6 +260,8 @@ export function LiveClient({
       if (merged.status) p.set("status", String(merged.status));
       if (merged.course) p.set("course", String(merged.course));
       if (merged.batch) p.set("batch", String(merged.batch));
+      if (merged.from) p.set("from", String(merged.from));
+      if (merged.to) p.set("to", String(merged.to));
       if (merged.page && Number(merged.page) > 1) p.set("page", String(merged.page));
       const qs = p.toString();
       router.push(qs ? `${pathname}?${qs}` : pathname);
@@ -269,6 +276,8 @@ export function LiveClient({
       status: undefined,
       course: undefined,
       batch: undefined,
+      from: undefined,
+      to: undefined,
       page: 1,
     });
   }
@@ -648,6 +657,25 @@ export function LiveClient({
                   ))}
                 </SelectContent>
               </Select>
+              {/* Class date — the academy's "class date ke according filter".
+                  Either end on its own works: from alone is "and after". */}
+              <div className="flex items-center gap-1.5">
+                <Input
+                  type="date"
+                  aria-label="Classes from"
+                  value={query.from ?? ""}
+                  onChange={(e) => setParams({ from: e.target.value || undefined, page: 1 })}
+                  className="w-[9.5rem]"
+                />
+                <span className="text-muted-foreground text-xs">to</span>
+                <Input
+                  type="date"
+                  aria-label="Classes to"
+                  value={query.to ?? ""}
+                  onChange={(e) => setParams({ to: e.target.value || undefined, page: 1 })}
+                  className="w-[9.5rem]"
+                />
+              </div>
               {hasFilters && (
                 <Button variant="ghost" size="sm" onClick={clearFilters} className="text-muted-foreground">
                   <X className="size-4" /> Clear

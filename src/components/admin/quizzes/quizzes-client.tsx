@@ -49,6 +49,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { QuizCategoriesDialog } from "@/components/admin/quizzes/quiz-categories-dialog";
+import { QUIZ_DIFFICULTIES, QUIZ_DIFFICULTY_LABEL } from "@/lib/validations/quiz";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -66,6 +67,7 @@ interface QuizRow {
   /** Permanent, never renumbered. */
   quizNo: number;
   sequence: number;
+  difficulty: string;
   courseId: string | null;
   courseTitle: string | null;
   categoryId: string | null;
@@ -96,6 +98,7 @@ interface Query {
   status?: string;
   categoryId?: string;
   subCategoryId?: string;
+  difficulty?: string;
   sort?: string;
 }
 interface CategoryOpt {
@@ -162,7 +165,8 @@ export function QuizzesClient({
       query.batchId ||
       query.status ||
       query.categoryId ||
-      query.subCategoryId,
+      query.subCategoryId ||
+      query.difficulty,
   );
   const parentCategories = categories.filter((c) => !c.parentId);
   const subCategories = categories.filter((c) => c.parentId === query.categoryId);
@@ -185,6 +189,7 @@ export function QuizzesClient({
         status: query.status,
         category: query.categoryId,
         sub: query.subCategoryId,
+        difficulty: query.difficulty,
         sort: query.sort,
         page: query.page,
         ...next,
@@ -196,6 +201,7 @@ export function QuizzesClient({
       if (merged.status) p.set("status", String(merged.status));
       if (merged.category) p.set("category", String(merged.category));
       if (merged.sub) p.set("sub", String(merged.sub));
+      if (merged.difficulty) p.set("difficulty", String(merged.difficulty));
       if (merged.sort) p.set("sort", String(merged.sort));
       if (merged.page && Number(merged.page) > 1) p.set("page", String(merged.page));
       const qs = p.toString();
@@ -213,6 +219,7 @@ export function QuizzesClient({
       status: undefined,
       category: undefined,
       sub: undefined,
+      difficulty: undefined,
       page: 1,
     });
   }
@@ -461,6 +468,15 @@ export function QuizzesClient({
       cell: (z) => (
         <span className="flex items-center gap-1 text-sm">
           <ListChecks className="size-3.5 text-muted-foreground" /> {z.questions}
+        </span>
+      ),
+    },
+    {
+      key: "difficulty",
+      header: "Level",
+      cell: (z) => (
+        <span className="text-muted-foreground text-xs">
+          {QUIZ_DIFFICULTY_LABEL[z.difficulty] ?? z.difficulty}
         </span>
       ),
     },
@@ -733,6 +749,26 @@ export function QuizzesClient({
                   </SelectContent>
                 </Select>
               )}
+              <Select
+                value={query.difficulty ?? ALL}
+                onValueChange={(v) => setParams({ difficulty: !v || v === ALL ? undefined : v, page: 1 })}
+              >
+                <SelectTrigger className="flex-1 sm:w-40">
+                  <SelectValue>
+                    {(v) =>
+                      !v || v === ALL ? "All levels" : (QUIZ_DIFFICULTY_LABEL[String(v)] ?? "Level")
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>All levels</SelectItem>
+                  {QUIZ_DIFFICULTIES.map((d) => (
+                    <SelectItem key={d} value={d}>
+                      {QUIZ_DIFFICULTY_LABEL[d]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Select
                 value={query.sort ?? "sequence"}
                 onValueChange={(v) =>

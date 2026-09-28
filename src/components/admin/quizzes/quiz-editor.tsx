@@ -23,7 +23,13 @@ import {
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
 import { parseQuestionBank } from "@/lib/question-csv";
-import { GRADING_MODES, GRADING_MODE_LABEL, QUESTION_TYPE_LABEL } from "@/lib/validations/quiz";
+import {
+  GRADING_MODES,
+  GRADING_MODE_LABEL,
+  QUESTION_TYPE_LABEL,
+  QUIZ_DIFFICULTIES,
+  QUIZ_DIFFICULTY_LABEL,
+} from "@/lib/validations/quiz";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -79,6 +85,7 @@ interface Quiz {
   sequence: number;
   /** Permanent, never renumbered — the academy's handle on this paper. */
   quizNo: number;
+  difficulty: string;
   isPublished: boolean;
   releaseAt: string;
   batchIds: string[];
@@ -140,6 +147,7 @@ export function QuizEditor({
     shuffleQuestions: quiz.shuffleQuestions,
     showAnswers: quiz.showAnswers,
     showAnswerPerQuestion: quiz.showAnswerPerQuestion,
+    difficulty: quiz.difficulty,
     categoryId: quiz.categoryId ?? "",
     subCategoryId: quiz.subCategoryId ?? "",
     releaseAt: quiz.releaseAt,
@@ -260,6 +268,7 @@ export function QuizEditor({
         shuffleQuestions: form.shuffleQuestions,
         showAnswers: form.showAnswers,
         showAnswerPerQuestion: form.showAnswerPerQuestion,
+        difficulty: form.difficulty,
         categoryId: form.categoryId || undefined,
         subCategoryId: form.subCategoryId || undefined,
         releaseAt: form.releaseAt || undefined,
@@ -545,6 +554,21 @@ export function QuizEditor({
                   onChange={(e) => set("maxAttempts", e.target.value)}
                   placeholder="0 = unlimited"
                 />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Difficulty</Label>
+                <Select value={form.difficulty} onValueChange={(v) => v && set("difficulty", v)}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue>{(v) => QUIZ_DIFFICULTY_LABEL[String(v)]}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {QUIZ_DIFFICULTIES.map((d) => (
+                      <SelectItem key={d} value={d}>
+                        {QUIZ_DIFFICULTY_LABEL[d]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-1.5">
                 <Label>Grading</Label>

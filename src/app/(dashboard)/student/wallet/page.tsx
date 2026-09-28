@@ -17,6 +17,15 @@ export default async function StudentWalletPage() {
     getSettings(),
     prisma.referral.count({ where: { referrerId: user.id, status: "REWARDED" } }),
   ]);
+  // A birthday code only counts while it is in date.
+  const me = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { birthdayCode: true, birthdayCodeExpiresAt: true },
+  });
+  const birthdayCode =
+    me?.birthdayCode && me.birthdayCodeExpiresAt && me.birthdayCodeExpiresAt > new Date()
+      ? me.birthdayCode
+      : null;
   // No code is handed out while refer-and-earn is switched off in
   // Admin → Referral System; the balance and its history still show.
   const code = settings.referralEnabled ? await ensureReferralCode(user.id) : "";
@@ -30,6 +39,8 @@ export default async function StudentWalletPage() {
       referralEnabled={settings.referralEnabled}
       reward={settings.referralRewardAmount}
       discount={settings.referralDiscountAmount}
+      birthdayCode={birthdayCode}
+      birthdayReward={settings.birthdayReferralReward}
       minWithdrawal={wallet.minWithdrawal}
       withdrawalsEnabled={wallet.withdrawalsEnabled}
       referredCount={referredCount}

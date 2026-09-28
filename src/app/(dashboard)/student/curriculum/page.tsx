@@ -7,6 +7,12 @@ import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Curriculum" };
@@ -53,20 +59,28 @@ export default async function StudentCurriculumPage() {
                     The sections are being written — check back shortly.
                   </p>
                 ) : (
-                  <ol className="space-y-3">
+                  // Folded away by default: a full curriculum is pages long,
+                  // and the academy asked for it to open a section at a time.
+                  <Accordion className="space-y-2">
                     {c.tabs.map((t, i) => (
-                      <li key={t.id} className="rounded-xl border p-4">
-                        <p className="text-sm font-medium">
+                      <AccordionItem key={t.id} value={t.id} className="rounded-xl border px-4">
+                        <AccordionTrigger className="text-left text-sm font-medium">
                           {i + 1}. {t.heading}
-                        </p>
-                        {t.description && (
-                          <p className="text-muted-foreground mt-1 text-sm whitespace-pre-wrap">
-                            {t.description}
-                          </p>
-                        )}
-                      </li>
+                        </AccordionTrigger>
+                        <AccordionContent>
+                          {t.description ? (
+                            <p className="text-muted-foreground pb-3 text-sm whitespace-pre-wrap">
+                              {t.description}
+                            </p>
+                          ) : (
+                            <p className="text-muted-foreground pb-3 text-sm">
+                              Nothing written under this heading yet.
+                            </p>
+                          )}
+                        </AccordionContent>
+                      </AccordionItem>
                     ))}
-                  </ol>
+                  </Accordion>
                 )}
               </CardContent>
             </Card>

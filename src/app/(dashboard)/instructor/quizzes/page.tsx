@@ -35,6 +35,7 @@ export default async function InstructorQuizzesPage({
     status: str(sp.status),
     categoryId: str(sp.category),
     subCategoryId: str(sp.sub),
+    difficulty: str(sp.difficulty),
     sort: str(sp.sort),
     ownerId: user.id,
   };

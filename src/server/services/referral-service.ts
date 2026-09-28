@@ -42,14 +42,62 @@ export async function ensureReferralCode(userId: string): Promise<string> {
   throw new Error("Could not allocate a referral code");
 }
 
+/**
+ * The birthday code: a second, better-paying code that only works for a day
+ * or two.
+ *
+ * The academy's own words to its learners: "on your birthday you get one
+ * different referral code from which you get ₹5000 for per referral. This
+ * referral code is valid for Birthday only." So it is issued on the morning of
+ * the birthday, carries its own reward, and lapses on its own.
+ */
+export async function issueBirthdayCode(userId: string, days: number): Promise<string | null> {
+  const expiresAt = new Date(Date.now() + Math.max(1, days) * 86_400_000);
+  for (let i = 0; i < 10; i += 1) {
+    const code = `BDAY${randomBytes(4)
+      .toString("hex")
+      .toUpperCase()
+      .slice(0, 5)}`;
+    // No unique index on the column (TiDB), so the check is here.
+    const taken = await prisma.user.findFirst({
+      where: { OR: [{ birthdayCode: code }, { referralCode: code }] },
+      select: { id: true },
+    });
+    if (taken) continue;
+    await prisma.user.update({
+      where: { id: userId },
+      data: { birthdayCode: code, birthdayCodeExpiresAt: expiresAt },
+    });
+    return code;
+  }
+  logger.warn("referral.birthday_code_failed", { userId });
+  return null;
+}
+
 /** Who owns a code, if anyone. */
-export async function referrerFor(code: string): Promise<{ id: string; name: string } | null> {
+export interface CodeOwner {
+  id: string;
+  name: string;
+  /** A birthday code pays its own (higher) reward. */
+  kind: "STANDARD" | "BIRTHDAY";
+}
+
+export async function referrerFor(code: string): Promise<CodeOwner | null> {
   const trimmed = code.trim().toUpperCase();
   if (!trimmed) return null;
-  return prisma.user.findUnique({
+
+  const standing = await prisma.user.findUnique({
     where: { referralCode: trimmed },
     select: { id: true, name: true },
   });
+  if (standing) return { ...standing, kind: "STANDARD" };
+
+  // A birthday code counts only while it is still in date.
+  const birthday = await prisma.user.findFirst({
+    where: { birthdayCode: trimmed, birthdayCodeExpiresAt: { gt: new Date() } },
+    select: { id: true, name: true },
+  });
+  return birthday ? { ...birthday, kind: "BIRTHDAY" } : null;
 }
 
 /**
@@ -66,12 +114,21 @@ export async function attachReferral(code: string, refereeId: string): Promise<b
   });
   if (already) return false;
 
+  // A birthday code's reward is settled now, while we know which code was
+  // used — by the time it pays out, the code may have lapsed.
+  const { settings } = await getSettings();
+  const reward =
+    referrer.kind === "BIRTHDAY"
+      ? settings.birthdayReferralReward
+      : settings.referralRewardAmount;
+
   await prisma.referral.create({
     data: {
       referrerId: referrer.id,
       refereeId,
       code: code.trim().toUpperCase(),
       status: "PENDING",
+      rewardAmount: reward,
     },
   });
   return true;
@@ -87,7 +144,7 @@ export async function rewardReferralFor(refereeId: string, referenceId?: string)
   try {
     const referral = await prisma.referral.findFirst({
       where: { refereeId, status: "PENDING" },
-      select: { id: true, referrerId: true },
+      select: { id: true, referrerId: true, rewardAmount: true },
     });
     if (!referral) return;
 
@@ -99,7 +156,11 @@ export async function rewardReferralFor(refereeId: string, referenceId?: string)
         select: { name: true, email: true },
       }),
     ]);
-    const amount = settings.referralRewardAmount;
+    // What the code was worth when it was used — a birthday code pays more —
+    // falling back to today's standing reward for referrals raised before this
+    // was recorded.
+    const promised = Number(referral.rewardAmount ?? 0);
+    const amount = promised > 0 ? promised : settings.referralRewardAmount;
     // The academy can switch the whole programme off; nothing is paid while it
     // is, and the referral simply stays pending.
     if (!settings.referralEnabled || amount <= 0 || !referrer) return;
@@ -198,6 +259,8 @@ export interface ReferralOverview {
   reward: number;
   /** What the referred friend gets off their first course. */
   discount: number;
+  /** What a referral on the birthday code pays. */
+  birthdayReward: number;
   minWithdrawal: number;
   withdrawalsEnabled: boolean;
   stats: {
@@ -299,6 +362,7 @@ export async function referralOverview(query: {
     enabled: settings.referralEnabled,
     reward: settings.referralRewardAmount,
     discount: settings.referralDiscountAmount,
+    birthdayReward: settings.birthdayReferralReward,
     minWithdrawal: settings.walletMinWithdrawal,
     withdrawalsEnabled: settings.walletWithdrawalsEnabled,
     stats: {
@@ -536,7 +600,13 @@ export async function sendBirthdayGreetings(now: Date = new Date()): Promise<Bir
   const refer = settings.referralEnabled && settings.referralRewardAmount > 0;
   for (const person of rows) {
     try {
+      // The standing code stays theirs; the birthday brings a second one that
+      // pays more and lapses. Both go in the greeting.
       const code = refer ? await ensureReferralCode(person.id) : null;
+      const birthdayCode =
+        refer && settings.birthdayReferralReward > 0
+          ? await issueBirthdayCode(person.id, settings.birthdayCodeDays)
+          : null;
       await prisma.user.update({
         where: { id: person.id },
         data: { lastBirthdayWishAt: now },
@@ -545,17 +615,25 @@ export async function sendBirthdayGreetings(now: Date = new Date()): Promise<Bir
         userIds: [person.id],
         type: "ANNOUNCEMENT",
         title: `Happy birthday, ${person.name.split(" ")[0]}!`,
-        message: code
-          ? `Everyone at ${settings.siteName} wishes you a wonderful year. Here's your gift: share your referral code ${code} and earn ₹${settings.referralRewardAmount.toLocaleString("en-IN")} in your wallet for every friend who enrolls.`
-          : `Everyone at ${settings.siteName} wishes you a wonderful year ahead.`,
+        message: birthdayCode
+          ? `Everyone at ${settings.siteName} wishes you a wonderful year. Your birthday gift: the code ${birthdayCode} pays you ₹${settings.birthdayReferralReward.toLocaleString("en-IN")} for every friend who enrolls with it — it is good for today only.`
+          : code
+            ? `Everyone at ${settings.siteName} wishes you a wonderful year. Here's your gift: share your referral code ${code} and earn ₹${settings.referralRewardAmount.toLocaleString("en-IN")} in your wallet for every friend who enrolls.`
+            : `Everyone at ${settings.siteName} wishes you a wonderful year ahead.`,
         actionUrl: code ? "/student/wallet" : "/student",
       });
       const sent = await sendMail({
         to: person.email,
         ...birthdayGreeting({
           name: person.name,
-          code,
-          reward: refer ? settings.referralRewardAmount : undefined,
+          code: birthdayCode ?? code,
+          reward: birthdayCode
+            ? settings.birthdayReferralReward
+            : refer
+              ? settings.referralRewardAmount
+              : undefined,
+          birthdayOnly: Boolean(birthdayCode),
+          days: settings.birthdayCodeDays,
           siteName: settings.siteName,
         }),
       });

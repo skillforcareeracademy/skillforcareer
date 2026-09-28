@@ -5,6 +5,7 @@ export const referralSettingsSchema = z.object({
   referralEnabled: z.boolean(),
   referralRewardAmount: z.coerce.number().int().min(0).max(1_000_000),
   referralDiscountAmount: z.coerce.number().int().min(0).max(1_000_000),
+  birthdayReferralReward: z.coerce.number().int().min(0).max(1_000_000),
   walletWithdrawalsEnabled: z.boolean(),
   walletMinWithdrawal: z.coerce.number().int().min(0).max(1_000_000),
 });

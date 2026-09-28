@@ -25,6 +25,8 @@ export interface StudentQuiz {
   sequence: number;
   categoryName: string | null;
   subCategoryName: string | null;
+  /** How hard the academy says it is. */
+  difficulty: string;
 }
 
 export async function listStudentQuizzes(userId: string): Promise<StudentQuiz[]> {
@@ -104,6 +106,7 @@ export async function listStudentQuizzes(userId: string): Promise<StudentQuiz[]>
       passed: best != null && best >= z.passingScore,
       bookmarked: saved.has(z.id),
       sequence: z.sequence,
+      difficulty: z.difficulty,
       categoryName: z.category?.name ?? null,
       subCategoryName: z.subCategory?.name ?? null,
     };

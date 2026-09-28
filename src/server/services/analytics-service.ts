@@ -565,7 +565,18 @@ export interface StudentPerfRow {
 
 /** Per-student performance. Scope to one instructor's courses when given. */
 export async function getStudentPerformance(instructorId?: string): Promise<StudentPerfRow[]> {
-  const scope: Prisma.EnrollmentWhereInput = instructorId ? { course: { instructorId } } : {};
+  // An instructor's students are the ones on their courses *and* the ones in
+  // the batches they lead or assist on — a batch can be handed to a teacher
+  // who doesn't own the course, and those learners are still theirs.
+  const scope: Prisma.EnrollmentWhereInput = instructorId
+    ? {
+        OR: [
+          { course: { instructorId } },
+          { batch: { instructorId } },
+          { batch: { associates: { some: { userId: instructorId } } } },
+        ],
+      }
+    : {};
   const enrollments = await prisma.enrollment.findMany({
     where: scope,
     select: {

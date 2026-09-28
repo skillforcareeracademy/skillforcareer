@@ -18,7 +18,9 @@ export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
   emailLiveClassReminders: true,
   emailAssignmentGraded: true,
   emailDiscussionReplies: true,
-  productTips: false,
+  // Every one of them on to begin with, at the academy's asking — a learner
+  // switches off what they don't want.
+  productTips: true,
 };
 
 export const NOTIFICATION_FIELDS: {

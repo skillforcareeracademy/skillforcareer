@@ -51,6 +51,10 @@ export const settingsSchema = z.object({
   referralRewardAmount: z.coerce.number().int().min(0).max(1_000_000),
   /** What the referred friend gets off their first enrolment. 0 = no discount. */
   referralDiscountAmount: z.coerce.number().int().min(0).max(1_000_000),
+  /** What a referral on the birthday code pays. 0 = no birthday code at all. */
+  birthdayReferralReward: z.coerce.number().int().min(0).max(1_000_000),
+  /** How long the birthday code lasts, in days. 1 = the birthday only. */
+  birthdayCodeDays: z.coerce.number().int().min(1).max(30),
   /** Below this, a withdrawal can't be asked for. 0 = any amount. */
   walletMinWithdrawal: z.coerce.number().int().min(0).max(1_000_000),
   /** Off, learners see their balance but can't ask for a payout. */
@@ -153,6 +157,8 @@ export const DEFAULT_SETTINGS: Settings = {
   referralEnabled: true,
   referralRewardAmount: 5000,
   referralDiscountAmount: 0,
+  birthdayReferralReward: 5000,
+  birthdayCodeDays: 1,
   walletMinWithdrawal: 500,
   walletWithdrawalsEnabled: true,
   allowRegistration: true,

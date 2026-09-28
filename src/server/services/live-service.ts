@@ -93,6 +93,19 @@ export interface MeetingListQuery {
   batchId?: string;
   /** Scope to one host's classes (instructor workspace). */
   hostId?: string;
+  /** Class date window, "YYYY-MM-DD" in academy time — either end optional. */
+  from?: string;
+  to?: string;
+}
+
+/** 00:00 IST on a "YYYY-MM-DD", as an instant. */
+function academyDayStart(day: string): Date {
+  return new Date(`${day}T00:00:00+05:30`);
+}
+
+/** The instant the day ends — used as an exclusive upper bound. */
+function academyDayEnd(day: string): Date {
+  return new Date(academyDayStart(day).getTime() + 86_400_000);
 }
 
 export async function listMeetingsAdmin(q: MeetingListQuery) {
@@ -106,6 +119,16 @@ export async function listMeetingsAdmin(q: MeetingListQuery) {
   if (q.courseId) and.push({ courseId: q.courseId });
   if (q.batchId) and.push({ batchId: q.batchId });
   if (q.hostId) and.push({ hostId: q.hostId });
+  // "class date ke according filter" — the window is read in academy time, so
+  // a class at 11pm IST belongs to the day the academy ran it.
+  if (q.from || q.to) {
+    and.push({
+      scheduledStart: {
+        ...(q.from ? { gte: academyDayStart(q.from) } : {}),
+        ...(q.to ? { lt: academyDayEnd(q.to) } : {}),
+      },
+    });
+  }
   const where: Prisma.MeetingWhereInput = and.length ? { AND: and } : {};
 
   const [total, rows] = await Promise.all([

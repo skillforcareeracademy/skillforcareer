@@ -29,7 +29,9 @@ function button(href: string, label: string): string {
 }
 
 /** The voucher itself — a dashed card with the learner's code in it. */
-function voucher(code: string, reward: number): string {
+function voucher(code: string, reward: number, birthdayOnly: boolean, days: number): string {
+  const window =
+    days <= 1 ? "today only" : `the next ${days} days`;
   return `
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0;">
     <tr>
@@ -40,6 +42,11 @@ function voucher(code: string, reward: number): string {
         <p style="margin:10px 0 0;font-size:13px;color:#52525b;">
           When they enroll with it, <strong>${rupees(reward)}</strong> goes into your wallet.
         </p>
+        ${
+          birthdayOnly
+            ? `<p style="margin:8px 0 0;font-size:12px;color:#9f1239;">This is a birthday code — it works for ${window}. Your usual referral code carries on as always.</p>`
+            : ""
+        }
       </td>
     </tr>
   </table>`;
@@ -50,6 +57,9 @@ export function birthdayGreeting(d: {
   /** Left out when refer-and-earn is switched off — the wishes still go. */
   code?: string | null;
   reward?: number;
+  /** The code is the birthday one, which lapses. */
+  birthdayOnly?: boolean;
+  days?: number;
   siteName: string;
 }) {
   const first = d.name.split(" ")[0] || d.name;
@@ -66,7 +76,7 @@ export function birthdayGreeting(d: {
         ...(d.code
           ? [
               p("Here is a little something from us:"),
-              voucher(d.code, d.reward ?? 0),
+              voucher(d.code, d.reward ?? 0, Boolean(d.birthdayOnly), d.days ?? 1),
               p(
                 `The money can be withdrawn from your wallet whenever you like, or kept towards ` +
                   `your next course.`,

@@ -40,6 +40,7 @@ export default async function ReferralsPage({
       enabled={view.enabled}
       reward={view.reward}
       discount={view.discount}
+      birthdayReward={view.birthdayReward}
       withdrawalsEnabled={view.withdrawalsEnabled}
       minWithdrawal={view.minWithdrawal}
       stats={view.stats}

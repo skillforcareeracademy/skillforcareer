@@ -25,6 +25,9 @@ export default async function InstructorCoursesPage({
     search: str(sp.search),
     status: str(sp.status),
     categoryId: str(sp.category),
+    deliveryMode: str(sp.mode),
+    from: str(sp.from),
+    to: str(sp.to),
     instructorId: user.id,
   };
   const [{ courses, total }, categories, stats] = await Promise.all([

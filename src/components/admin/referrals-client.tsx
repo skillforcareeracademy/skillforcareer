@@ -82,6 +82,7 @@ export function ReferralsClient({
   enabled,
   reward,
   discount,
+  birthdayReward,
   withdrawalsEnabled,
   minWithdrawal,
   stats,
@@ -102,6 +103,8 @@ export function ReferralsClient({
   reward: number;
   /** What the referred friend gets off their first course. */
   discount: number;
+  /** What a referral on the birthday code pays. */
+  birthdayReward: number;
   withdrawalsEnabled: boolean;
   minWithdrawal: number;
   stats: {
@@ -131,6 +134,7 @@ export function ReferralsClient({
     referralEnabled: enabled,
     referralRewardAmount: String(reward),
     referralDiscountAmount: String(discount),
+    birthdayReferralReward: String(birthdayReward),
     walletWithdrawalsEnabled: withdrawalsEnabled,
     walletMinWithdrawal: String(minWithdrawal),
   });
@@ -163,6 +167,7 @@ export function ReferralsClient({
         referralEnabled: form.referralEnabled,
         referralRewardAmount: Number(form.referralRewardAmount) || 0,
         referralDiscountAmount: Number(form.referralDiscountAmount) || 0,
+        birthdayReferralReward: Number(form.birthdayReferralReward) || 0,
         walletWithdrawalsEnabled: form.walletWithdrawalsEnabled,
         walletMinWithdrawal: Number(form.walletMinWithdrawal) || 0,
       });
@@ -413,6 +418,22 @@ export function ReferralsClient({
                 />
                 <p className="text-muted-foreground text-xs">
                   Taken off the first course the referred friend buys. 0 = no discount.
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="r-birthday">Birthday code reward (₹)</Label>
+                <Input
+                  id="r-birthday"
+                  type="number"
+                  min={0}
+                  value={form.birthdayReferralReward}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, birthdayReferralReward: e.target.value }))
+                  }
+                />
+                <p className="text-muted-foreground text-xs">
+                  A different code, issued on the learner&apos;s birthday and good for that day
+                  only. 0 = no birthday code.
                 </p>
               </div>
               <div className="space-y-1.5">

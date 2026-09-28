@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   ArrowDownLeft,
   ArrowUpRight,
+  Cake,
   Check,
   Copy,
   Gift,
@@ -53,6 +54,8 @@ export function StudentWalletClient({
   referralEnabled,
   reward,
   discount,
+  birthdayCode,
+  birthdayReward,
   minWithdrawal,
   withdrawalsEnabled,
   referredCount,
@@ -66,6 +69,9 @@ export function StudentWalletClient({
   reward: number;
   /** What the friend gets off their first course; 0 = no discount. */
   discount: number;
+  /** Today's birthday code, if the learner has one in date. */
+  birthdayCode: string | null;
+  birthdayReward: number;
   minWithdrawal: number;
   withdrawalsEnabled: boolean;
   referredCount: number;
@@ -139,7 +145,8 @@ export function StudentWalletClient({
             </CardTitle>
             <CardDescription>
               Share your code. When a friend enrolls with it, {rupees(reward)} is added here
-              {discount > 0 ? ` — and they get ${rupees(discount)} off their first course` : ""}.
+              {discount > 0 ? `. They get ${rupees(discount)}/- discount on enrollment` : ""}. You
+              can withdraw it in your bank.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -152,6 +159,24 @@ export function StudentWalletClient({
                 {copied ? "Copied" : "Copy code"}
               </Button>
             </div>
+
+            {/* The birthday code, while it lasts — a different code, worth
+                more, and gone tomorrow. */}
+            {birthdayCode && (
+              <div className="border-primary/30 bg-primary/5 mt-3 rounded-xl border p-3">
+                <p className="flex items-center gap-1.5 text-sm font-medium">
+                  <Cake className="size-4" /> Your birthday code
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <code className="bg-background rounded-lg px-3 py-1.5 font-semibold tracking-widest">
+                    {birthdayCode}
+                  </code>
+                  <span className="text-muted-foreground text-xs">
+                    {rupees(birthdayReward)} per referral · valid today only
+                  </span>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
         )}

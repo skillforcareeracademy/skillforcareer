@@ -64,9 +64,12 @@ interface CourseRow {
   subtitle: string | null;
   status: string;
   level: string;
+  /** Live, pre-recorded, hybrid or offline. */
+  deliveryMode: string;
   thumbnailUrl: string | null;
   categoryName: string;
   instructorName: string;
+  instructorId: string;
   price: number;
   discountPrice: number | null;
   pricingType: string;
@@ -89,6 +92,10 @@ interface Query {
   search?: string;
   status?: string;
   categoryId?: string;
+  deliveryMode?: string;
+  instructorId?: string;
+  from?: string;
+  to?: string;
 }
 
 const STATUS_BADGE: Record<string, string> = {
@@ -98,6 +105,13 @@ const STATUS_BADGE: Record<string, string> = {
   ARCHIVED: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300",
 };
 const STATUS_OPTIONS = ["DRAFT", "PENDING_REVIEW", "PUBLISHED", "ARCHIVED"];
+const DELIVERY_MODES = ["LIVE", "SELF_PACED", "HYBRID", "OFFLINE"] as const;
+const DELIVERY_MODE_LABEL: Record<string, string> = {
+  LIVE: "Live",
+  SELF_PACED: "Recorded",
+  HYBRID: "Hybrid",
+  OFFLINE: "Offline",
+};
 const LEVEL_LABEL: Record<string, string> = {
   BEGINNER: "Beginner",
   INTERMEDIATE: "Intermediate",
@@ -115,6 +129,7 @@ export function CoursesClient({
   query,
   stats,
   categories,
+  instructors = [],
   basePath = "/admin/courses",
   canDelete = true,
 }: {
@@ -123,6 +138,8 @@ export function CoursesClient({
   query: Query;
   stats: Stats;
   categories: { id: string; name: string }[];
+  /** For the instructor filter — empty in the instructor's own workspace. */
+  instructors?: { id: string; name: string }[];
   /** Route prefix for row/create navigation — `/instructor/courses` in the instructor workspace. */
   basePath?: string;
   /** Instructors can't delete courses (admins only) — hide the action. */
@@ -138,7 +155,15 @@ export function CoursesClient({
   const [deleting, setDeleting] = useState<CourseRow | null>(null);
 
   const totalPages = Math.max(1, Math.ceil(total / query.pageSize));
-  const hasFilters = Boolean(query.search || query.status || query.categoryId);
+  const hasFilters = Boolean(
+    query.search ||
+      query.status ||
+      query.categoryId ||
+      query.deliveryMode ||
+      query.instructorId ||
+      query.from ||
+      query.to,
+  );
 
   const setParams = useCallback(
     (next: Record<string, string | number | undefined>) => {
@@ -146,6 +171,10 @@ export function CoursesClient({
         search: query.search,
         status: query.status,
         category: query.categoryId,
+        mode: query.deliveryMode,
+        instructor: query.instructorId,
+        from: query.from,
+        to: query.to,
         page: query.page,
         ...next,
       };
@@ -153,6 +182,10 @@ export function CoursesClient({
       if (merged.search) p.set("search", String(merged.search));
       if (merged.status) p.set("status", String(merged.status));
       if (merged.category) p.set("category", String(merged.category));
+      if (merged.mode) p.set("mode", String(merged.mode));
+      if (merged.instructor) p.set("instructor", String(merged.instructor));
+      if (merged.from) p.set("from", String(merged.from));
+      if (merged.to) p.set("to", String(merged.to));
       if (merged.page && Number(merged.page) > 1) p.set("page", String(merged.page));
       const qs = p.toString();
       router.push(qs ? `${pathname}?${qs}` : pathname);
@@ -162,7 +195,16 @@ export function CoursesClient({
 
   function clearFilters() {
     setSearch("");
-    setParams({ search: undefined, status: undefined, category: undefined, page: 1 });
+    setParams({
+      search: undefined,
+      status: undefined,
+      category: undefined,
+      mode: undefined,
+      instructor: undefined,
+      from: undefined,
+      to: undefined,
+      page: 1,
+    });
   }
 
   async function onCreate(e: FormEvent) {
@@ -253,6 +295,15 @@ export function CoursesClient({
         <Badge variant="secondary" className={STATUS_BADGE[c.status]}>
           {pretty(c.status)}
         </Badge>
+      ),
+    },
+    {
+      key: "mode",
+      header: "Type",
+      cell: (c) => (
+        <span className="text-muted-foreground text-sm">
+          {DELIVERY_MODE_LABEL[c.deliveryMode] ?? c.deliveryMode}
+        </span>
       ),
     },
     {
@@ -419,6 +470,71 @@ export function CoursesClient({
                 ))}
               </SelectContent>
             </Select>
+            {/* Live, recorded, offline or hybrid — the academy couldn't tell
+                them apart in this list. */}
+            <Select
+              value={query.deliveryMode ?? ALL}
+              onValueChange={(v) => setParams({ mode: !v || v === ALL ? undefined : v, page: 1 })}
+            >
+              <SelectTrigger className="flex-1 sm:w-40">
+                <SelectValue>
+                  {(v) =>
+                    !v || v === ALL ? "All types" : (DELIVERY_MODE_LABEL[String(v)] ?? "Type")
+                  }
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>All types</SelectItem>
+                {DELIVERY_MODES.map((m) => (
+                  <SelectItem key={m} value={m}>
+                    {DELIVERY_MODE_LABEL[m]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {instructors.length > 0 && (
+              <Select
+                value={query.instructorId ?? ALL}
+                onValueChange={(v) =>
+                  setParams({ instructor: !v || v === ALL ? undefined : v, page: 1 })
+                }
+              >
+                <SelectTrigger className="flex-1 sm:w-44">
+                  <SelectValue>
+                    {(v) =>
+                      !v || v === ALL
+                        ? "All instructors"
+                        : (instructors.find((i) => i.id === v)?.name ?? "Instructor")
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>All instructors</SelectItem>
+                  {instructors.map((i) => (
+                    <SelectItem key={i.id} value={i.id}>
+                      {i.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            <div className="flex items-center gap-1.5">
+              <Input
+                type="date"
+                aria-label="Created from"
+                value={query.from ?? ""}
+                onChange={(e) => setParams({ from: e.target.value || undefined, page: 1 })}
+                className="w-[9.5rem]"
+              />
+              <span className="text-muted-foreground text-xs">to</span>
+              <Input
+                type="date"
+                aria-label="Created to"
+                value={query.to ?? ""}
+                onChange={(e) => setParams({ to: e.target.value || undefined, page: 1 })}
+                className="w-[9.5rem]"
+              />
+            </div>
             {hasFilters && (
               <Button variant="ghost" size="sm" onClick={clearFilters} className="text-muted-foreground">
                 <X className="size-4" /> Clear

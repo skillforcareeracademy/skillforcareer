@@ -16,6 +16,7 @@ import { ROLES } from "@/config/roles";
 import {
   getInstructorStats,
   getInstructorUpcomingClasses,
+  getInstructorTodayClasses,
   getSubmissionsToGrade,
   getInstructorTopCourses,
 } from "@/server/services/instructor-service";
@@ -41,8 +42,9 @@ function initials(name: string): string {
 
 export default async function InstructorHome() {
   const user = await requireRole([ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.INSTRUCTOR]);
-  const [stats, classes, grading, courses] = await Promise.all([
+  const [stats, today, classes, grading, courses] = await Promise.all([
     getInstructorStats(user.id),
+    getInstructorTodayClasses(user.id),
     getInstructorUpcomingClasses(user.id, 5),
     getSubmissionsToGrade(user.id, 6),
     getInstructorTopCourses(user.id, 5),
@@ -62,6 +64,61 @@ export default async function InstructorHome() {
         <StatCard label="To grade" value={stats.pendingGrading} icon={ClipboardCheck} tint="from-amber-500 to-orange-600" />
         <StatCard label="Live classes" value={stats.liveClasses} icon={Video} tint="from-sky-500 to-blue-600" />
       </div>
+
+      {/* What they are teaching today — the first thing an instructor opens
+          this panel to find. */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Radio className="text-muted-foreground size-4" /> Today&apos;s live classes
+          </CardTitle>
+          <CardDescription>
+            {today.length === 0
+              ? "Nothing on the timetable for today."
+              : `${today.length} class${today.length === 1 ? "" : "es"} today`}
+          </CardDescription>
+        </CardHeader>
+        {today.length > 0 && (
+          <CardContent>
+            <ul className="space-y-3">
+              {today.map((c) => {
+                const isLive = c.status === "LIVE";
+                const ended = c.status === "ENDED";
+                return (
+                  <li key={c.id} className="flex items-center gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="truncate text-sm font-medium">{c.title}</p>
+                        {isLive && (
+                          <Badge className="gap-1 bg-rose-600 text-[10px] text-white">
+                            <Radio className="size-2.5" /> LIVE
+                          </Badge>
+                        )}
+                        {ended && (
+                          <Badge variant="secondary" className="bg-muted text-muted-foreground text-[10px]">
+                            Ended
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-muted-foreground truncate text-xs">
+                        {c.courseTitle ? `${c.courseTitle} · ` : ""}
+                        {format(new Date(c.scheduledStart), "h:mm a")}
+                      </p>
+                    </div>
+                    <ButtonLink
+                      href={`/live/room/${c.roomCode}`}
+                      size="sm"
+                      variant={isLive ? "default" : "outline"}
+                    >
+                      {isLive ? "Join" : ended ? "Open" : "Start"}
+                    </ButtonLink>
+                  </li>
+                );
+              })}
+            </ul>
+          </CardContent>
+        )}
+      </Card>
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Upcoming classes */}

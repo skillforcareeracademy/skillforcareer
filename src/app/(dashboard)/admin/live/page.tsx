@@ -30,6 +30,8 @@ export default async function LivePage({
     status: str(sp.status),
     courseId: str(sp.course),
     batchId: str(sp.batch),
+    from: str(sp.from),
+    to: str(sp.to),
   };
 
   const [{ meetings, total }, stats, hosts, courses, batches] = await Promise.all([

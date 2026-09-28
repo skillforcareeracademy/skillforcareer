@@ -208,6 +208,14 @@ enum SubmissionStatus {
   LATE
 }
 
+enum QuizDifficulty {
+  EASY
+  INTERMEDIATE
+  DIFFICULT
+  VERY_DIFFICULT
+  SUPER_DIFFICULT
+}
+
 enum QuestionReviewStatus {
   /// Waiting for an admin or instructor.
   OPEN
@@ -329,10 +337,17 @@ model User {
   role   Role   @relation(fields: [roleId], references: [id], onUpdate: NoAction)
 
   /// Birthday. The academy sends wishes and a referral voucher on the day.
-  dateOfBirth        DateTime?
+  dateOfBirth           DateTime?
   /// When the last birthday greeting went out — one a year, however often the
   /// morning sweep runs.
-  lastBirthdayWishAt DateTime?
+  lastBirthdayWishAt    DateTime?
+  /// The birthday voucher's own code: a different one from the standing
+  /// referral code, worth more, and good only for as long as the academy says.
+  /// Not a unique index: TiDB won't take a new one without a destructive
+  /// push, so the generator checks the code isn't already out (see
+  /// `referral-service.issueBirthdayCode`).
+  birthdayCode          String?
+  birthdayCodeExpiresAt DateTime?
 
   // Refer-and-earn
   referralCode String? @unique
@@ -1029,6 +1044,9 @@ model Quiz {
   /// whole paper). Null = no per-question limit. With one set the paper is sat
   /// one question at a time; the academy can use either clock, or both.
   perQuestionSeconds Int?
+
+  /// How hard the paper is, as the academy grades it.
+  difficulty QuizDifficulty @default(EASY)
 
   /// The quiz's permanent number, handed out when it is created and never
   /// changed — "Quiz number can not be changed". It is how the academy refers

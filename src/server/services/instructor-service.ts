@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { istToday } from "@/lib/ist";
 
 export interface InstructorStats {
   courses: number;
@@ -43,8 +44,16 @@ export async function getInstructorUpcomingClasses(
   instructorId: string,
   limit = 5,
 ): Promise<InstructorClass[]> {
+  // Still to come, not simply "never marked as ended" — a list that opens on
+  // last week's classes is no use to anybody first thing in the morning.
   const rows = await prisma.meeting.findMany({
-    where: { hostId: instructorId, status: { in: ["SCHEDULED", "LIVE"] } },
+    where: {
+      hostId: instructorId,
+      OR: [
+        { status: "LIVE" },
+        { status: "SCHEDULED", scheduledStart: { gte: new Date(Date.now() - 2 * 3_600_000) } },
+      ],
+    },
     orderBy: { scheduledStart: "asc" },
     take: limit,
     include: { course: { select: { title: true } } },
@@ -55,6 +64,36 @@ export async function getInstructorUpcomingClasses(
     status: m.status,
     roomCode: m.roomCode,
     courseTitle: m.course?.title ?? null,
+    scheduledStart: m.scheduledStart.toISOString(),
+  }));
+}
+
+/**
+ * What this instructor is teaching today, in academy time — the list the
+ * academy expected on the dashboard and couldn't find.
+ */
+export async function getInstructorTodayClasses(
+  instructorId: string,
+): Promise<InstructorClass[]> {
+  const today = istToday();
+  const start = new Date(`${today}T00:00:00+05:30`);
+  const end = new Date(start.getTime() + 86_400_000);
+  const rows = await prisma.meeting.findMany({
+    where: {
+      hostId: instructorId,
+      status: { not: "CANCELLED" },
+      scheduledStart: { gte: start, lt: end },
+    },
+    orderBy: { scheduledStart: "asc" },
+    take: 20,
+    include: { course: { select: { title: true } }, batch: { select: { name: true } } },
+  });
+  return rows.map((m) => ({
+    id: m.id,
+    title: m.title,
+    status: m.status,
+    roomCode: m.roomCode,
+    courseTitle: m.batch?.name ? `${m.course?.title ?? ""} · ${m.batch.name}` : (m.course?.title ?? null),
     scheduledStart: m.scheduledStart.toISOString(),
   }));
 }

@@ -1,5 +1,6 @@
 import { FileQuestion, ListChecks, Award, CheckCircle2, RefreshCw, PlayCircle } from "lucide-react";
 import type { StudentQuiz } from "@/server/services/student-quiz-service";
+import { QUIZ_DIFFICULTY_LABEL } from "@/lib/validations/quiz";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ButtonLink } from "@/components/shared/button-link";
@@ -65,7 +66,12 @@ export function StudentQuizzesClient({ quizzes }: { quizzes: StudentQuiz[] }) {
                         {q.title}
                       </h3>
                       <p className="text-muted-foreground truncate text-xs">
-                        {[q.categoryName, q.subCategoryName, q.courseTitle]
+                        {[
+                          q.categoryName,
+                          q.subCategoryName,
+                          q.courseTitle,
+                          QUIZ_DIFFICULTY_LABEL[q.difficulty] ?? null,
+                        ]
                           .filter(Boolean)
                           .join(" · ")}
                       </p>
