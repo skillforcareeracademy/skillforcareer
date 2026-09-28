@@ -48,7 +48,7 @@ rm -rf \
   "$STAGE/.env" "$STAGE"/.env.* \
   "$STAGE/CLAUDE.md" "$STAGE/AGENTS.md" "$STAGE/.claude" \
   "$STAGE/README.md" "$STAGE/docs" "$STAGE/.git" \
-  "$STAGE/scripts" "$STAGE/certificates" "$STAGE/render.yaml" \
+  "$STAGE/scripts" "$STAGE/certificates" "$STAGE/render.yaml" "$STAGE/deploy" \
   "$STAGE/eslint.config.mjs" "$STAGE/components.json" \
   "$STAGE/tsconfig.json" "$STAGE/tsconfig.tsbuildinfo" \
   "$STAGE/prisma" "$STAGE/prisma.config.ts" "$STAGE/vercel.json"
@@ -90,9 +90,12 @@ systemctl is-active --quiet $SERVICE && echo "service up" || { journalctl -u $SE
 REMOTE
 
 echo "▸ checking the site answers"
+# The port lives with the secrets, because a box may run more than one site.
+PORT="$("${SSH[@]}" "grep -m1 '^PORT=' /etc/skillforcareer/app.env | cut -d= -f2 | tr -d '\"'" || true)"
+PORT="${PORT:-3000}"
 for i in 1 2 3 4 5 6 7 8 9 10; do
-  code="$("${SSH[@]}" "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/api/health || true")"
-  [[ "$code" == "200" ]] && { echo "live (health 200)"; exit 0; }
+  code="$("${SSH[@]}" "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:$PORT/api/health || true")"
+  [[ "$code" == "200" ]] && { echo "live on :$PORT (health 200)"; exit 0; }
   sleep 3
 done
 echo "The service is running but /api/health did not answer 200 — check the logs." >&2

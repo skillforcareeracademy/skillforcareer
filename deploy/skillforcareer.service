@@ -15,7 +15,7 @@ WorkingDirectory=/var/www/skillforcareer/current
 # nothing about the port is assumed here.
 EnvironmentFile=/etc/skillforcareer/app.env
 Environment=NODE_ENV=production
-ExecStart=/usr/bin/node server.js
+ExecStart=/usr/local/bin/node server.js
 Restart=always
 RestartSec=3
 # A crash loop shouldn't take the box with it.

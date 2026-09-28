@@ -22,6 +22,14 @@ GitHub  ──(the code, the history, the only backup)
 | `deploy/nginx.conf` | TLS in front, proxy to node, hashed assets cached hard. |
 | `scripts/deploy-vps.sh` | Build, prune, ship a dated release, switch `current`, restart, health-check. |
 
+## This machine is shared
+
+The academy's VPS already serves another site (`jls.limo`, `jls.service`, port
+3000). Nothing here touches it: this site runs as its own service on its own
+port, behind its own nginx file, and provisioning installs only what is missing
+and leaves the firewall alone. Its port is `PORT` in
+`/etc/skillforcareer/app.env` — currently **3200**.
+
 ## First time
 
 1. **Give the laptop a key.** The server accepts public keys only — the hPanel
@@ -33,17 +41,32 @@ GitHub  ──(the code, the history, the only backup)
    ssh -i ~/.ssh/sfc_vps root@187.127.181.146 'echo ok'
    ```
 
-2. **Provision the box.** Copy the four files across and run the script with the
-   domain that will point at this server:
+2. **Provision the box.** Copy the files across and run the script. Before any
+   DNS is moved, provision a preview — the site on a port of its own, no
+   certificate needed:
 
    ```bash
-   scp -i ~/.ssh/sfc_vps deploy/* root@187.127.181.146:/root/deploy/
-   ssh -i ~/.ssh/sfc_vps root@187.127.181.146 'bash /root/deploy/provision.sh www.skillforcareer.com'
+   scp -i ~/.ssh/sfc_vps deploy/* root@187.127.181.146:/root/deploy-sfc/
+   ssh -i ~/.ssh/sfc_vps root@187.127.181.146 \
+     'SKIP_TLS=1 PREVIEW_PORT=8080 APP_PORT=3200 bash /root/deploy-sfc/provision.sh preview'
    ```
 
-   The certificate step needs the domain's A record already pointing at
-   `187.127.181.146`; until then, provision with the server's own hostname and
-   re-run for the real domain when DNS has moved.
+   With a domain pointed at `187.127.181.146`, run it for real instead — this
+   takes the certificate and serves 80/443 for that name only:
+
+   ```bash
+   ssh -i ~/.ssh/sfc_vps root@187.127.181.146 \
+     'APP_PORT=3200 bash /root/deploy-sfc/provision.sh lms.skillforcareer.com'
+   ```
+
+   Hostinger's own firewall only lets 22, 80 and 443 through, so the preview
+   port is reachable from the server itself (and over an SSH tunnel), not from
+   the open internet:
+
+   ```bash
+   ssh -i ~/.ssh/sfc_vps -L 8080:127.0.0.1:8080 root@187.127.181.146
+   # then open http://localhost:8080
+   ```
 
 3. **Fill in the secrets** — the same values the hosted project uses, in
    `/etc/skillforcareer/app.env` (root-readable only, never committed):

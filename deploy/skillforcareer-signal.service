@@ -9,7 +9,7 @@ Type=simple
 WorkingDirectory=/var/www/skillforcareer/signal
 EnvironmentFile=/etc/skillforcareer/signal.env
 Environment=NODE_ENV=production
-ExecStart=/usr/bin/node signalling-server.js
+ExecStart=/usr/local/bin/node signalling-server.js
 Restart=always
 RestartSec=3
 User=www-data

@@ -50,8 +50,9 @@ if ! node -v 2>/dev/null | grep -q "^v${NODE_VERSION%%.*}\."; then
   curl -fsSL "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-x64.tar.xz" -o "$tmp/node.tar.xz"
   tar -xJf "$tmp/node.tar.xz" -C /usr/local --strip-components=1
   rm -rf "$tmp"
-  ln -sfn /usr/local/bin/node /usr/bin/node
 fi
+# Wherever node came from, the unit expects it here.
+[[ -x /usr/local/bin/node ]] || ln -sfn "$(command -v node)" /usr/local/bin/node
 node -v
 
 echo "▸ directories"
