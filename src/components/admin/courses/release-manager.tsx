@@ -20,6 +20,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { EmptyState } from "@/components/shared/empty-state";
 import {
   Select,
@@ -103,6 +104,7 @@ export function ReleaseManager({ courseId }: { courseId: string }) {
   const [dripDays, setDripDays] = useState("7");
   const [viewLimit, setViewLimit] = useState("");
   const [downloadLimit, setDownloadLimit] = useState("");
+  const [downloadsEnabled, setDownloadsEnabled] = useState(true);
   const [batchIds, setBatchIds] = useState<Set<string>>(new Set());
   const [studentIds, setStudentIds] = useState<Set<string>>(new Set());
 
@@ -181,6 +183,7 @@ export function ReleaseManager({ courseId }: { courseId: string }) {
     setDripDays(l.dripDays != null ? String(l.dripDays) : "7");
     setViewLimit(l.viewLimit != null ? String(l.viewLimit) : "");
     setDownloadLimit(l.downloadLimit != null ? String(l.downloadLimit) : "");
+    setDownloadsEnabled(l.downloadsEnabled !== false);
     setBatchIds(new Set(l.batchIds));
     setStudentIds(new Set(l.studentIds));
   }
@@ -210,6 +213,7 @@ export function ReleaseManager({ courseId }: { courseId: string }) {
           dripDays: mode === "DRIP" ? Number(dripDays) || 0 : null,
           viewLimit: viewLimit.trim() === "" ? null : Number(viewLimit),
           downloadLimit: downloadLimit.trim() === "" ? null : Number(downloadLimit),
+          downloadsEnabled,
           batchIds: mode === "MANUAL" ? [...batchIds] : [],
           studentIds: mode === "MANUAL" ? [...studentIds] : [],
         },
@@ -322,7 +326,11 @@ export function ReleaseManager({ courseId }: { courseId: string }) {
                                   ? "Free preview — always open"
                                   : "Open to everyone enrolled"}
                           {l.viewLimit ? ` · ${l.viewLimit} views` : ""}
-                          {l.downloadLimit ? ` · ${l.downloadLimit} downloads` : ""}
+                          {l.downloadsEnabled === false
+                            ? " · downloads off"
+                            : l.downloadLimit
+                              ? ` · ${l.downloadLimit} downloads`
+                              : ""}
                         </p>
                       </button>
                       <Badge variant="secondary" className={cn("shrink-0", badge.className)}>
@@ -407,7 +415,8 @@ export function ReleaseManager({ courseId }: { courseId: string }) {
                 </Label>
                 {board.batches.length === 0 ? (
                   <p className="text-muted-foreground text-xs">
-                    No batches on this course yet.
+                    No batches on this course yet — create one under{" "}
+                    <strong>Batches</strong>, and it will be pickable here.
                   </p>
                 ) : (
                   <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border p-2">
@@ -434,7 +443,8 @@ export function ReleaseManager({ courseId }: { courseId: string }) {
                 <Label>Individual learners</Label>
                 {board.students.length === 0 ? (
                   <p className="text-muted-foreground text-xs">
-                    Nobody is enrolled on this course yet.
+                    Nobody has taken this course yet. Anyone who enrols — or whom you add from
+                    <strong> Batches</strong> — appears here.
                   </p>
                 ) : (
                   <div className="max-h-40 space-y-1 overflow-y-auto rounded-lg border p-2">
@@ -448,10 +458,25 @@ export function ReleaseManager({ courseId }: { courseId: string }) {
                           onCheckedChange={() => toggleIn(studentIds, setStudentIds, s.id)}
                         />
                         <span className="min-w-0 flex-1 truncate">{s.name}</span>
+                        {/* "Enrolled" was ambiguous: this says whether the
+                            academy has actually been paid. */}
+                        <span
+                          className={
+                            s.paid
+                              ? "shrink-0 text-xs text-emerald-600 dark:text-emerald-400"
+                              : "text-muted-foreground shrink-0 text-xs"
+                          }
+                        >
+                          {s.paid ? "Paid" : "Registered"}
+                        </span>
                       </label>
                     ))}
                   </div>
                 )}
+                <p className="text-muted-foreground text-xs">
+                  <strong>Paid</strong> = the academy has a payment against their seat.{" "}
+                  <strong>Registered</strong> = they signed up but haven&apos;t paid yet.
+                </p>
               </div>
             </div>
           )}
@@ -483,9 +508,16 @@ export function ReleaseManager({ courseId }: { courseId: string }) {
                   value={downloadLimit}
                   onChange={(e) => setDownloadLimit(e.target.value)}
                   placeholder="Default"
+                  disabled={!downloadsEnabled}
                 />
               </div>
             </div>
+            {/* The switch that says no: a limit of 0 means unlimited, so
+                "nobody downloads this" needed its own control. */}
+            <label className="flex items-center justify-between gap-4 text-xs">
+              <span>Allow downloads of this material</span>
+              <Switch checked={downloadsEnabled} onCheckedChange={setDownloadsEnabled} />
+            </label>
             <p className="text-muted-foreground text-xs">
               Blank uses the platform default from Settings → Learning. 0 means
               unlimited.

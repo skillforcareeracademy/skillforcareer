@@ -3,6 +3,7 @@ import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
 import { notify } from "./notification-service";
 import type { CurriculumInput } from "@/lib/validations/curriculum-plan";
+import { parseCsv, toCsv } from "@/lib/csv";
 
 /**
  * Curriculums: what a course covers, written by the academy and shown to the
@@ -289,6 +290,182 @@ export async function reorderCurriculums(ids: string[]): Promise<number> {
     WHERE id IN (${Prisma.join(ordered.map((id) => Prisma.sql`${id}`))})
   `;
   return ordered.length;
+}
+
+// ── Taking it in and out as a sheet ──────────────────────────────────────────
+
+const EXPORT_HEADERS = [
+  "Curriculum no.",
+  "Sequence",
+  "Title",
+  "Year",
+  "Visible",
+  "Section",
+  "Description",
+  "Courses",
+  "Batches",
+];
+
+/**
+ * The whole set as a spreadsheet — one row per section, so a curriculum with
+ * eight headings is eight rows that share a title. That is the same shape the
+ * importer reads back.
+ */
+export async function exportCurriculums(): Promise<string> {
+  const rows = await listCurriculums();
+  const cells: (string | number)[][] = [];
+  for (const c of rows) {
+    const courses = c.courseTitles.join("; ");
+    const batches = c.batchNames.join("; ");
+    if (c.tabs.length === 0) {
+      cells.push([c.number, c.sequence, c.title, c.year ?? "", c.isPublished ? "Yes" : "No", "", "", courses, batches]);
+      continue;
+    }
+    for (const tab of c.tabs) {
+      cells.push([
+        c.number,
+        c.sequence,
+        c.title,
+        c.year ?? "",
+        c.isPublished ? "Yes" : "No",
+        tab.heading,
+        tab.description ?? "",
+        courses,
+        batches,
+      ]);
+    }
+  }
+  return toCsv(EXPORT_HEADERS, cells);
+}
+
+export interface CurriculumImportResult {
+  created: number;
+  updated: number;
+  errors: { row: number; message: string }[];
+}
+
+/**
+ * Read a sheet back in. Rows that share a title belong to one curriculum, in
+ * the order they appear; courses and batches are matched by name, and anything
+ * that can't be matched is reported rather than dropped silently.
+ */
+export async function importCurriculums(
+  csv: string,
+  createdById: string,
+): Promise<CurriculumImportResult> {
+  const { headers, rows } = parseCsv(csv);
+  if (!headers.length) throw AppError.badRequest("That file has no header row.");
+
+  const norm = (v: string) => v.trim().toLowerCase();
+  const column = (want: string) => headers.find((h) => norm(h) === want) ?? "";
+  const titleCol = column("title");
+  if (!titleCol) {
+    throw AppError.badRequest('The sheet needs a "Title" column — download the export to see the shape.');
+  }
+  const seqCol = column("sequence");
+  const yearCol = column("year");
+  const visibleCol = column("visible");
+  const sectionCol = column("section");
+  const descriptionCol = column("description");
+  const coursesCol = column("courses");
+  const batchesCol = column("batches");
+
+  const [courses, batches] = await Promise.all([
+    prisma.course.findMany({ select: { id: true, title: true } }),
+    prisma.batch.findMany({ select: { id: true, name: true } }),
+  ]);
+  const courseByName = new Map(courses.map((c) => [norm(c.title), c.id]));
+  const batchByName = new Map(batches.map((b) => [norm(b.name), b.id]));
+
+  interface Draft {
+    title: string;
+    year: string;
+    isPublished: boolean;
+    tabs: { heading: string; description: string }[];
+    courseIds: string[];
+    batchIds: string[];
+    line: number;
+  }
+  const drafts = new Map<string, Draft>();
+  const errors: CurriculumImportResult["errors"] = [];
+
+  rows.forEach((row, index) => {
+    const line = index + 2;
+    const title = (row[titleCol] ?? "").trim();
+    if (!title) {
+      errors.push({ row: line, message: "No title on this row." });
+      return;
+    }
+    const key = norm(title);
+    const draft: Draft = drafts.get(key) ?? {
+      title,
+      year: yearCol ? (row[yearCol] ?? "").trim() : "",
+      isPublished: visibleCol ? !/^(no|false|0)$/i.test((row[visibleCol] ?? "").trim()) : true,
+      tabs: [],
+      courseIds: [],
+      batchIds: [],
+      line,
+    };
+    void seqCol;
+
+    const heading = sectionCol ? (row[sectionCol] ?? "").trim() : "";
+    if (heading) {
+      draft.tabs.push({
+        heading,
+        description: descriptionCol ? (row[descriptionCol] ?? "").trim() : "",
+      });
+    }
+    for (const [col, lookup, into] of [
+      [coursesCol, courseByName, draft.courseIds],
+      [batchesCol, batchByName, draft.batchIds],
+    ] as const) {
+      if (!col) continue;
+      for (const name of (row[col] ?? "").split(";")) {
+        const clean = name.trim();
+        if (!clean) continue;
+        const id = lookup.get(norm(clean));
+        if (!id) {
+          errors.push({ row: line, message: `Couldn't find "${clean}".` });
+          continue;
+        }
+        if (!into.includes(id)) into.push(id);
+      }
+    }
+    drafts.set(key, draft);
+  });
+
+  let created = 0;
+  let updated = 0;
+  for (const draft of drafts.values()) {
+    const input = {
+      title: draft.title,
+      year: draft.year,
+      isPublished: draft.isPublished,
+      tabs: draft.tabs,
+      courseIds: draft.courseIds,
+      batchIds: draft.batchIds,
+    };
+    // A title the academy already has is updated in place; anything else is new.
+    const existing = await prisma.curriculum.findFirst({
+      where: { title: draft.title },
+      select: { id: true },
+    });
+    try {
+      if (existing) {
+        await updateCurriculum(existing.id, input, createdById);
+        updated += 1;
+      } else {
+        await createCurriculum(input, createdById);
+        created += 1;
+      }
+    } catch (error) {
+      errors.push({
+        row: draft.line,
+        message: error instanceof Error ? error.message : "Couldn't save this one.",
+      });
+    }
+  }
+  return { created, updated, errors };
 }
 
 // ── The learner's side ───────────────────────────────────────────────────────

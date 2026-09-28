@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState, type FormEvent } from "react";
+import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import {
   Plus,
@@ -48,7 +49,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { QuizCategoriesDialog } from "@/components/admin/quizzes/quiz-categories-dialog";
 import { QUIZ_DIFFICULTIES, QUIZ_DIFFICULTY_LABEL } from "@/lib/validations/quiz";
 import {
   AlertDialog,
@@ -155,7 +155,6 @@ export function QuizzesClient({
   const [newSubCategory, setNewSubCategory] = useState("");
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<QuizRow | null>(null);
-  const [groupsOpen, setGroupsOpen] = useState(false);
   const [moving, setMoving] = useState(false);
 
   const totalPages = Math.max(1, Math.ceil(total / query.pageSize));
@@ -565,7 +564,11 @@ export function QuizzesClient({
         description="Create quizzes, build questions and track attempts."
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" onClick={() => setGroupsOpen(true)}>
+            <Button
+              variant="outline"
+              nativeButton={false}
+              render={<Link href={`${basePath.replace("/quizzes", "")}/quiz-groups`} />}
+            >
               <FolderTree className="size-4" /> Groups
             </Button>
             <Button onClick={() => setCreateOpen(true)}>
@@ -921,8 +924,6 @@ export function QuizzesClient({
           </form>
         </DialogContent>
       </Dialog>
-
-      <QuizCategoriesDialog open={groupsOpen} onOpenChange={setGroupsOpen} />
 
       <AlertDialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>
         <AlertDialogContent>

@@ -38,6 +38,8 @@ export interface LessonLock {
   viewLimit: number | null;
   viewsUsed: number;
   downloadLimit: number | null;
+  /** False = the academy has switched downloads off for this lesson. */
+  downloadsEnabled?: boolean;
   downloadsUsed: number;
 }
 
@@ -471,7 +473,14 @@ export function CoursePlayer({
             download counts against the learner's allowance — the server has to
             be told before the file is opened, which is what makes the cap on
             "notes" mean anything. */}
-        {embed && !isLocked && (
+        {embed && !isLocked && lock?.downloadsEnabled === false && (
+          <p className="text-muted-foreground mt-3 text-sm">
+            {current?.attachmentName ?? "This material"} is for viewing in class — it can&apos;t be
+            downloaded.
+          </p>
+        )}
+
+        {embed && !isLocked && lock?.downloadsEnabled !== false && (
           <button
             type="button"
             onClick={() => openMaterial(embed.href)}

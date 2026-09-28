@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowDown,
@@ -12,6 +12,8 @@ import {
   Pencil,
   Plus,
   Trash2,
+  Upload,
+  Download,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -109,6 +111,35 @@ export function CurriculumClient({
   const [moving, setMoving] = useState(false);
   const [deleting, setDeleting] = useState<Curriculum | null>(null);
   const [historyFor, setHistoryFor] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  /**
+   * Read a sheet in. The file is posted as text and the server does the
+   * parsing, so the same rules apply however the CSV arrives.
+   */
+  async function onImport(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setImporting(true);
+    try {
+      const res = await api.post<{ message: string; errors: { row: number; message: string }[] }>(
+        "/api/curriculums/import",
+        { csv: await file.text() },
+      );
+      toast.success(
+        res.errors.length > 0
+          ? `${res.message} ${res.errors.length} row(s) skipped — row ${res.errors[0].row}: ${res.errors[0].message}`
+          : res.message,
+      );
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Couldn't read that file.");
+    } finally {
+      setImporting(false);
+    }
+  }
 
   function startNew() {
     setEditingId("new");
@@ -194,9 +225,30 @@ export function CurriculumClient({
         description="What each course covers, in the academy's own words. Learners on the courses and batches you choose see it in their panel."
         actions={
           canManage ? (
-            <Button onClick={startNew}>
-              <Plus className="size-4" /> New curriculum
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                nativeButton={false}
+                // A plain anchor: the response is a file, not a page.
+                render={<a href="/api/curriculums/export" download />}
+              >
+                <Download className="size-4" /> Export
+              </Button>
+              <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={importing}>
+                {importing ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
+                Import
+              </Button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".csv,text/csv"
+                className="hidden"
+                onChange={onImport}
+              />
+              <Button onClick={startNew}>
+                <Plus className="size-4" /> New curriculum
+              </Button>
+            </div>
           ) : undefined
         }
       />

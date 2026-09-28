@@ -48,6 +48,8 @@ export interface LessonLock {
   viewsUsed: number;
   downloadLimit: number | null;
   downloadsUsed: number;
+  /** False when the academy has switched downloads off for this lesson. */
+  downloadsEnabled: boolean;
 }
 
 export const OPEN_LESSON: LessonLock = {
@@ -58,6 +60,7 @@ export const OPEN_LESSON: LessonLock = {
   viewLimit: null,
   viewsUsed: 0,
   downloadLimit: null,
+  downloadsEnabled: true,
   downloadsUsed: 0,
 };
 
@@ -77,6 +80,7 @@ export interface ReleaseInput {
   dripDays: number | null;
   viewLimit: number | null;
   downloadLimit: number | null;
+  downloadsEnabled?: boolean;
   isPreview: boolean;
 }
 
@@ -105,7 +109,13 @@ export function resolveLock(
   const viewLimit = effectiveLimit(lesson.viewLimit, ctx.defaults.viewLimit);
   const downloadLimit = effectiveLimit(lesson.downloadLimit, ctx.defaults.downloadLimit);
 
-  const base = { viewLimit, viewsUsed, downloadLimit, downloadsUsed };
+  const base = {
+    viewLimit,
+    viewsUsed,
+    downloadLimit,
+    downloadsUsed,
+    downloadsEnabled: lesson.downloadsEnabled !== false,
+  };
 
   // A free preview is the academy's shop window — release rules are about
   // pacing enrolled learners, and locking the preview would hide it from the
@@ -238,6 +248,7 @@ export async function assertLessonOpen(
       dripDays: true,
       viewLimit: true,
       downloadLimit: true,
+      downloadsEnabled: true,
       isPreview: true,
     },
   });
@@ -315,6 +326,9 @@ export async function consumeLessonDownload(
   await assertLessonOpen(userId, lessonId, { ignoreViewLimit: true });
 
   const current = await getLessonLock(userId, lessonId);
+  if (current.downloadsEnabled === false) {
+    throw AppError.forbidden("This material isn't available to download.");
+  }
   if (current.downloadLimit != null && current.downloadsUsed >= current.downloadLimit) {
     throw AppError.forbidden(
       `You've used all ${current.downloadLimit} downloads of this material.`,
@@ -338,6 +352,7 @@ export async function getLessonLock(userId: string, lessonId: string): Promise<L
       dripDays: true,
       viewLimit: true,
       downloadLimit: true,
+      downloadsEnabled: true,
       isPreview: true,
     },
   });
@@ -366,6 +381,8 @@ export interface ReleaseLessonRow {
   dripDays: number | null;
   viewLimit: number | null;
   downloadLimit: number | null;
+  /** False = downloads switched off for this lesson. */
+  downloadsEnabled: boolean;
   batchIds: string[];
   studentIds: string[];
 }
@@ -375,7 +392,7 @@ export interface ReleaseBoard {
   courseTitle: string;
   lessons: ReleaseLessonRow[];
   batches: { id: string; name: string; code: string; learners: number }[];
-  students: { id: string; name: string; email: string }[];
+  students: { id: string; name: string; email: string; paid: boolean }[];
 }
 
 /** Everything the "Content access" screen draws, for one course. */
@@ -410,6 +427,7 @@ export async function getReleaseBoard(courseId: string): Promise<ReleaseBoard> {
             dripDays: true,
             viewLimit: true,
             downloadLimit: true,
+            downloadsEnabled: true,
           },
         })
       : Promise.resolve([]),
@@ -420,7 +438,12 @@ export async function getReleaseBoard(courseId: string): Promise<ReleaseBoard> {
     }),
     prisma.enrollment.findMany({
       where: { courseId, status: { in: ["ACTIVE", "COMPLETED"] } },
-      select: { user: { select: { id: true, name: true, email: true } } },
+      select: {
+        user: { select: { id: true, name: true, email: true } },
+        // "What does enrolled mean — registered, or paid?" Both are here, and
+        // the picker now says which is which.
+        payments: { where: { status: "PAID" }, select: { id: true }, take: 1 },
+      },
     }),
   ]);
 
@@ -458,6 +481,7 @@ export async function getReleaseBoard(courseId: string): Promise<ReleaseBoard> {
         dripDays: l.dripDays,
         viewLimit: l.viewLimit,
         downloadLimit: l.downloadLimit,
+        downloadsEnabled: l.downloadsEnabled,
         batchIds: grant?.batchIds ?? [],
         studentIds: grant?.studentIds ?? [],
       };
@@ -472,9 +496,9 @@ export async function getReleaseBoard(courseId: string): Promise<ReleaseBoard> {
 
   const seen = new Set<string>();
   const students = enrollments
-    .map((e) => e.user)
+    .map((e) => ({ ...e.user, paid: e.payments.length > 0 }))
     .filter((u) => {
-      if (!u || seen.has(u.id)) return false;
+      if (!u.id || seen.has(u.id)) return false;
       seen.add(u.id);
       return true;
     })
@@ -501,6 +525,8 @@ export interface SetReleaseInput {
   dripDays?: number | null;
   viewLimit?: number | null;
   downloadLimit?: number | null;
+  /** Off blocks downloads of this lesson's material outright. */
+  downloadsEnabled?: boolean;
   /** Only meaningful with MANUAL. Replaces the whole grant list. */
   batchIds?: string[];
   studentIds?: string[];
@@ -542,6 +568,9 @@ export async function setRelease(courseId: string, input: SetReleaseInput): Prom
   if (input.viewLimit !== undefined) sets.push(Prisma.sql`viewLimit = ${input.viewLimit}`);
   if (input.downloadLimit !== undefined) {
     sets.push(Prisma.sql`downloadLimit = ${input.downloadLimit}`);
+  }
+  if (input.downloadsEnabled !== undefined) {
+    sets.push(Prisma.sql`downloadsEnabled = ${input.downloadsEnabled}`);
   }
 
   if (sets.length > 0) {

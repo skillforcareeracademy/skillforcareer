@@ -653,8 +653,12 @@ model Lesson {
 
   /// Watch/download caps, per learner. Null falls back to the platform default
   /// in Admin → Settings → Learning; 0 there too means unlimited.
-  viewLimit     Int?
-  downloadLimit Int? // rich text for ARTICLE lessons
+  viewLimit        Int?
+  downloadLimit    Int? // rich text for ARTICLE lessons
+  /// Off means the material can't be downloaded at all — the academy's "I can
+  /// not control if I want anyone to download any video or not". A limit of 0
+  /// still means unlimited; this is the switch that says no.
+  downloadsEnabled Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

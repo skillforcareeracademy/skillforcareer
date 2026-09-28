@@ -1,6 +1,8 @@
 import { format } from "date-fns";
 import { prisma } from "@/lib/prisma";
 import { notifyStaff } from "./notification-service";
+import { sendWelcomeEmail } from "./user-service";
+import { logger } from "@/lib/logger";
 import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
 import { ROLES } from "@/config/roles";
@@ -249,6 +251,98 @@ export async function updateLead(
   if (Object.keys(data).length === 0) return;
 
   await prisma.lead.update({ where: { id }, data });
+  await onboardIfPaid(id);
+}
+
+/**
+ * A converted lead whose fee is paid becomes a learner.
+ *
+ * The academy: "when converted stage and fees paid status is selected,
+ * automatically create a user for the lead using email or number." So the
+ * account is made here, the details the counsellor already collected are
+ * carried across, and the welcome email tells them how to get in. Anything
+ * that goes wrong is logged — a CRM edit must not fail because of it.
+ */
+export async function onboardIfPaid(leadId: string): Promise<string | null> {
+  try {
+    const lead = await prisma.lead.findUnique({
+      where: { id: leadId },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        whatsapp: true,
+        address: true,
+        qualification: true,
+        courseId: true,
+        stage: true,
+        subStatus: true,
+      },
+    });
+    if (!lead) return null;
+    const paid = lead.stage === "CONVERTED" && (lead.subStatus ?? "").toLowerCase().includes("fee");
+    if (!paid) return null;
+
+    // An email is what an account is keyed on. Without one, the phone stands in
+    // as a placeholder address the academy can correct later.
+    const email = (lead.email ?? "").trim().toLowerCase();
+    const digits = (lead.phone ?? "").replace(/\D/g, "");
+    const loginEmail = email || (digits ? `${digits}@leads.skillforcareer.com` : "");
+    if (!loginEmail) return null;
+
+    const existing = await prisma.user.findUnique({
+      where: { email: loginEmail },
+      select: { id: true },
+    });
+    if (existing) return existing.id;
+
+    const studentRole = await prisma.role.findUnique({
+      where: { slug: ROLES.STUDENT },
+      select: { id: true },
+    });
+    if (!studentRole) return null;
+
+    const user = await prisma.user.create({
+      data: {
+        name: lead.name,
+        email: loginEmail,
+        phone: lead.phone ?? null,
+        roleId: studentRole.id,
+        status: "ACTIVE",
+        emailVerified: new Date(),
+      },
+      select: { id: true, name: true, email: true },
+    });
+
+    // What the counsellor already knows, carried into the profile.
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        bio: lead.qualification ? `Qualification: ${lead.qualification}` : undefined,
+      },
+    });
+
+    void sendWelcomeEmail({
+      name: user.name,
+      email: user.email,
+      roleLabel: "Student",
+    });
+    void notifyStaff({
+      type: "SYSTEM",
+      title: "Lead onboarded",
+      message: `${lead.name} has an account now — the fee is marked paid on their lead.`,
+      actionUrl: "/admin/users",
+    });
+    logger.info("lead.onboarded", { leadId, userId: user.id });
+    return user.id;
+  } catch (error) {
+    logger.error("lead.onboard_failed", {
+      leadId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
 }
 
 /** Add a follow-up remark; optionally snapshots + advances the stage. */
@@ -290,6 +384,8 @@ export async function addFollowUp(
   if (input.followUpTime !== undefined)
     next.followUpTime = blank(input.followUpTime);
   await prisma.lead.update({ where: { id: leadId }, data: next });
+  // A follow-up is the usual way a lead is moved to "fee paid".
+  await onboardIfPaid(leadId);
 
   return followUp.id;
 }
