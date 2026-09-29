@@ -4,6 +4,7 @@ import { AppError } from "@/lib/api/errors";
 import { notify } from "./notification-service";
 import type { CurriculumInput } from "@/lib/validations/curriculum-plan";
 import { parseCsv, toCsv } from "@/lib/csv";
+import { ensureCurriculumIdentity } from "./academy-ids-service";
 
 /**
  * Curriculums: what a course covers, written by the academy and shown to the
@@ -26,6 +27,8 @@ export interface CurriculumRow {
   id: string;
   number: number;
   sequence: number;
+  /** "SFCMCCC001" — the academy's own identifier for it. */
+  curriculumId: string | null;
   title: string;
   year: string | null;
   isPublished: boolean;
@@ -44,6 +47,7 @@ const SELECT = {
   id: true,
   number: true,
   sequence: true,
+  curriculumId: true,
   title: true,
   year: true,
   isPublished: true,
@@ -67,6 +71,7 @@ function toRow(c: Row): CurriculumRow {
     id: c.id,
     number: c.number,
     sequence: c.sequence,
+    curriculumId: c.curriculumId,
     title: c.title,
     year: c.year,
     isPublished: c.isPublished,
@@ -181,6 +186,9 @@ export async function createCurriculum(input: CurriculumInput, createdById: stri
     select: { id: true },
   });
   await setLinks(row.id, input.courseIds, input.batchIds);
+  // SFCMCCC001 — allocated after the course links exist, since the course's
+  // abbreviation is part of it.
+  await ensureCurriculumIdentity(row.id);
   await record(row.id, createdById, "Curriculum created");
   await announce(row.id, input.title, "A new curriculum is available");
   return row.id;

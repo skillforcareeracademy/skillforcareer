@@ -48,6 +48,8 @@ interface Curriculum {
   id: string;
   number: number;
   sequence: number;
+  /** "SFCMCCC001" — the academy's own identifier. */
+  curriculumId: string | null;
   title: string;
   year: string | null;
   isPublished: boolean;
@@ -394,8 +396,10 @@ export function CurriculumClient({
                     <p className="flex flex-wrap items-center gap-2 font-semibold">
                       <span className="text-muted-foreground text-sm">{c.sequence}.</span>
                       {c.title}
-                      <Badge variant="secondary" className="text-[10px] font-normal">
-                        No. C{c.number}
+                      {/* The academy's identifier — quoted on paperwork, and
+                          fixed however the list is rearranged. */}
+                      <Badge variant="secondary" className="text-[10px] font-normal tabular-nums">
+                        {c.curriculumId ?? `No. C${c.number}`}
                       </Badge>
                       {c.year && (
                         <Badge variant="secondary" className="text-[10px] font-normal">

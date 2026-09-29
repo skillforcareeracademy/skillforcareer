@@ -14,6 +14,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { useBranding } from "@/components/providers/branding-provider";
 import { brandWordmark } from "@/lib/branding";
@@ -31,7 +32,22 @@ export function DashboardSidebar({
   features?: readonly NavFeature[];
 }) {
   const pathname = usePathname();
+  const { isMobile, setOpenMobile } = useSidebar();
   const sections = navFor(role, features);
+
+  /**
+   * On a phone the sidebar is a sheet over the page, so following a link left
+   * the menu sitting on top of the page it had just opened — "click krte hi ye
+   * band ho jaana chahiye". Closing on the tap itself also covers tapping the
+   * page you are already on, which navigation alone would not.
+   */
+  const closeOnMobile = () => {
+    if (!isMobile) return;
+    // Deferred by a tick on purpose: closing the sheet in the same handler
+    // unmounts the link that was just tapped, and the navigation goes with it.
+    // Letting the click finish first means the page opens *and* the menu shuts.
+    setTimeout(() => setOpenMobile(false), 0);
+  };
   const home = ROLE_HOME[role] ?? "/";
   const { logoUrl, siteName } = useBranding();
   const wordmark = brandWordmark(siteName);
@@ -57,6 +73,7 @@ export function DashboardSidebar({
           href={home}
           className="flex h-10 items-center gap-2 px-1.5"
           aria-label={wordmark}
+          onClick={closeOnMobile}
         >
           {/* Not next/image: the logo is replaceable at runtime, so its host and
               intrinsic size aren't known at build time. */}
@@ -98,9 +115,14 @@ export function DashboardSidebar({
                       tooltip={item.title}
                       render={
                         item.external ? (
-                          <a href={item.href} target="_blank" rel="noopener" />
+                          <a
+                            href={item.href}
+                            target="_blank"
+                            rel="noopener"
+                            onClick={closeOnMobile}
+                          />
                         ) : (
-                          <Link href={item.href} />
+                          <Link href={item.href} onClick={closeOnMobile} />
                         )
                       }
                     >

@@ -62,9 +62,12 @@ export function ExcellenceCertificate({ cert, chrome }: TemplateProps) {
             </>
           )}
 
-          {cert.details.batchName && (
+          {(cert.details.batchName || cert.details.batchId) && (
             <p className="mt-[0.8cqw] text-[1.5cqw] text-neutral-500 italic">
               Batch: {cert.details.batchName}
+              {/* The academy's own batch ID, quoted when a certificate is
+                  checked by hand. */}
+              {cert.details.batchId ? ` (${cert.details.batchId})` : ""}
               {cert.details.instructorName ? ` · Trainer: ${cert.details.instructorName}` : ""}
             </p>
           )}
@@ -84,6 +87,7 @@ export function ExcellenceCertificate({ cert, chrome }: TemplateProps) {
               academy's existing certificate. */}
           <p className="absolute inset-x-0 bottom-0 text-center text-[1.3cqw] font-bold">
             Certificate Code: {cert.verificationCode}
+            {cert.details.batchId ? ` · Batch ID: ${cert.details.batchId}` : ""}
           </p>
           <Signature signatory={chrome.right} />
         </div>

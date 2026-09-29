@@ -8,6 +8,7 @@ import {
   type MatchableIntent,
 } from "@/lib/chatbot/match";
 import type { ChatIntentInput } from "@/lib/validations/chatbot";
+import { createLead } from "./lead-service";
 
 /**
  * "Ami" — the site assistant, trained entirely from Admin → Assistant.
@@ -61,11 +62,20 @@ async function activeIntents(): Promise<MatchableIntent[]> {
   return value;
 }
 
+/**
+ * What the widget should do with an answer's button.
+ *
+ * `link` opens a page; `counsellor` is handled inside the chat, because the
+ * academy asked that a signed-in learner never be sent off to fill in a form
+ * with details the panel already holds.
+ */
+export type ChatActionKind = "link" | "counsellor";
+
 export interface ChatReply {
   answer: string;
   matched: boolean;
   intentId: string | null;
-  action: { label: string; url: string } | null;
+  action: { label: string; url: string; kind: ChatActionKind } | null;
   /** Offered when nothing matched — the nearest things Ami does know. */
   suggestions: { id: string; question: string }[];
 }
@@ -75,11 +85,21 @@ export interface ChatGreeting {
   name: string;
   greeting: string;
   suggestions: { id: string; question: string }[];
+  /**
+   * Who is asking, when the panel knows. The widget uses it to skip the "what
+   * is your name and number" step for someone already signed in.
+   */
+  viewer: {
+    signedIn: boolean;
+    name: string | null;
+    email: string | null;
+    phone: string | null;
+  };
 }
 
 /** What the widget shows before anyone has typed. */
-export async function getChatGreeting(): Promise<ChatGreeting> {
-  const [{ settings }, suggested] = await Promise.all([
+export async function getChatGreeting(userId?: string | null): Promise<ChatGreeting> {
+  const [{ settings }, suggested, viewer] = await Promise.all([
     getSettings(),
     prisma.chatIntent.findMany({
       where: { isActive: true, isSuggested: true },
@@ -87,6 +107,12 @@ export async function getChatGreeting(): Promise<ChatGreeting> {
       take: 6,
       select: { id: true, question: true },
     }),
+    userId
+      ? prisma.user.findUnique({
+          where: { id: userId },
+          select: { name: true, email: true, phone: true },
+        })
+      : Promise.resolve(null),
   ]);
 
   return {
@@ -94,6 +120,12 @@ export async function getChatGreeting(): Promise<ChatGreeting> {
     name: settings.chatbotName,
     greeting: settings.chatbotGreeting,
     suggestions: suggested,
+    viewer: {
+      signedIn: Boolean(viewer),
+      name: viewer?.name ?? null,
+      email: viewer?.email ?? null,
+      phone: viewer?.phone ?? null,
+    },
   };
 }
 
@@ -144,7 +176,7 @@ export async function askAmi(input: {
       matched: false,
       intentId: null,
       action: settings.chatbotEnabled
-        ? { label: "Talk to a counsellor", url: "/contact" }
+        ? { label: "Talk to a counsellor", url: "/contact", kind: "counsellor" as const }
         : null,
       suggestions: near.map((n) => ({ id: n.id, question: n.question })),
     };
@@ -178,10 +210,77 @@ export async function askAmi(input: {
     intentId: intent.id,
     action:
       intent.actionLabel && intent.actionUrl
-        ? { label: intent.actionLabel, url: intent.actionUrl }
+        ? { label: intent.actionLabel, url: intent.actionUrl, kind: "link" as const }
         : null,
     suggestions: [],
   };
+}
+
+/**
+ * "Put me through to a person."
+ *
+ * The academy's rule: "Chatbot should not ask for details if user is already
+ * logged in. Else should ask details to connect with human counsellor." So a
+ * signed-in learner's request carries their account across untouched, and only
+ * a stranger is asked who they are. Either way it lands on the lead sheet,
+ * which is where the office works from, and the staff notice comes with it.
+ */
+export async function requestCounsellor(input: {
+  userId?: string | null;
+  name?: string;
+  phone?: string;
+  email?: string;
+  note?: string;
+  sessionId?: string;
+}): Promise<{ name: string; phone: string; leadId: string }> {
+  const account = input.userId
+    ? await prisma.user.findUnique({
+        where: { id: input.userId },
+        select: { name: true, email: true, phone: true },
+      })
+    : null;
+
+  const name = (input.name?.trim() || account?.name || "").slice(0, 80);
+  // A learner whose account has no number still has to give one — the office
+  // rings people; it cannot ring an email address.
+  const phone = (input.phone?.trim() || account?.phone || "").slice(0, 20);
+  const email = (input.email?.trim() || account?.email || "").slice(0, 120);
+
+  if (!name) throw AppError.badRequest("Tell me your name and I'll pass it on.");
+  if (phone.replace(/\D/g, "").length < 6) {
+    throw AppError.badRequest("I need a phone number the office can call you on.");
+  }
+
+  // The last thing they asked, so the counsellor opens the conversation knowing
+  // what it is about.
+  const recent = input.sessionId
+    ? await prisma.chatMessage.findFirst({
+        where: { sessionId: input.sessionId.slice(0, 64), role: "user" },
+        orderBy: { createdAt: "desc" },
+        select: { text: true },
+      })
+    : null;
+
+  const message = [
+    input.note?.trim(),
+    recent?.text ? `Asked Ami: “${recent.text}”` : null,
+    account ? "Requested from their own panel while signed in." : null,
+  ]
+    .filter(Boolean)
+    .join("\n")
+    .slice(0, 2000);
+
+  const leadId = await createLead(
+    {
+      name,
+      phone,
+      email: email || "",
+      courseInterest: "",
+      message: message || "Asked to speak to a counsellor from the assistant.",
+    },
+    "WEBSITE",
+  );
+  return { name, phone, leadId };
 }
 
 // ── Admin side ───────────────────────────────────────────────────────────────

@@ -24,6 +24,7 @@ import { emitEvent } from "@/lib/events";
 import { AppError } from "@/lib/api/errors";
 import { ROLES, type Role } from "@/config/roles";
 import { ACTIVITY_ACTIONS, logActivity, recordLogin } from "./activity-service";
+import { notifyStaff } from "./notification-service";
 
 /** Public representation of a user — safe to send to the client. */
 export interface PublicUser {
@@ -241,6 +242,36 @@ async function sendWelcome(userId: string, name: string, email: string): Promise
   }
 }
 
+/**
+ * Tell the office somebody has joined.
+ *
+ * "Recently 3 students registered but no notification can be seen here" — the
+ * dashboard's activity list had them, the notification bell did not, and the
+ * bell is what the office actually watches. Sent from both ways in: the ordinary
+ * sign-up once the address is confirmed, and express checkout, which makes the
+ * account on the spot.
+ *
+ * Never throws: a notification that doesn't write must not fail a sign-up.
+ */
+async function announceNewLearner(
+  user: { id: string; name: string; email: string },
+  how: "signed up" | "checked out",
+): Promise<void> {
+  try {
+    await notifyStaff({
+      type: "SYSTEM",
+      title: "New student registered",
+      message: `${user.name} ${how === "signed up" ? "created an account" : "registered at checkout"} — ${user.email}`,
+      actionUrl: `/admin/users/${user.id}`,
+    });
+  } catch (error) {
+    logger.warn("registration_notice.failed", {
+      userId: user.id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 /** Validate + consume the latest OTP for an email/purpose. Returns the userId. */
 async function consumeOtp(
   email: string,
@@ -422,6 +453,7 @@ export async function identifyForCheckout(input: {
   // Express checkout makes the account on the spot, with no verification step
   // to carry the welcome — so it goes from here.
   void sendWelcome(user.id, user.name, user.email);
+  void announceNewLearner(user, "checked out");
   const tokens = await issueTokens(user);
   await recordLogin(user.id);
   return { status: "SIGNED_IN", user: toPublicUser(user), tokens, created: true };
@@ -459,6 +491,7 @@ export async function verifyEmailOtp(input: {
   // The account is real now, so the welcome can say what to do with it. Sent
   // without waiting: a slow mail server must not hold up the sign-in.
   void sendWelcome(updated.id, updated.name, updated.email);
+  void announceNewLearner(updated, "signed up");
   const tokens = await issueTokens(updated);
   await recordLogin(updated.id);
   return { user: toPublicUser(updated), tokens };

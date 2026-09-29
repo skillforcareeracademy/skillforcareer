@@ -93,7 +93,7 @@ export function SectionEditor({
       <div className="grid gap-4 sm:grid-cols-2">
         {spec.fields.map((field) =>
           isListField(field) ? (
-            <div key={field.name} className="sm:col-span-2">
+            <div key={field.name} className="min-w-0 sm:col-span-2">
               <ListFieldEditor
                 spec={field}
                 path={[field.name]}
@@ -103,7 +103,7 @@ export function SectionEditor({
               />
             </div>
           ) : (
-            <div key={field.name} className={cn(field.wide && "sm:col-span-2")}>
+            <div key={field.name} className={cn("min-w-0", field.wide && "sm:col-span-2")}>
               <FieldControl
                 field={field}
                 value={form[field.name]}

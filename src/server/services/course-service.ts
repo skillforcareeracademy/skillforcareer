@@ -3,6 +3,7 @@ import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
 import type { CreateCourseInput, UpdateCourseInput } from "@/lib/validations/course";
 import { invalidateHeaderMenus } from "./header-menu-service";
+import { ensureCourseIdentity } from "./academy-ids-service";
 
 function slugify(value: string): string {
   return value
@@ -52,6 +53,8 @@ export async function createCourse(
     },
     select: { id: true },
   });
+  // Its number and abbreviation — the SFCMC001 every batch under it inherits.
+  await ensureCourseIdentity(course.id);
   return course.id;
 }
 

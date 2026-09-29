@@ -116,6 +116,7 @@ export function AppreciationCertificate({ cert, chrome }: TemplateProps) {
         <div className="flex flex-1 flex-col px-[3cqw] pt-[3cqw] pb-[4cqw] text-center">
           <p className="self-end font-[family-name:var(--font-cert-serif)] text-[1.7cqw] tracking-[0.06em] text-neutral-800">
             CERT NO. {cert.verificationCode}
+            {cert.details.batchId ? ` · BATCH ${cert.details.batchId}` : ""}
           </p>
 
           <div className="flex flex-1 flex-col justify-center">

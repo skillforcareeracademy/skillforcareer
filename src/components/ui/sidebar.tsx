@@ -513,6 +513,13 @@ function SidebarMenuButton({
     tooltip?: string | React.ComponentProps<typeof TooltipContent>
   } & VariantProps<typeof sidebarMenuButtonVariants>) {
   const { isMobile, state } = useSidebar()
+  /**
+   * The tooltip labels the icons when the rail is collapsed, which only ever
+   * happens on a desktop. On a touch screen it was wrapping every link in a
+   * trigger that swallowed the tap — the menu opened, the page never did
+   * ("phone me kisi bhi link pr click krne pr ... page khul kr aana chahiye").
+   */
+  const withTooltip = Boolean(tooltip) && !isMobile
   const comp = useRender({
     defaultTagName: "button",
     props: mergeProps<"button">(
@@ -521,7 +528,7 @@ function SidebarMenuButton({
       },
       props
     ),
-    render: !tooltip ? render : <TooltipTrigger render={render} />,
+    render: !withTooltip ? render : <TooltipTrigger render={render} />,
     state: {
       slot: "sidebar-menu-button",
       sidebar: "menu-button",
@@ -530,7 +537,7 @@ function SidebarMenuButton({
     },
   })
 
-  if (!tooltip) {
+  if (!withTooltip) {
     return comp
   }
 

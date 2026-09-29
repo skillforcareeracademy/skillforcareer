@@ -2,12 +2,15 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import {
   ArrowUpRight,
   Bot,
   GripVertical,
   Loader2,
+  Headset,
   MessageCircle,
+  RotateCcw,
   Send,
   Volume2,
   VolumeX,
@@ -37,8 +40,15 @@ interface Line {
   id: string;
   role: "user" | "bot";
   text: string;
-  action?: { label: string; url: string } | null;
+  action?: { label: string; url: string; kind?: "link" | "counsellor" } | null;
   suggestions?: Suggestion[];
+}
+
+interface Viewer {
+  signedIn: boolean;
+  name: string | null;
+  email: string | null;
+  phone: string | null;
 }
 
 interface Greeting {
@@ -46,11 +56,59 @@ interface Greeting {
   name: string;
   greeting: string;
   suggestions: Suggestion[];
+  viewer?: Viewer;
 }
 
-/** One id per browser tab's conversation — groups the transcript for admins. */
+/** One id per conversation — groups the transcript for admins. */
 function newSessionId(): string {
   return `s_${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+}
+
+/**
+ * The conversation, kept across page loads.
+ *
+ * "Chat shouldn't get clear until user himself start over the chat again" —
+ * following a link out of Ami used to lose everything that had been said. The
+ * transcript and its session id are written here as they change, and only the
+ * Start over button clears them.
+ */
+const CHAT_KEY = "sfc.ami.chat";
+const CHAT_MAX_LINES = 60;
+
+interface SavedChat {
+  sessionId: string;
+  lines: Line[];
+}
+
+function readSavedChat(): SavedChat | null {
+  try {
+    const raw = window.localStorage.getItem(CHAT_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<SavedChat>;
+    if (!parsed?.sessionId || !Array.isArray(parsed.lines)) return null;
+    return { sessionId: parsed.sessionId, lines: parsed.lines as Line[] };
+  } catch {
+    return null;
+  }
+}
+
+function saveChat(chat: SavedChat) {
+  try {
+    window.localStorage.setItem(
+      CHAT_KEY,
+      JSON.stringify({ ...chat, lines: chat.lines.slice(-CHAT_MAX_LINES) }),
+    );
+  } catch {
+    // A private window can refuse; the conversation still stands for this visit.
+  }
+}
+
+function clearSavedChat() {
+  try {
+    window.localStorage.removeItem(CHAT_KEY);
+  } catch {
+    // Nothing to do.
+  }
 }
 
 /**
@@ -107,12 +165,16 @@ function clampToViewport(point: Point, size: { width: number; height: number }):
 }
 
 export function AmiWidget() {
+  const pathname = usePathname();
   const [greeting, setGreeting] = useState<Greeting | null>(null);
   const [open, setOpen] = useState(false);
   const [lines, setLines] = useState<Line[]>([]);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [voice, setVoice] = useState(false);
+  /** Set when a stranger has asked for a counsellor and has to say who they are. */
+  const [handover, setHandover] = useState<{ name: string; phone: string } | null>(null);
+  const [handingOver, setHandingOver] = useState(false);
   const [position, setPosition] = useState<Point | null>(null);
   const [dragging, setDragging] = useState(false);
   const sessionRef = useRef<string>("");
@@ -132,11 +194,44 @@ export function AmiWidget() {
     );
   }, []);
 
+  /**
+   * Bring back whatever was being said before. Deferred a tick for the same
+   * reason the remembered position is: the compiler's `set-state-in-effect`
+   * rule rejects a synchronous setState from an effect body.
+   */
+  useEffect(() => {
+    if (!greeting?.enabled) return;
+    const saved = readSavedChat();
+    if (!saved || saved.lines.length === 0) return;
+    const id = setTimeout(() => {
+      sessionRef.current = saved.sessionId;
+      setLines(saved.lines);
+    }, 0);
+    return () => clearTimeout(id);
+  }, [greeting?.enabled]);
+
   // Keep the newest line in view as the conversation grows.
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [lines, open]);
+
+  // Written as it changes, so following a link out of Ami and coming back
+  // picks the conversation up where it was.
+  useEffect(() => {
+    if (lines.length === 0 || !sessionRef.current) return;
+    saveChat({ sessionId: sessionRef.current, lines });
+  }, [lines]);
+
+  /**
+   * "This chat popup should be closed when new page opens." Whatever moved the
+   * page — a link in the answer, the menu, the back button — the conversation
+   * is kept and the window gets out of the way.
+   */
+  useEffect(() => {
+    const id = setTimeout(() => setOpen(false), 0);
+    return () => clearTimeout(id);
+  }, [pathname]);
 
   // Never leave the browser talking after the window is shut.
   useEffect(() => {
@@ -298,6 +393,84 @@ export function AmiWidget() {
     }
   }
 
+  /** Add a line from Ami without a round trip — confirmations and prompts. */
+  function say(text: string) {
+    setLines((prev) => [...prev, { id: `b_${Date.now()}`, role: "bot", text }]);
+  }
+
+  /**
+   * "Put me through to a person."
+   *
+   * Signed in, the panel already knows who they are and what number to ring, so
+   * the request goes straight off. Signed out — or signed in without a number
+   * on file — Ami asks for the two things the office needs and nothing else.
+   */
+  async function askCounsellor() {
+    const viewer = greeting?.viewer;
+    if (!viewer?.signedIn || !viewer.phone) {
+      setHandover({ name: viewer?.name ?? "", phone: viewer?.phone ?? "" });
+      say(
+        viewer?.signedIn
+          ? "I have your name — what number should the office call you on?"
+          : "Of course. What's your name and the best number to call you on?",
+      );
+      return;
+    }
+    await sendHandover({ name: viewer.name ?? "", phone: viewer.phone });
+  }
+
+  async function sendHandover(details: { name: string; phone: string }) {
+    setHandingOver(true);
+    try {
+      const res = await api.post<{ message: string }>("/api/chat/counsellor", {
+        ...details,
+        sessionId: sessionRef.current,
+      });
+      setHandover(null);
+      say(res.message);
+    } catch (err) {
+      say(
+        err instanceof Error && err.message
+          ? err.message
+          : "I couldn't pass that on just now — please try again.",
+      );
+    } finally {
+      setHandingOver(false);
+    }
+  }
+
+  /**
+   * A fresh conversation, only ever on purpose. Everything else — following a
+   * link, reloading, coming back tomorrow — keeps what was said.
+   */
+  function startOver() {
+    stopSpeaking();
+    clearSavedChat();
+    setHandover(null);
+    sessionRef.current = newSessionId();
+    setLines(
+      greeting
+        ? [
+            {
+              id: "greeting",
+              role: "bot",
+              text: greeting.greeting,
+              suggestions: greeting.suggestions,
+            },
+          ]
+        : [],
+    );
+  }
+
+  /**
+   * Following a link out of Ami: the page it opens should be what you are
+   * looking at, not a chat window sitting on top of it.
+   */
+  function onFollowLink() {
+    setOpen(false);
+    stopSpeaking();
+  }
+
   function toggleVoice() {
     setVoice((on) => {
       if (on) stopSpeaking();
@@ -384,6 +557,17 @@ export function AmiWidget() {
                 SkillForCareer assistant
               </p>
             </div>
+            {lines.length > 1 && (
+              <button
+                type="button"
+                onClick={startOver}
+                aria-label="Start the conversation over"
+                title="Start over"
+                className="rounded-lg p-1.5 hover:bg-white/15"
+              >
+                <RotateCcw className="size-4" />
+              </button>
+            )}
             {speechSupported() && (
               <button
                 type="button"
@@ -419,14 +603,33 @@ export function AmiWidget() {
                   {line.text}
                 </div>
 
-                {line.action && (
-                  <Link
-                    href={line.action.url}
-                    className="text-primary inline-flex items-center gap-1 text-sm font-medium hover:underline"
-                  >
-                    {line.action.label} <ArrowUpRight className="size-3.5" />
-                  </Link>
-                )}
+                {line.action &&
+                  (line.action.kind === "counsellor" ? (
+                    // Handled here rather than by sending them to a form: a
+                    // signed-in learner should never be asked for details the
+                    // panel already holds.
+                    <button
+                      type="button"
+                      onClick={() => void askCounsellor()}
+                      disabled={handingOver}
+                      className="text-primary inline-flex items-center gap-1 text-sm font-medium hover:underline disabled:opacity-60"
+                    >
+                      {handingOver ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <Headset className="size-3.5" />
+                      )}
+                      {line.action.label}
+                    </button>
+                  ) : (
+                    <Link
+                      href={line.action.url}
+                      onClick={onFollowLink}
+                      className="text-primary inline-flex items-center gap-1 text-sm font-medium hover:underline"
+                    >
+                      {line.action.label} <ArrowUpRight className="size-3.5" />
+                    </Link>
+                  ))}
 
                 {line.suggestions && line.suggestions.length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
@@ -444,6 +647,48 @@ export function AmiWidget() {
                 )}
               </div>
             ))}
+
+            {handover && (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void sendHandover(handover);
+                }}
+                className="bg-muted/60 space-y-2 rounded-2xl p-3"
+              >
+                <Input
+                  value={handover.name}
+                  onChange={(e) => setHandover({ ...handover, name: e.target.value })}
+                  placeholder="Your name"
+                  aria-label="Your name"
+                  maxLength={80}
+                  className="bg-background h-9"
+                />
+                <Input
+                  value={handover.phone}
+                  onChange={(e) => setHandover({ ...handover, phone: e.target.value })}
+                  placeholder="Phone number"
+                  aria-label="Phone number"
+                  inputMode="tel"
+                  maxLength={20}
+                  className="bg-background h-9"
+                />
+                <div className="flex items-center gap-2">
+                  <Button type="submit" size="sm" disabled={handingOver}>
+                    {handingOver && <Loader2 className="size-3.5 animate-spin" />}
+                    Ask them to call me
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setHandover(null)}
+                  >
+                    Not now
+                  </Button>
+                </div>
+              </form>
+            )}
 
             {sending && (
               <div className="bg-muted flex w-fit items-center gap-2 rounded-2xl rounded-bl-md px-3.5 py-2.5 text-sm">

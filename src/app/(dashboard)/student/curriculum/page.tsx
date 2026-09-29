@@ -49,8 +49,12 @@ export default async function StudentCurriculumPage() {
                       </Badge>
                     )}
                   </p>
+                  {/* The learner's own course, and the academy's identifier for
+                      the curriculum. Which cohorts it was assigned to is the
+                      office's business, not theirs — "all assigned batches name
+                      or code assigned to curriculum should not be visible". */}
                   <p className="text-muted-foreground mt-1 text-xs">
-                    {[...c.courseTitles, ...c.batchNames].join(" · ")}
+                    {[c.curriculumId, ...c.courseTitles].filter(Boolean).join(" · ")}
                   </p>
                 </div>
 

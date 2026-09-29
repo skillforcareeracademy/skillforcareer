@@ -780,6 +780,16 @@ model Course {
   durationMinutes Int     @default(0)
   isFeatured      Boolean @default(false)
 
+  /// The academy's own numbering, and what it abbreviates to.
+  ///
+  /// "Format is SFC + MC + course code which is unique for every course."
+  /// `courseNo` is that code — 001, 002, … — handed out once and never reused;
+  /// `abbreviation` is the first letter of each word of the name (Medical
+  /// Coding → MC), generated on creation and editable, since two courses can
+  /// abbreviate alike and only a person can judge the better short form.
+  courseNo     Int     @default(0)
+  abbreviation String?
+
   // Denormalised aggregates for fast catalog rendering
   ratingAvg       Float @default(0)
   ratingCount     Int   @default(0)
@@ -823,6 +833,18 @@ model Batch {
   instructorId  String?
   name          String
   code          String      @unique
+  /// The academy's batch ID — SFCMC001005, and the same forever.
+  ///
+  /// Frozen as a string rather than rebuilt from the course each time, because
+  /// renaming a course must not renumber the certificates already printed.
+  /// Not a unique index: TiDB won't take a new one without a destructive push,
+  /// so uniqueness is enforced where it is generated.
+  batchId       String?
+  /// This batch's number within its course — 001, 002, … — permanent.
+  batchNo       Int         @default(0)
+  /// The order the academy wants its batches listed in. Rearrangeable, unlike
+  /// `batchNo`.
+  sequence      Int         @default(0)
   status        BatchStatus @default(UPCOMING)
   capacity      Int?
   enrolledCount Int         @default(0)
@@ -850,6 +872,7 @@ model Batch {
   @@index([courseId])
   @@index([instructorId])
   @@index([status])
+  @@index([batchId])
 }
 
 model Chapter {
@@ -1758,6 +1781,10 @@ model Curriculum {
   id          String  @id @default(cuid())
   number      Int     @default(0)
   sequence    Int     @default(0)
+  /// "SFCMCCC001" — the academy prefix, the course's abbreviation, CC for
+  /// curriculum, and this curriculum's number. Frozen for the same reason a
+  /// batch's is.
+  curriculumId String?
   title       String
   /// "2026", "2026-27" — whatever the academy writes on it.
   year        String?

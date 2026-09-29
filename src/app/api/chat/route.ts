@@ -9,7 +9,10 @@ export const dynamic = "force-dynamic";
 
 /** What the widget shows before anyone types — greeting plus starter chips. */
 export const GET = withRoute(async () => {
-  return ok(await getChatGreeting());
+  // Who is asking, when we know: the widget uses it to skip asking a signed-in
+  // learner for details the panel already holds.
+  const user = await getSessionUser();
+  return ok(await getChatGreeting(user?.id ?? null));
 });
 
 /**

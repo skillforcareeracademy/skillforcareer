@@ -11,6 +11,7 @@ import {
 } from "@/server/repositories/counters";
 import { activeStudentWhere } from "@/server/repositories/role-filters";
 import type { BatchInput, BatchSchedule } from "@/lib/validations/batch";
+import { ensureBatchIdentity } from "./academy-ids-service";
 
 /**
  * Batches an instructor teaches: the ones they lead, plus the ones they are an
@@ -75,7 +76,11 @@ export async function listBatchesAdmin(q: BatchListQuery) {
   const and: Prisma.BatchWhereInput[] = [];
   if (q.search) {
     and.push({
-      OR: [{ name: { contains: q.search } }, { code: { contains: q.search } }],
+      OR: [
+        { name: { contains: q.search } },
+        { code: { contains: q.search } },
+        { batchId: { contains: q.search } },
+      ],
     });
   }
   if (q.status) and.push({ status: q.status as Prisma.BatchWhereInput["status"] });
@@ -87,7 +92,9 @@ export async function listBatchesAdmin(q: BatchListQuery) {
     prisma.batch.count({ where }),
     prisma.batch.findMany({
       where,
-      orderBy: [{ startDate: "desc" }, { createdAt: "desc" }],
+      // The academy's own order where it has set one; otherwise the newest
+      // cohort first, as it always was.
+      orderBy: [{ sequence: "asc" }, { startDate: "desc" }, { createdAt: "desc" }],
       skip: (q.page - 1) * q.pageSize,
       take: q.pageSize,
       include: {
@@ -108,6 +115,10 @@ export async function listBatchesAdmin(q: BatchListQuery) {
       id: b.id,
       name: b.name,
       code: b.code,
+      /** SFCMC001005 — generated once and never changed. */
+      batchId: b.batchId,
+      batchNo: b.batchNo,
+      sequence: b.sequence,
       status: b.status,
       courseId: b.courseId,
       courseTitle: b.course.title,
@@ -279,12 +290,16 @@ export async function createBatch(input: BatchInput): Promise<string> {
       instructorId: input.instructorId || null,
       status: input.status,
       capacity: input.capacity ?? null,
+      sequence: input.sequence ?? 0,
       startDate: toDate(input.startDate),
       endDate: toDate(input.endDate),
       schedule: normalizeSchedule(input.schedule),
     },
     select: { id: true },
   });
+  // Its permanent identity — SFCMC001005 — allocated now, so a batch has one
+  // from the moment it exists rather than whenever a list happens to be opened.
+  await ensureBatchIdentity(batch.id);
   return batch.id;
 }
 
@@ -302,6 +317,9 @@ export async function updateBatch(id: string, input: BatchInput): Promise<void> 
       instructorId: input.instructorId || null,
       status: input.status,
       capacity: input.capacity ?? null,
+      // The order it appears in; its batch number and ID are untouched here on
+      // purpose — "batch number which can not be changed".
+      ...(input.sequence === undefined ? {} : { sequence: input.sequence }),
       startDate: toDate(input.startDate),
       endDate: toDate(input.endDate),
       schedule: normalizeSchedule(input.schedule) ?? Prisma.JsonNull,

@@ -8,6 +8,7 @@ import {
   listInstructors,
 } from "@/server/services/batch-service";
 import { listAssociateOptions } from "@/server/services/batch-associate-service";
+import { backfillAcademyIds } from "@/server/services/academy-ids-service";
 import { BatchesClient } from "@/components/admin/batches/batches-client";
 
 export const metadata: Metadata = { title: "Batches" };
@@ -30,6 +31,10 @@ export default async function BatchesPage({
     status: str(sp.status),
     courseId: str(sp.course),
   };
+
+  // Anything made before the academy's numbering existed gets its identifier
+  // here, so the ids on screen are always the ids in the database.
+  await backfillAcademyIds();
 
   const [{ batches, total }, stats, courses, instructors, associateOptions] = await Promise.all([
     listBatchesAdmin(query),

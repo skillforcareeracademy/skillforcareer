@@ -128,6 +128,9 @@ export function InternshipAppreciationCertificate({ cert, chrome }: TemplateProp
         <p className="mt-[0.8cqw] mb-[2.5cqw] text-[1.25cqw] text-neutral-600">
           at {org} · Certificate code{" "}
           <span className="font-semibold">{cert.verificationCode}</span>
+          {cert.details.batchId ? (
+            <span className="font-semibold"> · Batch {cert.details.batchId}</span>
+          ) : null}
         </p>
 
         {/* Above the bottom wash, not on it — dark ink on a deep blue wash is

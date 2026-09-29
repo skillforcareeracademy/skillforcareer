@@ -190,7 +190,7 @@ export function ListFieldEditor({
                     // A row can itself hold a list — a footer column holds its
                     // links — so the editor draws itself again one level down.
                     isListField(field) ? (
-                      <div key={field.name} className="bg-muted/30 rounded-lg p-3 sm:col-span-2">
+                      <div key={field.name} className="bg-muted/30 min-w-0 rounded-lg p-3 sm:col-span-2">
                         <ListFieldEditor
                           spec={field}
                           path={[...path, 0, field.name]}
@@ -200,7 +200,7 @@ export function ListFieldEditor({
                         />
                       </div>
                     ) : (
-                      <div key={field.name} className={cn(field.wide && "sm:col-span-2")}>
+                      <div key={field.name} className={cn("min-w-0", field.wide && "sm:col-span-2")}>
                         <FieldControl
                           field={field}
                           value={item[field.name]}

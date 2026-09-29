@@ -46,6 +46,11 @@ export const batchSchema = z.object({
   instructorId: z.string().optional().or(z.literal("")),
   status: z.enum(BATCH_STATUSES).default("UPCOMING"),
   capacity: z.coerce.number().int().min(1).max(100000).optional(),
+  /**
+   * Where the academy wants this batch in its own list. Separate from the batch
+   * number in its ID, which never changes.
+   */
+  sequence: z.coerce.number().int().min(0).max(100000).optional(),
   startDate: dateStr,
   endDate: dateStr,
   schedule: scheduleSchema.optional(),

@@ -38,6 +38,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { EmptyState } from "@/components/shared/empty-state";
+import { GroupBrowser } from "./group-browser";
 import { cn } from "@/lib/utils";
 
 /**
@@ -78,7 +79,10 @@ function send(materialId: string, seconds: number, opened: boolean) {
 
 /** Counts the time a piece is open and in front, and reports it as it goes. */
 function useReadingClock(materialId: string | null) {
-  const [progress, setProgress] = useState<{ id: string; seconds: number } | null>(null);
+  const [progress, setProgress] = useState<{
+    id: string;
+    seconds: number;
+  } | null>(null);
 
   useEffect(() => {
     if (!materialId) return;
@@ -152,7 +156,8 @@ function MarkedUpBody({
         const chunks = part.text.split(mark.quote);
         chunks.forEach((chunk, i) => {
           if (chunk) next.push({ text: chunk });
-          if (i < chunks.length - 1) next.push({ text: mark.quote, color: mark.color });
+          if (i < chunks.length - 1)
+            next.push({ text: mark.quote, color: mark.color });
         });
       }
       parts = next;
@@ -164,7 +169,10 @@ function MarkedUpBody({
     <p className="text-sm leading-relaxed whitespace-pre-line">
       {pieces.map((p, i) =>
         p.color ? (
-          <mark key={i} className={cn("rounded px-0.5 text-inherit", SWATCH[p.color])}>
+          <mark
+            key={i}
+            className={cn("rounded px-0.5 text-inherit", SWATCH[p.color])}
+          >
             {p.text}
           </mark>
         ) : (
@@ -175,16 +183,24 @@ function MarkedUpBody({
   );
 }
 
-export function StudentMaterialsClient({ materials }: { materials: LearnerMaterial[] }) {
+export function StudentMaterialsClient({
+  materials,
+}: {
+  materials: LearnerMaterial[];
+}) {
   const [search, setSearch] = useState("");
   const [group, setGroup] = useState(ALL);
-  const [sort, setSort] = useState<"sequence" | "newest" | "title" | "unread">("sequence");
+  const [sort, setSort] = useState<"sequence" | "newest" | "title" | "unread">(
+    "sequence",
+  );
   const [openId, setOpenId] = useState<string | null>(null);
   const [detail, setDetail] = useState<LearnerMaterialDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [selection, setSelection] = useState("");
   const [note, setNote] = useState("");
-  const [color, setColor] = useState<"yellow" | "green" | "blue" | "pink">("yellow");
+  const [color, setColor] = useState<"yellow" | "green" | "blue" | "pink">(
+    "yellow",
+  );
   const [savingMark, setSavingMark] = useState(false);
   const progress = useReadingClock(openId);
 
@@ -192,7 +208,11 @@ export function StudentMaterialsClient({ materials }: { materials: LearnerMateri
     const names = new Set<string>();
     for (const m of materials) {
       if (m.categoryName) {
-        names.add(m.subCategoryName ? `${m.categoryName} → ${m.subCategoryName}` : m.categoryName);
+        names.add(
+          m.subCategoryName
+            ? `${m.categoryName} → ${m.subCategoryName}`
+            : m.categoryName,
+        );
       }
     }
     return [...names].sort();
@@ -212,32 +232,20 @@ export function StudentMaterialsClient({ materials }: { materials: LearnerMateri
     if (group !== ALL) {
       list = list.filter(
         (m) =>
-          (m.subCategoryName ? `${m.categoryName} → ${m.subCategoryName}` : m.categoryName) ===
-          group,
+          (m.subCategoryName
+            ? `${m.categoryName} → ${m.subCategoryName}`
+            : m.categoryName) === group,
       );
     }
     const sorted = [...list];
-    if (sort === "newest") sorted.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-    else if (sort === "title") sorted.sort((a, b) => a.title.localeCompare(b.title));
-    else if (sort === "unread") sorted.sort((a, b) => a.readSeconds - b.readSeconds);
+    if (sort === "newest")
+      sorted.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    else if (sort === "title")
+      sorted.sort((a, b) => a.title.localeCompare(b.title));
+    else if (sort === "unread")
+      sorted.sort((a, b) => a.readSeconds - b.readSeconds);
     return sorted;
   }, [materials, search, group, sort]);
-
-  /** Grouped for display — the academy's headings, in its own order. */
-  const sections = useMemo(() => {
-    const map = new Map<string, LearnerMaterial[]>();
-    for (const m of rows) {
-      const key = m.categoryName
-        ? m.subCategoryName
-          ? `${m.categoryName} → ${m.subCategoryName}`
-          : m.categoryName
-        : "Everything else";
-      const list = map.get(key) ?? [];
-      list.push(m);
-      map.set(key, list);
-    }
-    return [...map.entries()];
-  }, [rows]);
 
   const open = useCallback(async (id: string) => {
     setOpenId(id);
@@ -251,7 +259,9 @@ export function StudentMaterialsClient({ materials }: { materials: LearnerMateri
       );
       setDetail(res.material);
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Couldn't open that.");
+      toast.error(
+        err instanceof ApiError ? err.message : "Couldn't open that.",
+      );
       setOpenId(null);
     } finally {
       setLoading(false);
@@ -295,7 +305,9 @@ export function StudentMaterialsClient({ materials }: { materials: LearnerMateri
       setNote("");
       toast.success("Highlighted.");
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Couldn't save that.");
+      toast.error(
+        err instanceof ApiError ? err.message : "Couldn't save that.",
+      );
     } finally {
       setSavingMark(false);
     }
@@ -311,7 +323,9 @@ export function StudentMaterialsClient({ materials }: { materials: LearnerMateri
         marks: detail.marks.filter((m) => m.id !== id),
       });
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Couldn't remove that.");
+      toast.error(
+        err instanceof ApiError ? err.message : "Couldn't remove that.",
+      );
     }
   }
 
@@ -327,7 +341,11 @@ export function StudentMaterialsClient({ materials }: { materials: LearnerMateri
       a.rel = "noopener noreferrer";
       a.click();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "That download isn't available.");
+      toast.error(
+        err instanceof ApiError
+          ? err.message
+          : "That download isn't available.",
+      );
     }
   }
 
@@ -366,7 +384,10 @@ export function StudentMaterialsClient({ materials }: { materials: LearnerMateri
             ))}
           </SelectContent>
         </Select>
-        <Select value={sort} onValueChange={(v) => setSort(String(v) as typeof sort)}>
+        <Select
+          value={sort}
+          onValueChange={(v) => setSort(String(v) as typeof sort)}
+        >
           <SelectTrigger className="w-full sm:w-44">
             <SelectValue placeholder="Sort" />
           </SelectTrigger>
@@ -379,68 +400,77 @@ export function StudentMaterialsClient({ materials }: { materials: LearnerMateri
         </Select>
       </div>
 
-      {sections.map(([heading, list]) => (
-        <section key={heading} className="space-y-2">
-          <h2 className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
-            {heading}
-          </h2>
-          <div className="grid gap-3 md:grid-cols-2">
-            {list.map((m) => {
-              const seconds =
-                m.readSeconds + (progress?.id === m.id ? progress.seconds : 0);
-              return (
-                <Card key={m.id} className="gap-2 p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="font-medium">
-                        <span className="text-muted-foreground mr-1.5 text-xs tabular-nums">
-                          {m.number}.
-                        </span>
-                        {m.title}
-                      </p>
-                      <p className="text-muted-foreground truncate text-xs">
-                        {m.courseTitle ?? "Study material"}
-                        {m.fileName ? ` · ${m.fileName}` : ""}
-                      </p>
-                    </div>
-                    {seconds > 0 && (
-                      <Badge
-                        variant="secondary"
-                        className="shrink-0 gap-1 bg-emerald-100 text-[10px] text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
-                      >
-                        <BookOpenCheck className="size-3" /> {readable(seconds)}
-                      </Badge>
-                    )}
-                  </div>
-                  {m.description && (
-                    <p className="text-muted-foreground line-clamp-2 text-sm">{m.description}</p>
-                  )}
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button size="sm" variant="outline" onClick={() => void open(m.id)}>
-                      {seconds > 0 ? "Read again" : "Read"}
+      {/* Groups first, the reading on a tap — the same two levels the academy
+          files it under, and the same behaviour as the quizzes page. */}
+      <GroupBrowser
+        items={rows}
+        query={search}
+        noun={{ one: "item", many: "items" }}
+        columns="md:grid-cols-2"
+        renderItem={(m) => {
+          const seconds =
+            m.readSeconds + (progress?.id === m.id ? progress.seconds : 0);
+          return (
+            <Card key={m.id} className="gap-2 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-medium">
+                    <span className="text-muted-foreground mr-1.5 text-xs tabular-nums">
+                      {m.number}.
+                    </span>
+                    {m.title}
+                  </p>
+                  <p className="text-muted-foreground truncate text-xs">
+                    {m.courseTitle ?? "Study material"}
+                    {m.fileName ? ` · ${m.fileName}` : ""}
+                  </p>
+                </div>
+                {seconds > 0 && (
+                  <Badge
+                    variant="secondary"
+                    className="shrink-0 gap-1 bg-emerald-100 text-[10px] text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
+                  >
+                    <BookOpenCheck className="size-3" /> {readable(seconds)}
+                  </Badge>
+                )}
+              </div>
+              {m.description && (
+                <p className="text-muted-foreground line-clamp-2 text-sm">
+                  {m.description}
+                </p>
+              )}
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void open(m.id)}
+                >
+                  {seconds > 0 ? "Read again" : "Read"}
+                </Button>
+                {m.fileUrl &&
+                  (m.downloadsEnabled ? (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => void download(m.id)}
+                    >
+                      <Download className="size-4" /> Download
                     </Button>
-                    {m.fileUrl &&
-                      (m.downloadsEnabled ? (
-                        <Button size="sm" variant="ghost" onClick={() => void download(m.id)}>
-                          <Download className="size-4" /> Download
-                        </Button>
-                      ) : (
-                        <span className="text-muted-foreground flex items-center gap-1 text-xs">
-                          <Lock className="size-3" /> Reading only
-                        </span>
-                      ))}
-                    {m.highlights > 0 && (
-                      <span className="text-muted-foreground flex items-center gap-1 text-xs">
-                        <Highlighter className="size-3" /> {m.highlights}
-                      </span>
-                    )}
-                  </div>
-                </Card>
-              );
-            })}
-          </div>
-        </section>
-      ))}
+                  ) : (
+                    <span className="text-muted-foreground flex items-center gap-1 text-xs">
+                      <Lock className="size-3" /> Reading only
+                    </span>
+                  ))}
+                {m.highlights > 0 && (
+                  <span className="text-muted-foreground flex items-center gap-1 text-xs">
+                    <Highlighter className="size-3" /> {m.highlights}
+                  </span>
+                )}
+              </div>
+            </Card>
+          );
+        }}
+      />
 
       {/* ── The reader ───────────────────────────────────────────────────── */}
       <Sheet open={openId !== null} onOpenChange={(o) => !o && setOpenId(null)}>
@@ -449,7 +479,11 @@ export function StudentMaterialsClient({ materials }: { materials: LearnerMateri
             <SheetTitle>{detail?.title ?? "Opening…"}</SheetTitle>
             <SheetDescription>
               {detail
-                ? [detail.categoryName, detail.subCategoryName, detail.courseTitle]
+                ? [
+                    detail.categoryName,
+                    detail.subCategoryName,
+                    detail.courseTitle,
+                  ]
                     .filter(Boolean)
                     .join(" · ") || "Study material"
                 : ""}
@@ -464,7 +498,9 @@ export function StudentMaterialsClient({ materials }: { materials: LearnerMateri
             )}
 
             {detail?.description && (
-              <p className="text-muted-foreground text-sm">{detail.description}</p>
+              <p className="text-muted-foreground text-sm">
+                {detail.description}
+              </p>
             )}
 
             {detail?.fileUrl && (
@@ -474,7 +510,11 @@ export function StudentMaterialsClient({ materials }: { materials: LearnerMateri
                   {detail.fileName || "Attached document"}
                 </span>
                 {detail.downloadsEnabled ? (
-                  <Button size="sm" variant="outline" onClick={() => void download(detail.id)}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void download(detail.id)}
+                  >
                     <Download className="size-4" /> Download
                   </Button>
                 ) : (
@@ -518,22 +558,35 @@ export function StudentMaterialsClient({ materials }: { materials: LearnerMateri
                           className={cn(
                             "size-6 rounded-full border-2",
                             SWATCH[c.value],
-                            color === c.value ? "border-foreground" : "border-transparent",
+                            color === c.value
+                              ? "border-foreground"
+                              : "border-transparent",
                           )}
                         />
                       ))}
-                      <Button size="sm" disabled={savingMark} onClick={() => void saveMark()}>
-                        {savingMark && <Loader2 className="size-4 animate-spin" />}
+                      <Button
+                        size="sm"
+                        disabled={savingMark}
+                        onClick={() => void saveMark()}
+                      >
+                        {savingMark && (
+                          <Loader2 className="size-4 animate-spin" />
+                        )}
                         Save highlight
                       </Button>
-                      <Button size="sm" variant="ghost" onClick={() => setSelection("")}>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setSelection("")}
+                      >
                         Clear
                       </Button>
                     </div>
                   </>
                 ) : (
                   <p className="text-muted-foreground text-sm">
-                    Select any part of the text above and it will appear here to highlight.
+                    Select any part of the text above and it will appear here to
+                    highlight.
                   </p>
                 )}
               </div>
@@ -544,14 +597,26 @@ export function StudentMaterialsClient({ materials }: { materials: LearnerMateri
                 <p className="text-sm font-medium">Your highlights</p>
                 <ul className="space-y-2">
                   {detail.marks.map((h) => (
-                    <li key={h.id} className="flex items-start gap-2 rounded-lg border p-2">
-                      <span className={cn("mt-1 size-3 shrink-0 rounded-full", SWATCH[h.color])} />
+                    <li
+                      key={h.id}
+                      className="flex items-start gap-2 rounded-lg border p-2"
+                    >
+                      <span
+                        className={cn(
+                          "mt-1 size-3 shrink-0 rounded-full",
+                          SWATCH[h.color],
+                        )}
+                      />
                       <div className="min-w-0 flex-1">
                         <p className="text-sm italic">
                           &ldquo;{h.quote.slice(0, 200)}
                           {h.quote.length > 200 ? "…" : ""}&rdquo;
                         </p>
-                        {h.note && <p className="text-muted-foreground text-sm">{h.note}</p>}
+                        {h.note && (
+                          <p className="text-muted-foreground text-sm">
+                            {h.note}
+                          </p>
+                        )}
                       </div>
                       <Button
                         size="icon-sm"
@@ -569,8 +634,8 @@ export function StudentMaterialsClient({ materials }: { materials: LearnerMateri
 
             {detail && (
               <p className="text-muted-foreground text-xs">
-                Your reading time is recorded on your report card. Highlights and notes are yours
-                alone.
+                Your reading time is recorded on your report card. Highlights
+                and notes are yours alone.
               </p>
             )}
           </div>

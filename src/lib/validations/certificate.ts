@@ -161,6 +161,12 @@ const isoDay = z
 /** The per-design copy stored on `Certificate.metadata`. */
 export const certificateDetailsSchema = z.object({
   batchName: text(120),
+  /**
+   * The academy's batch ID — SFCMC001005. Filled in from the learner's cohort
+   * when the award is issued and printed on the certificate, because the
+   * academy quotes it when a certificate is checked by hand.
+   */
+  batchId: text(40),
   courseStartDate: isoDay,
   courseEndDate: isoDay,
   instructorName: text(120),
@@ -206,6 +212,7 @@ export function parseCertificateDetails(stored: unknown): CertificateDetails {
     ? parsed.data
     : {
         batchName: "",
+        batchId: "",
         courseStartDate: "",
         courseEndDate: "",
         instructorName: "",

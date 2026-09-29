@@ -128,6 +128,7 @@ export function InternshipCompletionCertificate({ cert, chrome }: TemplateProps)
       <div className="relative ml-[34cqw] flex h-full flex-col px-[4cqw] pt-[5cqw] pb-[4cqw]">
         <p className="self-end text-[1.35cqw] font-bold tracking-[0.08em] text-neutral-800">
           CERT NO. {cert.verificationCode}
+          {cert.details.batchId ? ` · BATCH ${cert.details.batchId}` : ""}
         </p>
 
         <div className="flex flex-1 flex-col justify-center">

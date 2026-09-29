@@ -54,7 +54,7 @@ export function PurchasePanel({
       />
 
       {!isFree && (
-        <p className="text-muted-foreground flex items-center justify-center gap-1.5 text-xs">
+        <p className="text-muted-foreground flex flex-wrap items-center justify-center gap-1.5 text-xs">
           <ShieldCheck className="size-3.5" /> Secure payment via Razorpay
         </p>
       )}

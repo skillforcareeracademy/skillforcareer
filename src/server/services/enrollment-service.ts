@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { notify } from "./notification-service";
+import { notify, notifyStaff } from "./notification-service";
 import { AppError } from "@/lib/api/errors";
 import { bumpCourseEnrollmentCount } from "@/server/repositories/counters";
 import { ACTIVITY_ACTIONS, logActivity } from "./activity-service";
@@ -77,6 +77,21 @@ export async function enrollInCourse(userId: string, courseId: string): Promise<
     title: "You're enrolled",
     message: `You now have access to “${course.title}”. Start learning any time.`,
     actionUrl: `/student/learn/${course.slug}`,
+  });
+
+  // The office watches the bell, not the dashboard's activity list. A paid seat
+  // already announces itself as "Payment recorded"; a free one had nothing.
+  const learner = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { name: true, email: true },
+  });
+  void notifyStaff({
+    type: "COURSE",
+    title: "New enrollment",
+    message: `${learner?.name ?? "A learner"} enrolled in “${course.title}”${
+      learner?.email ? ` — ${learner.email}` : ""
+    }`,
+    actionUrl: `/admin/users/${userId}`,
   });
 
   return { slug: course.slug };

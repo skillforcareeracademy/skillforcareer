@@ -201,7 +201,10 @@ export default async function CourseDetailPage({
               floats up over the hero on desktop. `self-start` keeps the aside
               its natural height (not stretched to the main column) so the
               sticky card travels with the content instead of staying pinned. */}
-          <aside className="lg:col-start-3 lg:row-start-1 lg:-mt-56 lg:sticky lg:top-24 lg:self-start">
+          {/* `min-w-0`: a grid item refuses to shrink below its content by
+              default, so one un-wrappable line inside the card used to set the
+              width of the whole page on a phone. */}
+          <aside className="min-w-0 lg:col-start-3 lg:row-start-1 lg:-mt-56 lg:sticky lg:top-24 lg:self-start">
             <Card className="gap-0 overflow-hidden p-0 shadow-xl">
               <CoursePreview
                 thumbnailUrl={c.thumbnailUrl}
@@ -237,7 +240,7 @@ export default async function CourseDetailPage({
                   )}
                 </div>
 
-                <p className="text-muted-foreground flex items-center justify-center gap-1.5 text-xs">
+                <p className="text-muted-foreground flex flex-wrap items-center justify-center gap-1.5 text-xs">
                   <ShieldCheck className="size-3.5" /> Fees are non-refundable ·{" "}
                   <Link href="/terms" className="text-primary font-medium underline-offset-2 hover:underline">
                     Terms &amp; Conditions
@@ -260,7 +263,7 @@ export default async function CourseDetailPage({
           </aside>
 
           {/* Main */}
-          <div className="space-y-10 lg:col-span-2 lg:col-start-1 lg:row-start-1">
+          <div className="min-w-0 space-y-10 lg:col-span-2 lg:col-start-1 lg:row-start-1">
             {c.objectives.length > 0 && (
               <Card className="p-6">
                 <h2 className="mb-4 text-xl font-semibold">What you&apos;ll learn</h2>

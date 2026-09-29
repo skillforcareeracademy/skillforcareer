@@ -291,6 +291,7 @@ export async function issueCertificate(input: IssueCertificateInput): Promise<st
   // weight that a later edit could contradict.
   const details: CertificateDetails = {
     batchName: "",
+    batchId: "",
     programArea: "",
     organisation: "",
     startDate: "",
@@ -304,6 +305,21 @@ export async function issueCertificate(input: IssueCertificateInput): Promise<st
   // record, so admissions type them once on the profile rather than again here.
   // Once written they are a snapshot: editing the profile later must not quietly
   // rewrite a certificate somebody has already been handed.
+  // The learner's cohort on this course, so the certificate can quote the
+  // academy's own batch ID — "this Batch ID SFCMC001005 should be mentioned".
+  // Taken from the enrolment rather than typed, so it cannot disagree with the
+  // panel; the name is filled in too when nobody chose one.
+  if (courseId) {
+    const enrolment = await prisma.enrollment.findUnique({
+      where: { userId_courseId: { userId: input.userId, courseId } },
+      select: { batch: { select: { name: true, batchId: true } } },
+    });
+    if (enrolment?.batch) {
+      details.batchId = enrolment.batch.batchId ?? "";
+      if (!details.batchName) details.batchName = enrolment.batch.name;
+    }
+  }
+
   const day = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : "");
   if (meta.fields.includes("startDate") && !details.startDate) {
     details.startDate = day(user.internshipStartAt);
