@@ -96,6 +96,8 @@ interface BatchRow {
   enrolledCount: number;
   startDate: string | null;
   endDate: string | null;
+  /** When the office created it — what "recently created" sorts on. */
+  createdAt: string;
   schedule: Schedule | null;
 }
 interface Stats {
@@ -111,7 +113,42 @@ interface Query {
   search?: string;
   status?: string;
   courseId?: string;
+  createdFrom?: string;
+  createdTo?: string;
+  timeFrom?: string;
+  timeTo?: string;
+  sort?: string;
 }
+
+/** The class-time windows the academy actually thinks in. */
+const TIME_SLOTS: { value: string; label: string; from: string; to: string }[] =
+  [
+    {
+      value: "morning",
+      label: "Morning (before 12)",
+      from: "00:00",
+      to: "11:59",
+    },
+    {
+      value: "afternoon",
+      label: "Afternoon (12 – 5)",
+      from: "12:00",
+      to: "16:59",
+    },
+    {
+      value: "evening",
+      label: "Evening (after 5)",
+      from: "17:00",
+      to: "23:59",
+    },
+  ];
+
+const SORTS: { value: string; label: string }[] = [
+  { value: "sequence", label: "Academy order" },
+  { value: "recent", label: "Recently created" },
+  { value: "starting", label: "Starting soonest" },
+  { value: "name", label: "Name A–Z" },
+];
 interface Opt {
   id: string;
   title?: string;
@@ -120,7 +157,8 @@ interface Opt {
 
 const STATUS_BADGE: Record<string, string> = {
   UPCOMING: "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300",
-  ONGOING: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
+  ONGOING:
+    "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
   COMPLETED: "bg-muted text-muted-foreground",
   CANCELLED: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300",
 };
@@ -185,7 +223,9 @@ function teachersLabel(b: BatchRow): string {
   const extra = b.associates.length;
   if (!b.instructorName && !extra) return "";
   const more = extra ? `${extra} associate${extra === 1 ? "" : "s"}` : "";
-  return b.instructorName ? [b.instructorName, more].filter(Boolean).join(" + ") : more;
+  return b.instructorName
+    ? [b.instructorName, more].filter(Boolean).join(" + ")
+    : more;
 }
 
 /**
@@ -193,7 +233,11 @@ function teachersLabel(b: BatchRow): string {
  * so the form saves the batch first and then brings its associates in line.
  * A failure here leaves the batch saved and says so.
  */
-async function syncAssociates(batchId: string, before: string[], after: string[]) {
+async function syncAssociates(
+  batchId: string,
+  before: string[],
+  after: string[],
+) {
   const added = after.filter((id) => !before.includes(id));
   const removed = before.filter((id) => !after.includes(id));
   if (added.length) {
@@ -248,17 +292,36 @@ export function BatchesClient({
   }
 
   /** An associate on the instructor panel: may open the batch, not edit it. */
-  const assistsOnly = (b: BatchRow) => Boolean(viewerId && b.instructorId !== viewerId);
+  const assistsOnly = (b: BatchRow) =>
+    Boolean(viewerId && b.instructorId !== viewerId);
   const profileHref = (b: BatchRow) => `${pathname.replace(/\/$/, "")}/${b.id}`;
 
   const totalPages = Math.max(1, Math.ceil(total / query.pageSize));
-  const hasFilters = Boolean(query.search || query.status || query.courseId);
+  const hasFilters = Boolean(
+    query.search ||
+    query.status ||
+    query.courseId ||
+    query.createdFrom ||
+    query.createdTo ||
+    query.timeFrom ||
+    query.timeTo ||
+    (query.sort && query.sort !== "sequence"),
+  );
+  /** Which preset the current time window matches, if any. */
+  const slot =
+    TIME_SLOTS.find((s) => s.from === query.timeFrom && s.to === query.timeTo)
+      ?.value ?? (query.timeFrom || query.timeTo ? "custom" : ALL);
 
   const batchesExportHref = (() => {
     const p = new URLSearchParams();
     if (query.search) p.set("search", query.search);
     if (query.status) p.set("status", query.status);
     if (query.courseId) p.set("course", query.courseId);
+    if (query.createdFrom) p.set("createdFrom", query.createdFrom);
+    if (query.createdTo) p.set("createdTo", query.createdTo);
+    if (query.timeFrom) p.set("timeFrom", query.timeFrom);
+    if (query.timeTo) p.set("timeTo", query.timeTo);
+    if (query.sort && query.sort !== "sequence") p.set("sort", query.sort);
     const qs = p.toString();
     return `/api/batches/export${qs ? `?${qs}` : ""}`;
   })();
@@ -269,6 +332,11 @@ export function BatchesClient({
         search: query.search,
         status: query.status,
         course: query.courseId,
+        createdFrom: query.createdFrom,
+        createdTo: query.createdTo,
+        timeFrom: query.timeFrom,
+        timeTo: query.timeTo,
+        sort: query.sort,
         page: query.page,
         ...next,
       };
@@ -276,7 +344,14 @@ export function BatchesClient({
       if (merged.search) p.set("search", String(merged.search));
       if (merged.status) p.set("status", String(merged.status));
       if (merged.course) p.set("course", String(merged.course));
-      if (merged.page && Number(merged.page) > 1) p.set("page", String(merged.page));
+      if (merged.createdFrom) p.set("createdFrom", String(merged.createdFrom));
+      if (merged.createdTo) p.set("createdTo", String(merged.createdTo));
+      if (merged.timeFrom) p.set("timeFrom", String(merged.timeFrom));
+      if (merged.timeTo) p.set("timeTo", String(merged.timeTo));
+      if (merged.sort && merged.sort !== "sequence")
+        p.set("sort", String(merged.sort));
+      if (merged.page && Number(merged.page) > 1)
+        p.set("page", String(merged.page));
       const qs = p.toString();
       router.push(qs ? `${pathname}?${qs}` : pathname);
     },
@@ -285,7 +360,27 @@ export function BatchesClient({
 
   function clearFilters() {
     setSearch("");
-    setParams({ search: undefined, status: undefined, course: undefined, page: 1 });
+    setParams({
+      search: undefined,
+      status: undefined,
+      course: undefined,
+      createdFrom: undefined,
+      createdTo: undefined,
+      timeFrom: undefined,
+      timeTo: undefined,
+      sort: undefined,
+      page: 1,
+    });
+  }
+
+  /** Pick a class-time window, or clear it. */
+  function setSlot(value: string) {
+    const preset = TIME_SLOTS.find((s) => s.value === value);
+    setParams({
+      timeFrom: preset?.from,
+      timeTo: preset?.to,
+      page: 1,
+    });
   }
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
@@ -324,7 +419,11 @@ export function BatchesClient({
       capacity: form.capacity ? Number(form.capacity) : undefined,
       startDate: form.startDate || undefined,
       endDate: form.endDate || undefined,
-      schedule: { days: form.days, startTime: form.startTime, endTime: form.endTime },
+      schedule: {
+        days: form.days,
+        startTime: form.startTime,
+        endTime: form.endTime,
+      },
     };
     try {
       let batchId: string;
@@ -372,10 +471,30 @@ export function BatchesClient({
   }
 
   const statCards = [
-    { label: "Total batches", value: stats.total, icon: Layers, tone: "text-rose-500" },
-    { label: "Upcoming", value: stats.upcoming, icon: CalendarClock, tone: "text-sky-500" },
-    { label: "Ongoing", value: stats.ongoing, icon: Radio, tone: "text-emerald-500" },
-    { label: "Learners", value: stats.learners, icon: Users, tone: "text-violet-500" },
+    {
+      label: "Total batches",
+      value: stats.total,
+      icon: Layers,
+      tone: "text-rose-500",
+    },
+    {
+      label: "Upcoming",
+      value: stats.upcoming,
+      icon: CalendarClock,
+      tone: "text-sky-500",
+    },
+    {
+      label: "Ongoing",
+      value: stats.ongoing,
+      icon: Radio,
+      tone: "text-emerald-500",
+    },
+    {
+      label: "Learners",
+      value: stats.learners,
+      icon: Users,
+      tone: "text-violet-500",
+    },
   ];
 
   const columns: Column<BatchRow>[] = [
@@ -384,12 +503,17 @@ export function BatchesClient({
       header: "Batch",
       cell: (b) => (
         <div className="min-w-0">
-          <Link href={profileHref(b)} className="block truncate font-medium hover:underline">
+          <Link
+            href={profileHref(b)}
+            className="block truncate font-medium hover:underline"
+          >
             {b.name}
           </Link>
           <p className="text-muted-foreground truncate text-xs">
             {b.batchId ? (
-              <span className="text-foreground font-medium tabular-nums">{b.batchId}</span>
+              <span className="text-foreground font-medium tabular-nums">
+                {b.batchId}
+              </span>
             ) : (
               b.code
             )}
@@ -402,7 +526,11 @@ export function BatchesClient({
     {
       key: "course",
       header: "Course",
-      cell: (b) => <span className="text-muted-foreground line-clamp-2 text-sm">{b.courseTitle}</span>,
+      cell: (b) => (
+        <span className="text-muted-foreground line-clamp-2 text-sm">
+          {b.courseTitle}
+        </span>
+      ),
     },
     {
       key: "schedule",
@@ -425,27 +553,39 @@ export function BatchesClient({
     {
       key: "dates",
       header: "Dates",
-      cell: (b) =>
-        b.startDate || b.endDate ? (
-          <span className="text-sm whitespace-nowrap">
-            {fmtDate(b.startDate) || "—"}
-            {b.endDate ? ` – ${fmtDate(b.endDate)}` : ""}
-          </span>
-        ) : (
-          <span className="text-muted-foreground text-sm">—</span>
-        ),
+      cell: (b) => (
+        <div className="text-sm whitespace-nowrap">
+          {b.startDate || b.endDate ? (
+            <p>
+              {fmtDate(b.startDate) || "—"}
+              {b.endDate ? ` – ${fmtDate(b.endDate)}` : ""}
+            </p>
+          ) : (
+            <p className="text-muted-foreground">—</p>
+          )}
+          {/* When it was set up, so "recently created" can be seen as well as
+              sorted on. */}
+          <p className="text-muted-foreground text-xs">
+            Created {fmtDate(b.createdAt)}
+          </p>
+        </div>
+      ),
     },
     {
       key: "seats",
       header: "Seats",
       cell: (b) => {
         const cap = b.capacity ?? 0;
-        const pct = cap ? Math.min(100, Math.round((b.enrolledCount / cap) * 100)) : 0;
+        const pct = cap
+          ? Math.min(100, Math.round((b.enrolledCount / cap) * 100))
+          : 0;
         return (
           <div className="w-24">
             <p className="text-sm tabular-nums">
               {b.enrolledCount}
-              <span className="text-muted-foreground">{cap ? ` / ${cap}` : ""}</span>
+              <span className="text-muted-foreground">
+                {cap ? ` / ${cap}` : ""}
+              </span>
             </p>
             {cap > 0 && (
               <div className="bg-muted mt-1 h-1.5 overflow-hidden rounded-full">
@@ -482,7 +622,10 @@ export function BatchesClient({
   function rowActions(b: BatchRow) {
     return (
       <DropdownMenu>
-        <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" />} aria-label="Actions">
+        <DropdownMenuTrigger
+          render={<Button variant="ghost" size="icon-sm" />}
+          aria-label="Actions"
+        >
           <MoreHorizontal className="size-4" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
@@ -515,7 +658,9 @@ export function BatchesClient({
 
   function renderBatchCard(b: BatchRow) {
     const cap = b.capacity ?? 0;
-    const pct = cap ? Math.min(100, Math.round((b.enrolledCount / cap) * 100)) : 0;
+    const pct = cap
+      ? Math.min(100, Math.round((b.enrolledCount / cap) * 100))
+      : 0;
     return (
       <div className="rounded-xl border p-4">
         <div className="flex items-start justify-between gap-2">
@@ -523,7 +668,9 @@ export function BatchesClient({
             <p className="truncate font-medium">{b.name}</p>
             <p className="text-muted-foreground truncate text-xs">
               {b.batchId ? (
-                <span className="text-foreground font-medium tabular-nums">{b.batchId}</span>
+                <span className="text-foreground font-medium tabular-nums">
+                  {b.batchId}
+                </span>
               ) : (
                 b.code
               )}
@@ -539,7 +686,9 @@ export function BatchesClient({
           </div>
         </div>
 
-        <p className="text-muted-foreground mt-2 truncate text-sm">{b.courseTitle}</p>
+        <p className="text-muted-foreground mt-2 truncate text-sm">
+          {b.courseTitle}
+        </p>
 
         <div className="text-muted-foreground mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs">
           {b.schedule && (b.schedule.days.length || b.schedule.startTime) ? (
@@ -556,17 +705,23 @@ export function BatchesClient({
               {b.endDate ? ` – ${fmtDate(b.endDate)}` : ""}
             </span>
           )}
+          <span className="flex items-center gap-1">Created {fmtDate(b.createdAt)}</span>
         </div>
 
         <div className="mt-3 flex items-center gap-3">
           <span className="text-sm tabular-nums">
             {b.enrolledCount}
-            <span className="text-muted-foreground">{cap ? ` / ${cap}` : ""}</span>
+            <span className="text-muted-foreground">
+              {cap ? ` / ${cap}` : ""}
+            </span>
           </span>
           {cap > 0 && (
             <div className="bg-muted h-1.5 flex-1 overflow-hidden rounded-full">
               <div
-                className={cn("h-full rounded-full", pct >= 100 ? "bg-rose-500" : "bg-primary")}
+                className={cn(
+                  "h-full rounded-full",
+                  pct >= 100 ? "bg-rose-500" : "bg-primary",
+                )}
                 style={{ width: `${pct}%` }}
               />
             </div>
@@ -585,7 +740,11 @@ export function BatchesClient({
         description="Schedule and manage course cohorts, their timings and capacity."
         actions={
           <div className="flex gap-2">
-            <Button variant="outline" nativeButton={false} render={<a href={batchesExportHref} />}>
+            <Button
+              variant="outline"
+              nativeButton={false}
+              render={<a href={batchesExportHref} />}
+            >
               <Download className="size-4" /> Export
             </Button>
             <Button onClick={openCreate}>
@@ -604,10 +763,12 @@ export function BatchesClient({
                 <s.icon className={`size-5 ${s.tone}`} />
               </div>
               <div className="min-w-0">
-                <p className="text-2xl font-semibold leading-none tabular-nums">
+                <p className="text-2xl leading-none font-semibold tabular-nums">
                   {s.value.toLocaleString("en-IN")}
                 </p>
-                <p className="text-muted-foreground mt-1 truncate text-xs">{s.label}</p>
+                <p className="text-muted-foreground mt-1 truncate text-xs">
+                  {s.label}
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -622,69 +783,219 @@ export function BatchesClient({
         emptyIcon={CalendarDays}
         emptyTitle={hasFilters ? "No matching batches" : "No batches yet"}
         emptyDescription={
-          hasFilters ? "Try adjusting your search or filters." : "Create your first batch to get started."
+          hasFilters
+            ? "Try adjusting your search or filters."
+            : "Create your first batch to get started."
         }
         toolbar={
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                setParams({ search: search || undefined, page: 1 });
-              }}
-              className="flex-1 sm:max-w-xs"
-            >
-              <Input
-                placeholder="Search batches…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </form>
-            <div className="flex gap-2">
-              <Select
-                value={query.status ?? ALL}
-                onValueChange={(v) => setParams({ status: !v || v === ALL ? undefined : v, page: 1 })}
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  setParams({ search: search || undefined, page: 1 });
+                }}
+                className="flex-1 sm:max-w-xs"
               >
-                <SelectTrigger className="flex-1 sm:w-40">
-                  <SelectValue>
-                    {(v) => (!v || v === ALL ? "All statuses" : BATCH_STATUS_LABEL[String(v)])}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL}>All statuses</SelectItem>
-                  {BATCH_STATUSES.map((s) => (
-                    <SelectItem key={s} value={s}>
-                      {BATCH_STATUS_LABEL[s]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select
-                value={query.courseId ?? ALL}
-                onValueChange={(v) => setParams({ course: !v || v === ALL ? undefined : v, page: 1 })}
-              >
-                <SelectTrigger className="flex-1 sm:w-48">
-                  <SelectValue>
-                    {(v) =>
-                      !v || v === ALL
-                        ? "All courses"
-                        : (courses.find((c) => c.id === v)?.title ?? "Course")
-                    }
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL}>All courses</SelectItem>
-                  {courses.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.title}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {hasFilters && (
-                <Button variant="ghost" size="sm" onClick={clearFilters} className="text-muted-foreground">
-                  <X className="size-4" /> Clear
-                </Button>
-              )}
+                <Input
+                  placeholder="Search batches…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </form>
+              <div className="flex gap-2">
+                <Select
+                  value={query.status ?? ALL}
+                  onValueChange={(v) =>
+                    setParams({
+                      status: !v || v === ALL ? undefined : v,
+                      page: 1,
+                    })
+                  }
+                >
+                  <SelectTrigger className="flex-1 sm:w-40">
+                    <SelectValue>
+                      {(v) =>
+                        !v || v === ALL
+                          ? "All statuses"
+                          : BATCH_STATUS_LABEL[String(v)]
+                      }
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ALL}>All statuses</SelectItem>
+                    {BATCH_STATUSES.map((s) => (
+                      <SelectItem key={s} value={s}>
+                        {BATCH_STATUS_LABEL[s]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={query.courseId ?? ALL}
+                  onValueChange={(v) =>
+                    setParams({
+                      course: !v || v === ALL ? undefined : v,
+                      page: 1,
+                    })
+                  }
+                >
+                  <SelectTrigger className="flex-1 sm:w-48">
+                    <SelectValue>
+                      {(v) =>
+                        !v || v === ALL
+                          ? "All courses"
+                          : (courses.find((c) => c.id === v)?.title ?? "Course")
+                      }
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ALL}>All courses</SelectItem>
+                    {courses.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {/* When a class runs — read off the batch's own timetable. */}
+                <Select value={slot} onValueChange={(v) => setSlot(String(v))}>
+                  <SelectTrigger className="flex-1 sm:w-44">
+                    <SelectValue>
+                      {(v) =>
+                        !v || v === ALL
+                          ? "Any class time"
+                          : v === "custom"
+                            ? `${query.timeFrom ?? "…"} – ${query.timeTo ?? "…"}`
+                            : (TIME_SLOTS.find((s) => s.value === v)?.label ??
+                              "Any class time")
+                      }
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ALL}>Any class time</SelectItem>
+                    {TIME_SLOTS.map((s) => (
+                      <SelectItem key={s.value} value={s.value}>
+                        {s.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={query.sort ?? "sequence"}
+                  onValueChange={(v) =>
+                    setParams({ sort: String(v || "sequence"), page: 1 })
+                  }
+                >
+                  <SelectTrigger className="flex-1 sm:w-44">
+                    <SelectValue>
+                      {(v) =>
+                        SORTS.find((s) => s.value === (v ?? "sequence"))
+                          ?.label ?? "Academy order"
+                      }
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SORTS.map((s) => (
+                      <SelectItem key={s.value} value={s.value}>
+                        {s.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {hasFilters && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={clearFilters}
+                    className="text-muted-foreground"
+                  >
+                    <X className="size-4" /> Clear
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {/* Created between two dates, and an exact class-time window for
+                when the three presets aren't the cut the office wants. */}
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="space-y-1">
+                <Label
+                  htmlFor="b-created-from"
+                  className="text-muted-foreground text-xs"
+                >
+                  Created from
+                </Label>
+                <Input
+                  id="b-created-from"
+                  type="date"
+                  className="w-40"
+                  value={query.createdFrom ?? ""}
+                  onChange={(e) =>
+                    setParams({
+                      createdFrom: e.target.value || undefined,
+                      page: 1,
+                    })
+                  }
+                />
+              </div>
+              <div className="space-y-1">
+                <Label
+                  htmlFor="b-created-to"
+                  className="text-muted-foreground text-xs"
+                >
+                  Created to
+                </Label>
+                <Input
+                  id="b-created-to"
+                  type="date"
+                  className="w-40"
+                  value={query.createdTo ?? ""}
+                  onChange={(e) =>
+                    setParams({
+                      createdTo: e.target.value || undefined,
+                      page: 1,
+                    })
+                  }
+                />
+              </div>
+              <div className="space-y-1">
+                <Label
+                  htmlFor="b-time-from"
+                  className="text-muted-foreground text-xs"
+                >
+                  Class starts after
+                </Label>
+                <Input
+                  id="b-time-from"
+                  type="time"
+                  className="w-32"
+                  value={query.timeFrom ?? ""}
+                  onChange={(e) =>
+                    setParams({
+                      timeFrom: e.target.value || undefined,
+                      page: 1,
+                    })
+                  }
+                />
+              </div>
+              <div className="space-y-1">
+                <Label
+                  htmlFor="b-time-to"
+                  className="text-muted-foreground text-xs"
+                >
+                  and before
+                </Label>
+                <Input
+                  id="b-time-to"
+                  type="time"
+                  className="w-32"
+                  value={query.timeTo ?? ""}
+                  onChange={(e) =>
+                    setParams({ timeTo: e.target.value || undefined, page: 1 })
+                  }
+                />
+              </div>
             </div>
           </div>
         }
@@ -694,13 +1005,23 @@ export function BatchesClient({
               {total} {total === 1 ? "batch" : "batches"}
             </p>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" disabled={query.page <= 1} onClick={() => setParams({ page: query.page - 1 })}>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={query.page <= 1}
+                onClick={() => setParams({ page: query.page - 1 })}
+              >
                 Previous
               </Button>
               <span className="text-muted-foreground text-sm">
                 Page {query.page} of {totalPages}
               </span>
-              <Button variant="outline" size="sm" disabled={query.page >= totalPages} onClick={() => setParams({ page: query.page + 1 })}>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={query.page >= totalPages}
+                onClick={() => setParams({ page: query.page + 1 })}
+              >
                 Next
               </Button>
             </div>
@@ -714,7 +1035,9 @@ export function BatchesClient({
           <DialogHeader>
             <DialogTitle>{editing ? "Edit batch" : "New batch"}</DialogTitle>
             <DialogDescription>
-              {editing ? "Update this cohort's details." : "Set up a new cohort for a course."}
+              {editing
+                ? "Update this cohort's details."
+                : "Set up a new cohort for a course."}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={onSubmit} className="space-y-4">
@@ -731,10 +1054,16 @@ export function BatchesClient({
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label>Course</Label>
-                <Select value={form.courseId} onValueChange={(v) => v && set("courseId", v)}>
+                <Select
+                  value={form.courseId}
+                  onValueChange={(v) => v && set("courseId", v)}
+                >
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Choose a course">
-                      {(v) => courses.find((c) => c.id === v)?.title ?? "Choose a course"}
+                      {(v) =>
+                        courses.find((c) => c.id === v)?.title ??
+                        "Choose a course"
+                      }
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
@@ -750,14 +1079,17 @@ export function BatchesClient({
                 <Label>Instructor</Label>
                 <Select
                   value={form.instructorId || NONE}
-                  onValueChange={(v) => set("instructorId", v === NONE ? "" : (v ?? ""))}
+                  onValueChange={(v) =>
+                    set("instructorId", v === NONE ? "" : (v ?? ""))
+                  }
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue>
                       {(v) =>
                         !v || v === NONE
                           ? "Unassigned"
-                          : (instructors.find((i) => i.id === v)?.name ?? "Unassigned")
+                          : (instructors.find((i) => i.id === v)?.name ??
+                            "Unassigned")
                       }
                     </SelectValue>
                   </SelectTrigger>
@@ -776,7 +1108,9 @@ export function BatchesClient({
             {associateOptions.length > 0 && (
               <AssociatesField
                 options={associateOptions.filter(
-                  (o) => o.id !== (form.instructorId || (!editing ? viewerId : undefined)),
+                  (o) =>
+                    o.id !==
+                    (form.instructorId || (!editing ? viewerId : undefined)),
                 )}
                 value={form.associateIds}
                 onChange={(ids) => set("associateIds", ids)}
@@ -786,9 +1120,14 @@ export function BatchesClient({
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-1.5">
                 <Label>Status</Label>
-                <Select value={form.status} onValueChange={(v) => v && set("status", v)}>
+                <Select
+                  value={form.status}
+                  onValueChange={(v) => v && set("status", v)}
+                >
                   <SelectTrigger className="w-full">
-                    <SelectValue>{(v) => BATCH_STATUS_LABEL[String(v)]}</SelectValue>
+                    <SelectValue>
+                      {(v) => BATCH_STATUS_LABEL[String(v)]}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {BATCH_STATUSES.map((s) => (
@@ -823,7 +1162,8 @@ export function BatchesClient({
                   className="font-medium tabular-nums"
                 />
                 <p className="text-muted-foreground text-xs">
-                  Generated by the academy and fixed — it appears on the certificate.
+                  Generated by the academy and fixed — it appears on the
+                  certificate.
                 </p>
               </div>
               <div className="space-y-1.5">
@@ -837,7 +1177,8 @@ export function BatchesClient({
                   placeholder="e.g. 1"
                 />
                 <p className="text-muted-foreground text-xs">
-                  Where it sits in your own list. Change it as often as you like.
+                  Where it sits in your own list. Change it as often as you
+                  like.
                 </p>
               </div>
               <div className="space-y-1.5">
@@ -854,11 +1195,21 @@ export function BatchesClient({
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="b-start">Start date</Label>
-                <Input id="b-start" type="date" value={form.startDate} onChange={(e) => set("startDate", e.target.value)} />
+                <Input
+                  id="b-start"
+                  type="date"
+                  value={form.startDate}
+                  onChange={(e) => set("startDate", e.target.value)}
+                />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="b-end">End date</Label>
-                <Input id="b-end" type="date" value={form.endDate} onChange={(e) => set("endDate", e.target.value)} />
+                <Input
+                  id="b-end"
+                  type="date"
+                  value={form.endDate}
+                  onChange={(e) => set("endDate", e.target.value)}
+                />
               </div>
             </div>
 
@@ -918,7 +1269,11 @@ export function BatchesClient({
                   <UserPlus className="size-4" /> Manage students
                 </Button>
               )}
-              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setDialogOpen(false)}
+              >
                 Cancel
               </Button>
               <Button type="submit" disabled={!canSave || saving}>
@@ -930,21 +1285,34 @@ export function BatchesClient({
         </DialogContent>
       </Dialog>
 
-      <BatchDetailSheet batchId={detailId} onOpenChange={(o) => !o && setDetailId(null)} />
+      <BatchDetailSheet
+        batchId={detailId}
+        onOpenChange={(o) => !o && setDetailId(null)}
+      />
 
-      <BatchStudentsSheet batch={managing} onOpenChange={(o) => !o && setManaging(null)} />
+      <BatchStudentsSheet
+        batch={managing}
+        onOpenChange={(o) => !o && setManaging(null)}
+      />
 
-      <AlertDialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>
+      <AlertDialog
+        open={!!deleting}
+        onOpenChange={(o) => !o && setDeleting(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete “{deleting?.name}”?</AlertDialogTitle>
             <AlertDialogDescription>
-              This permanently removes the batch. Batches with enrolled learners can&apos;t be deleted.
+              This permanently removes the batch. Batches with enrolled learners
+              can&apos;t be deleted.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete} className="bg-destructive hover:bg-destructive/90 text-white">
+            <AlertDialogAction
+              onClick={confirmDelete}
+              className="bg-destructive hover:bg-destructive/90 text-white"
+            >
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -967,7 +1335,8 @@ function AssociatesField({
   value: string[];
   onChange: (ids: string[]) => void;
 }) {
-  const nameOf = (id: string) => options.find((o) => o.id === id)?.name ?? "Instructor";
+  const nameOf = (id: string) =>
+    options.find((o) => o.id === id)?.name ?? "Instructor";
   const remaining = options.filter((o) => !value.includes(o.id));
   const shown = value.filter((id) => options.some((o) => o.id === id));
 
@@ -997,12 +1366,17 @@ function AssociatesField({
       <Select
         value={NONE}
         onValueChange={(v) => {
-          if (v && v !== NONE && !value.includes(String(v))) onChange([...value, String(v)]);
+          if (v && v !== NONE && !value.includes(String(v)))
+            onChange([...value, String(v)]);
         }}
       >
         <SelectTrigger className="w-full" disabled={remaining.length === 0}>
           <SelectValue>
-            {() => (remaining.length ? "Add an associate instructor…" : "No more instructors to add")}
+            {() =>
+              remaining.length
+                ? "Add an associate instructor…"
+                : "No more instructors to add"
+            }
           </SelectValue>
         </SelectTrigger>
         <SelectContent>

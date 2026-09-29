@@ -12,6 +12,7 @@ import {
 import { activeStudentWhere } from "@/server/repositories/role-filters";
 import type { BatchInput, BatchSchedule } from "@/lib/validations/batch";
 import { ensureBatchIdentity } from "./academy-ids-service";
+import { academyDayEnd, academyDayStart } from "@/lib/ist";
 
 /**
  * Batches an instructor teaches: the ones they lead, plus the ones they are an
@@ -62,6 +63,9 @@ async function uniqueCode(base: string, excludeId?: string): Promise<string> {
 
 // ── Reads ────────────────────────────────────────────────────────────────────
 
+/** How the office wants the list ordered. */
+export type BatchSort = "sequence" | "recent" | "starting" | "name";
+
 export interface BatchListQuery {
   page: number;
   pageSize: number;
@@ -70,7 +74,30 @@ export interface BatchListQuery {
   courseId?: string;
   /** Scope to batches one instructor leads or assists on. */
   instructorId?: string;
+  /**
+   * When the batch was created, as IST calendar days — "batch creation date
+   * wise filter". Inclusive of both ends.
+   */
+  createdFrom?: string;
+  createdTo?: string;
+  /**
+   * The window a class starts in, as "HH:MM" — "class time ke according
+   * filter". A batch with no timetable has no class time and is left out when
+   * this is set.
+   */
+  timeFrom?: string;
+  timeTo?: string;
+  sort?: BatchSort;
 }
+
+/** The orderings the list offers, newest-first among them. */
+const BATCH_ORDER: Record<BatchSort, Prisma.BatchOrderByWithRelationInput[]> = {
+  // The academy's own order, as it always was.
+  sequence: [{ sequence: "asc" }, { startDate: "desc" }, { createdAt: "desc" }],
+  recent: [{ createdAt: "desc" }],
+  starting: [{ startDate: "asc" }, { createdAt: "desc" }],
+  name: [{ name: "asc" }],
+};
 
 export async function listBatchesAdmin(q: BatchListQuery) {
   const and: Prisma.BatchWhereInput[] = [];
@@ -86,15 +113,32 @@ export async function listBatchesAdmin(q: BatchListQuery) {
   if (q.status) and.push({ status: q.status as Prisma.BatchWhereInput["status"] });
   if (q.courseId) and.push({ courseId: q.courseId });
   if (q.instructorId) and.push(instructorBatchScope(q.instructorId));
+
+  // Created between two calendar days, counted in India — the academy's day,
+  // not the server's.
+  if (q.createdFrom || q.createdTo) {
+    and.push({
+      createdAt: {
+        ...(q.createdFrom ? { gte: academyDayStart(q.createdFrom) } : {}),
+        ...(q.createdTo ? { lt: academyDayEnd(q.createdTo) } : {}),
+      },
+    });
+  }
+
+  // The time a class starts, read out of the timetable itself. Times are stored
+  // zero-padded ("09:00"), so a string comparison is a time comparison.
+  if (q.timeFrom || q.timeTo) {
+    if (q.timeFrom) and.push({ schedule: { path: "$.startTime", gte: q.timeFrom } });
+    if (q.timeTo) and.push({ schedule: { path: "$.startTime", lte: q.timeTo } });
+  }
+
   const where: Prisma.BatchWhereInput = and.length ? { AND: and } : {};
 
   const [total, rows] = await Promise.all([
     prisma.batch.count({ where }),
     prisma.batch.findMany({
       where,
-      // The academy's own order where it has set one; otherwise the newest
-      // cohort first, as it always was.
-      orderBy: [{ sequence: "asc" }, { startDate: "desc" }, { createdAt: "desc" }],
+      orderBy: BATCH_ORDER[q.sort ?? "sequence"],
       skip: (q.page - 1) * q.pageSize,
       take: q.pageSize,
       include: {
@@ -129,6 +173,7 @@ export async function listBatchesAdmin(q: BatchListQuery) {
       enrolledCount: b.enrolledCount || b._count.enrollments,
       startDate: b.startDate ? b.startDate.toISOString() : null,
       endDate: b.endDate ? b.endDate.toISOString() : null,
+      createdAt: b.createdAt.toISOString(),
       schedule: parseSchedule(b.schedule),
     })),
   };
@@ -544,16 +589,40 @@ export async function removeBatchStudent(batchId: string, userId: string): Promi
 }
 
 /** All batches matching a filter, flattened for CSV export (no pagination). */
-export async function batchesForExport(q: Pick<BatchListQuery, "search" | "status" | "courseId">) {
+/** The spreadsheet takes the same filters the screen is showing. */
+export async function batchesForExport(
+  q: Pick<
+    BatchListQuery,
+    "search" | "status" | "courseId" | "createdFrom" | "createdTo" | "timeFrom" | "timeTo" | "sort"
+  >,
+) {
   const and: Prisma.BatchWhereInput[] = [];
-  if (q.search) and.push({ OR: [{ name: { contains: q.search } }, { code: { contains: q.search } }] });
+  if (q.search) {
+    and.push({
+      OR: [
+        { name: { contains: q.search } },
+        { code: { contains: q.search } },
+        { batchId: { contains: q.search } },
+      ],
+    });
+  }
   if (q.status) and.push({ status: q.status as Prisma.BatchWhereInput["status"] });
   if (q.courseId) and.push({ courseId: q.courseId });
+  if (q.createdFrom || q.createdTo) {
+    and.push({
+      createdAt: {
+        ...(q.createdFrom ? { gte: academyDayStart(q.createdFrom) } : {}),
+        ...(q.createdTo ? { lt: academyDayEnd(q.createdTo) } : {}),
+      },
+    });
+  }
+  if (q.timeFrom) and.push({ schedule: { path: "$.startTime", gte: q.timeFrom } });
+  if (q.timeTo) and.push({ schedule: { path: "$.startTime", lte: q.timeTo } });
   const where: Prisma.BatchWhereInput = and.length ? { AND: and } : {};
 
   const rows = await prisma.batch.findMany({
     where,
-    orderBy: { startDate: "desc" },
+    orderBy: BATCH_ORDER[q.sort ?? "sequence"],
     take: 10000,
     include: {
       course: { select: { title: true } },
@@ -563,6 +632,7 @@ export async function batchesForExport(q: Pick<BatchListQuery, "search" | "statu
   });
   const headers = [
     "Name",
+    "Batch ID",
     "Code",
     "Course",
     "Instructor",
@@ -572,9 +642,15 @@ export async function batchesForExport(q: Pick<BatchListQuery, "search" | "statu
     "Capacity",
     "Starts",
     "Ends",
+    "Class time",
+    "Days",
+    "Created",
   ];
-  const data = rows.map((b) => [
+  const data = rows.map((b) => {
+    const schedule = parseSchedule(b.schedule);
+    return [
     b.name,
+    b.batchId ?? "",
     b.code,
     b.course?.title ?? "",
     b.instructor?.name ?? "",
@@ -584,6 +660,12 @@ export async function batchesForExport(q: Pick<BatchListQuery, "search" | "statu
     b.capacity ?? "",
     b.startDate ? b.startDate.toISOString().slice(0, 10) : "",
     b.endDate ? b.endDate.toISOString().slice(0, 10) : "",
-  ]);
+    schedule?.startTime
+      ? `${schedule.startTime}${schedule.endTime ? `–${schedule.endTime}` : ""}`
+      : "",
+    schedule?.days?.join(", ") ?? "",
+    b.createdAt.toISOString().slice(0, 10),
+    ];
+  });
   return { headers, data };
 }

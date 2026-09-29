@@ -14,7 +14,12 @@ import {
   learnerRecordingStates,
   type RecordingState,
 } from "@/server/services/recording-service";
-import { istDateKey, parseAcademyDateTime } from "@/lib/ist";
+import {
+  academyDayEnd,
+  academyDayStart,
+  istDateKey,
+  parseAcademyDateTime,
+} from "@/lib/ist";
 import { isJoinLinkOpen, joinLinkOpensAt } from "@/lib/class-link";
 import { closedDates } from "./holiday-service";
 import {
@@ -97,16 +102,6 @@ export interface MeetingListQuery {
   /** Class date window, "YYYY-MM-DD" in academy time — either end optional. */
   from?: string;
   to?: string;
-}
-
-/** 00:00 IST on a "YYYY-MM-DD", as an instant. */
-function academyDayStart(day: string): Date {
-  return new Date(`${day}T00:00:00+05:30`);
-}
-
-/** The instant the day ends — used as an exclusive upper bound. */
-function academyDayEnd(day: string): Date {
-  return new Date(academyDayStart(day).getTime() + 86_400_000);
 }
 
 export async function listMeetingsAdmin(q: MeetingListQuery) {

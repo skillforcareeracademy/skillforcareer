@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { requireRole } from "@/lib/auth/require";
 import { ROLES } from "@/config/roles";
+import type { BatchSort } from "@/server/services/batch-service";
 import {
   listBatchesAdmin,
   batchStats,
@@ -29,6 +30,11 @@ export default async function InstructorBatchesPage({
     search: str(sp.search),
     status: str(sp.status),
     courseId: str(sp.course),
+    createdFrom: str(sp.createdFrom),
+    createdTo: str(sp.createdTo),
+    timeFrom: str(sp.timeFrom),
+    timeTo: str(sp.timeTo),
+    sort: (str(sp.sort) ?? "sequence") as BatchSort,
     instructorId: user.id,
   };
 

@@ -60,6 +60,16 @@ export function istWallClockToUtc(dateKey: string, hhmm: string): Date {
   return new Date(Date.UTC(y, m - 1, d, hh, mm) - IST_OFFSET_MS);
 }
 
+/** 00:00 IST on a "YYYY-MM-DD", as an instant. */
+export function academyDayStart(day: string): Date {
+  return new Date(`${day}T00:00:00+05:30`);
+}
+
+/** The instant that day ends — an exclusive upper bound for a date range. */
+export function academyDayEnd(day: string): Date {
+  return new Date(academyDayStart(day).getTime() + 86_400_000);
+}
+
 /** Today's calendar day in India. */
 export function istToday(now: Date = new Date()): string {
   return istDateKey(now);

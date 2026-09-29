@@ -14,6 +14,11 @@ export const GET = withRoute(async (req) => {
     search: sp.get("search") || undefined,
     status: sp.get("status") || undefined,
     courseId: sp.get("course") || undefined,
+    createdFrom: sp.get("createdFrom") || undefined,
+    createdTo: sp.get("createdTo") || undefined,
+    timeFrom: sp.get("timeFrom") || undefined,
+    timeTo: sp.get("timeTo") || undefined,
+    sort: (sp.get("sort") as "sequence" | "recent" | "starting" | "name") || undefined,
   });
   const stamp = new Date().toISOString().slice(0, 10);
   return csvResponse(`batches-${stamp}.csv`, toCsv(headers, data));
