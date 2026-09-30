@@ -21,6 +21,17 @@ const THANKS = "Thanks! Your CV has reached our placement team.";
  * valid (there is deliberately no public upload endpoint to abuse on its own).
  */
 export const POST = withRoute(async (req) => {
+  // An account is required: "no one can apply for job from outside form without
+  // registration". Checked before the body is read, so an anonymous caller
+  // cannot make the server parse a multipart upload — CV and all — on its way
+  // to being turned away. The form checks too; this is the one that counts.
+  const viewer = await getSessionUser();
+  if (!viewer) {
+    throw AppError.unauthorized(
+      "Please register or sign in with your account to send your CV.",
+    );
+  }
+
   const form = await req.formData().catch(() => {
     throw AppError.badRequest("Couldn't read the form. Please try again.");
   });
@@ -56,15 +67,6 @@ export const POST = withRoute(async (req) => {
   const cv = form.get("cv");
   if (!(cv instanceof File)) throw AppError.badRequest("Attach your CV (PDF or Word).");
 
-  // An account is now required: "no one can apply for job from outside form
-  // without registration". The check is here rather than only in the form
-  // because the form is not the only way to POST this.
-  const viewer = await getSessionUser();
-  if (!viewer) {
-    throw AppError.unauthorized(
-      "Please register or sign in with your account to send your CV.",
-    );
-  }
   // A learner's CV is tied to their account, so the placement team can open
   // their full profile from the candidate.
   const userId = viewer.role === ROLES.STUDENT ? viewer.id : null;
