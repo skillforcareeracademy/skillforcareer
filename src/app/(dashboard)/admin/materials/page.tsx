@@ -6,7 +6,7 @@ import {
   listMaterials,
   materialStats,
 } from "@/server/services/study-material-service";
-import { listMaterialCategoryOptions } from "@/server/services/material-category-service";
+import { groupOptions } from "@/server/services/content-group-service";
 import { MaterialsClient } from "@/components/admin/materials/materials-client";
 
 export const dynamic = "force-dynamic";
@@ -18,10 +18,10 @@ export default async function MaterialsPage() {
   const staff = user.roles.some((r) => r === ROLES.SUPER_ADMIN || r === ROLES.ADMIN);
   const ownerId = staff ? undefined : user.id;
 
-  const [materials, stats, categories, courses, batches] = await Promise.all([
+  const [materials, stats, groups, courses, batches] = await Promise.all([
     listMaterials({ sort: "sequence" }, ownerId),
     materialStats(ownerId),
-    listMaterialCategoryOptions(),
+    groupOptions("MATERIAL"),
     prisma.course.findMany({
       where: ownerId ? { instructorId: ownerId } : {},
       select: { id: true, title: true },
@@ -42,7 +42,7 @@ export default async function MaterialsPage() {
     <MaterialsClient
       materials={materials}
       stats={stats}
-      categories={categories}
+      groups={groups}
       courses={courses}
       batches={batches}
       basePath="/admin"

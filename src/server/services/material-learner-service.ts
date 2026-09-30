@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
 import type { MaterialHighlightInput } from "@/lib/validations/study-material";
-import { itemsForBatches } from "./content-group-service";
+import { groupOptions, groupsOfMany, itemsForBatches } from "./content-group-service";
 
 /**
  * Study material as a learner meets it: what is set for them, how long they
@@ -28,6 +28,8 @@ export interface LearnerMaterial {
   fileUrl: string | null;
   fileName: string | null;
   mimeType: string | null;
+  /** More files, images, video and links attached to the reading. */
+  assets: { id: string; kind: string; url: string; name: string | null }[];
   hasBody: boolean;
   downloadsEnabled: boolean;
   /** This learner's own reading. */
@@ -88,6 +90,10 @@ export async function listMaterialsForLearner(userId: string): Promise<LearnerMa
       course: { select: { title: true } },
       category: { select: { name: true } },
       subCategory: { select: { name: true } },
+      assets: {
+        orderBy: { order: "asc" as const },
+        select: { id: true, kind: true, url: true, name: true },
+      },
     },
   });
   if (rows.length === 0) return [];
@@ -109,25 +115,47 @@ export async function listMaterialsForLearner(userId: string): Promise<LearnerMa
   const readBy = new Map(reads.map((r) => [r.materialId, r]));
   const markBy = new Map(marks.map((m) => [m.materialId, m._count._all]));
 
-  return rows.map((m) => ({
+  // Which folders each piece sits in. The learner's browser groups on a
+  // category and a sub-category, so the first folder's path fills both: a path
+  // three deep reads as "Anatomy" then "Upper limb → Humerus".
+  const [membership, options] = await Promise.all([
+    groupsOfMany("MATERIAL", ids),
+    groupOptions("MATERIAL"),
+  ]);
+  const pathOf = new Map(options.map((o) => [o.id, o.path]));
+  const folderFor = (materialId: string) => {
+    const first = (membership.get(materialId) ?? [])
+      .map((g) => pathOf.get(g))
+      .filter((p): p is string => Boolean(p))
+      .sort()[0];
+    if (!first) return { category: null as string | null, sub: null as string | null };
+    const [head, ...rest] = first.split(" → ");
+    return { category: head, sub: rest.length ? rest.join(" → ") : null };
+  };
+
+  return rows.map((m) => {
+    const folder = folderFor(m.id);
+    return {
     id: m.id,
     number: m.number,
     sequence: m.sequence,
     title: m.title,
     description: m.description,
     courseTitle: m.course?.title ?? null,
-    categoryName: m.category?.name ?? null,
-    subCategoryName: m.subCategory?.name ?? null,
+    categoryName: folder.category ?? m.category?.name ?? null,
+    subCategoryName: folder.sub ?? m.subCategory?.name ?? null,
     fileUrl: m.fileUrl,
     fileName: m.fileName,
     mimeType: m.mimeType,
+    assets: m.assets,
     hasBody: Boolean(m.body && m.body.trim()),
     downloadsEnabled: m.downloadsEnabled,
     readSeconds: readBy.get(m.id)?.seconds ?? 0,
     opens: readBy.get(m.id)?.opens ?? 0,
     highlights: markBy.get(m.id) ?? 0,
     updatedAt: m.updatedAt.toISOString(),
-  }));
+    };
+  });
 }
 
 export interface LearnerMaterialDetail extends LearnerMaterial {
@@ -166,6 +194,10 @@ export async function getMaterialForLearner(
       course: { select: { title: true } },
       category: { select: { name: true } },
       subCategory: { select: { name: true } },
+      assets: {
+        orderBy: { order: "asc" as const },
+        select: { id: true, kind: true, url: true, name: true },
+      },
     },
   });
   if (!m) return null;
@@ -201,6 +233,7 @@ export async function getMaterialForLearner(
     fileUrl: m.fileUrl,
     fileName: m.fileName,
     mimeType: m.mimeType,
+    assets: m.assets,
     hasBody: Boolean(m.body && m.body.trim()),
     downloadsEnabled: m.downloadsEnabled,
     readSeconds: read?.seconds ?? 0,

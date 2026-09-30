@@ -1,15 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BookOpenCheck,
   Download,
   FileText,
   Highlighter,
+  Image as ImageIcon,
+  Link as LinkIcon,
   Loader2,
   Lock,
   Search,
   Trash2,
+  Video,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
@@ -130,6 +133,67 @@ function useReadingClock(materialId: string | null) {
 }
 
 /** The written material, with this learner's marks drawn over it. */
+/** Reading written in the panel arrives as HTML once it has been edited. */
+function looksLikeHtml(body: string): boolean {
+  return /<(p|h[1-6]|ul|ol|li|strong|em|blockquote|br)\b/i.test(body);
+}
+
+/**
+ * Paint a learner's highlights over rendered HTML.
+ *
+ * The plain-text path below can rebuild the whole string; HTML cannot be split
+ * that way without destroying its markup, so this walks the text nodes and
+ * wraps the matches in place. React never manages this subtree — the effect
+ * writes it — so there is nothing for it to disagree with.
+ */
+function paint(root: HTMLElement, quote: string, color: string) {
+  if (!quote.trim()) return;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const hits: Text[] = [];
+  while (walker.nextNode()) {
+    const node = walker.currentNode as Text;
+    if (node.nodeValue?.includes(quote)) hits.push(node);
+  }
+  for (const node of hits) {
+    const value = node.nodeValue ?? "";
+    const at = value.indexOf(quote);
+    if (at < 0) continue;
+    const after = node.splitText(at);
+    after.splitText(quote.length);
+    const mark = document.createElement("mark");
+    mark.className = `rounded px-0.5 text-inherit ${SWATCH[color] ?? SWATCH.yellow}`;
+    mark.textContent = quote;
+    after.replaceWith(mark);
+  }
+}
+
+function HtmlBody({
+  body,
+  marks,
+}: {
+  body: string;
+  marks: LearnerMaterialDetail["marks"];
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const root = ref.current;
+    if (!root) return;
+    root.innerHTML = body;
+    // Longest first, so an overlapping shorter quote can't split a longer one.
+    for (const m of [...marks].sort((a, b) => b.quote.length - a.quote.length)) {
+      paint(root, m.quote, m.color);
+    }
+  }, [body, marks]);
+
+  return (
+    <div
+      ref={ref}
+      className="prose prose-sm dark:prose-invert max-w-none text-sm leading-relaxed [&_h2]:text-base [&_h2]:font-semibold [&_h3]:font-semibold [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5"
+    />
+  );
+}
+
 function MarkedUpBody({
   body,
   marks,
@@ -536,9 +600,42 @@ export function StudentMaterialsClient({
               </div>
             )}
 
+            {/* Everything attached to the reading, beyond the main file. */}
+            {detail && detail.assets.length > 0 && (
+              <ul className="divide-y rounded-lg border">
+                {detail.assets.map((a) => (
+                  <li key={a.id} className="flex items-center gap-2 px-3 py-2">
+                    <span className="text-muted-foreground shrink-0">
+                      {a.kind === "LINK" ? (
+                        <LinkIcon className="size-4" />
+                      ) : a.kind === "IMAGE" ? (
+                        <ImageIcon className="size-4" />
+                      ) : a.kind === "VIDEO" ? (
+                        <Video className="size-4" />
+                      ) : (
+                        <FileText className="size-4" />
+                      )}
+                    </span>
+                    <a
+                      href={a.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="min-w-0 flex-1 truncate text-sm hover:underline"
+                    >
+                      {a.name || a.url}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            )}
+
             {detail?.body && (
               <div onMouseUp={captureSelection} onTouchEnd={captureSelection}>
-                <MarkedUpBody body={detail.body} marks={detail.marks} />
+                {looksLikeHtml(detail.body) ? (
+                  <HtmlBody body={detail.body} marks={detail.marks} />
+                ) : (
+                  <MarkedUpBody body={detail.body} marks={detail.marks} />
+                )}
               </div>
             )}
 

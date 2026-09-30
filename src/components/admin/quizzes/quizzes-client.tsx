@@ -567,7 +567,7 @@ export function QuizzesClient({
             <Button
               variant="outline"
               nativeButton={false}
-              render={<Link href={`${basePath.replace("/quizzes", "")}/quiz-groups`} />}
+              render={<Link href={`${basePath.replace("/quizzes", "")}/groups/quiz`} />}
             >
               <FolderTree className="size-4" /> Groups
             </Button>

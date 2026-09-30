@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
+import { useCallback, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -11,19 +11,28 @@ import {
   Eye,
   EyeOff,
   FileText,
+  ChevronRight,
   FolderTree,
+  Image as ImageIcon,
+  Link as LinkIcon,
   Loader2,
   MoreHorizontal,
   Pencil,
   Plus,
+  Rows3,
   Trash2,
   Upload,
   Users,
+  Video,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
+import { cn } from "@/lib/utils";
 import type { MaterialRow, MaterialStats } from "@/server/services/study-material-service";
-import type { MaterialCategoryOption } from "@/server/services/material-category-service";
+import type { GroupOption } from "@/server/services/content-group-service";
+import { GroupPicker } from "@/components/admin/groups/group-picker";
+import { MultiPicker } from "@/components/admin/groups/multi-picker";
 import { PageHeader } from "@/components/shared/page-header";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { StatCard } from "@/components/dashboard/stat-card";
@@ -33,6 +42,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { RichTextEditor } from "@/components/shared/rich-text-editor";
 import {
   Dialog,
   DialogContent,
@@ -83,16 +93,23 @@ interface BatchOption {
   name: string;
 }
 
+/** A file, image, video or link attached to a piece of reading. */
+interface Asset {
+  kind: "FILE" | "IMAGE" | "VIDEO" | "LINK";
+  url: string;
+  name: string;
+  mimeType?: string;
+}
+
 interface FormState {
   id: string | null;
   title: string;
   description: string;
-  courseId: string;
-  categoryId: string;
-  subCategoryId: string;
-  fileUrl: string;
-  fileName: string;
-  mimeType: string;
+  /** Every course it is set for; the first is the primary one. */
+  courseIds: string[];
+  /** Every folder it is filed in. */
+  groupIds: string[];
+  assets: Asset[];
   body: string;
   downloadsEnabled: boolean;
   isPublished: boolean;
@@ -104,12 +121,9 @@ function blankForm(): FormState {
     id: null,
     title: "",
     description: "",
-    courseId: "",
-    categoryId: "",
-    subCategoryId: "",
-    fileUrl: "",
-    fileName: "",
-    mimeType: "",
+    courseIds: [],
+    groupIds: [],
+    assets: [],
     body: "",
     downloadsEnabled: true,
     isPublished: false,
@@ -127,14 +141,14 @@ function readable(seconds: number): string {
 export function MaterialsClient({
   materials,
   stats,
-  categories,
+  groups,
   courses,
   batches,
   basePath,
 }: {
   materials: MaterialRow[];
   stats: MaterialStats;
-  categories: MaterialCategoryOption[];
+  groups: GroupOption[];
   courses: CourseOption[];
   batches: BatchOption[];
   /** "/admin" or "/instructor" — the panel this is mounted in. */
@@ -143,8 +157,13 @@ export function MaterialsClient({
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState(ALL);
+  const [course, setCourse] = useState(ALL);
+  const [batch, setBatch] = useState(ALL);
   const [published, setPublished] = useState(ALL);
   const [sort, setSort] = useState<"sequence" | "newest" | "title" | "reads">("sequence");
+  /** "Content should be visible in folder format", beside the plain table. */
+  const [view, setView] = useState<"folders" | "table">("folders");
+  const [openFolders, setOpenFolders] = useState<Set<string>>(new Set());
   const [form, setForm] = useState<FormState | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -156,8 +175,10 @@ export function MaterialsClient({
   >([]);
   const [importing, setImporting] = useState(false);
 
-  const parents = categories.filter((c) => !c.parentId);
-  const childrenOf = (id: string) => categories.filter((c) => c.parentId === id);
+  const groupPath = useCallback(
+    (id: string | undefined | null) => groups.find((g) => g.id === id)?.path ?? "",
+    [groups],
+  );
   /**
    * "Anatomy → Upper limb" for any group id.
    *
@@ -165,12 +186,7 @@ export function MaterialsClient({
    * the stored value — which is how a cuid ended up on screen where a group's
    * name belongs ("group ka name is trha se code me dikh rha hai").
    */
-  const groupLabel = (id: string | undefined | null): string => {
-    const found = categories.find((c) => c.id === id);
-    if (!found) return "";
-    const parent = found.parentId ? categories.find((c) => c.id === found.parentId) : null;
-    return parent ? `${parent.name} → ${found.name}` : found.name;
-  };
+  const groupLabel = groupPath;
   const courseLabel = (id: string | undefined | null) =>
     courses.find((c) => c.id === id)?.title ?? "";
   const batchLabel = (id: string | undefined | null) =>
@@ -185,13 +201,21 @@ export function MaterialsClient({
       list = list.filter(
         (m) =>
           m.title.toLowerCase().includes(q) ||
-          (m.categoryName ?? "").toLowerCase().includes(q) ||
-          (m.courseTitle ?? "").toLowerCase().includes(q),
+          m.groupPaths.some((p) => p.toLowerCase().includes(q)) ||
+          m.courseTitles.some((t) => t.toLowerCase().includes(q)),
       );
     }
     if (category !== ALL) {
-      list = list.filter((m) => m.categoryId === category || m.subCategoryId === category);
+      // A folder shows what is filed in it and in anything beneath it.
+      const under = new Set(
+        groups
+          .filter((g) => g.id === category || g.path.startsWith(`${groupPath(category)} → `))
+          .map((g) => g.id),
+      );
+      list = list.filter((m) => m.groupIds.some((id) => under.has(id)));
     }
+    if (course !== ALL) list = list.filter((m) => m.courseIds.includes(course));
+    if (batch !== ALL) list = list.filter((m) => m.batchIds.includes(batch));
     if (published !== ALL) {
       list = list.filter((m) => (published === "yes" ? m.isPublished : !m.isPublished));
     }
@@ -200,65 +224,125 @@ export function MaterialsClient({
     else if (sort === "title") sorted.sort((a, b) => a.title.localeCompare(b.title));
     else if (sort === "reads") sorted.sort((a, b) => b.readSeconds - a.readSeconds);
     return sorted;
-  }, [materials, search, category, published, sort]);
+  }, [materials, search, category, course, batch, published, sort, groups, groupPath]);
+
+  /** The filtered rows, gathered under the folders they are filed in. */
+  const folders = useMemo(() => {
+    const map = new Map<string, MaterialRow[]>();
+    for (const m of rows) {
+      const paths = m.groupPaths.length ? m.groupPaths : ["Ungrouped"];
+      for (const path of paths) {
+        map.set(path, [...(map.get(path) ?? []), m]);
+      }
+    }
+    return [...map.entries()].sort(([a], [b]) =>
+      a === "Ungrouped" ? 1 : b === "Ungrouped" ? -1 : a.localeCompare(b),
+    );
+  }, [rows]);
 
   const bySequence = sort === "sequence";
   const sameGroup = (a: MaterialRow, b: MaterialRow) =>
     (a.categoryId ?? "") === (b.categoryId ?? "") &&
     (a.subCategoryId ?? "") === (b.subCategoryId ?? "");
 
-  async function upload(file: File | undefined) {
-    if (!file || !form) return;
-    const isImage = file.type.startsWith("image/");
-    if (file.size > (isImage ? 5 : 25) * 1024 * 1024) {
-      toast.error(isImage ? "Images must be under 5 MB." : "Files must be under 25 MB.");
-      return;
-    }
+  /** What kind of attachment a file is, from its own mime type. */
+  function kindOf(mime: string): Asset["kind"] {
+    if (mime.startsWith("image/")) return "IMAGE";
+    if (mime.startsWith("video/")) return "VIDEO";
+    return "FILE";
+  }
+
+  /**
+   * Upload one or many — "multiple files, images and all can be uploaded here.
+   * videos here." Each lands as its own attachment, in the order they were
+   * chosen, and a failure on one doesn't lose the rest.
+   */
+  async function upload(files: FileList | null) {
+    if (!files || files.length === 0 || !form) return;
     setUploading(true);
+    const added: Asset[] = [];
     try {
-      const fd = new FormData();
-      fd.append("file", file);
-      fd.append("kind", isImage ? "image" : "doc");
-      const res = await fetch("/api/upload", { method: "POST", body: fd });
-      const json = await res.json().catch(() => null);
-      if (!res.ok || !json?.success) throw new Error(json?.error?.message ?? "Upload failed.");
-      setForm((f) =>
-        f
-          ? {
-              ...f,
-              fileUrl: json.data.url as string,
-              fileName: file.name,
-              mimeType: file.type,
-              title: f.title || file.name.replace(/\.[^.]+$/, ""),
-            }
-          : f,
-      );
-      toast.success(`${file.name} uploaded.`);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Upload failed.");
+      for (const file of Array.from(files)) {
+        const isImage = file.type.startsWith("image/");
+        const isVideo = file.type.startsWith("video/");
+        const cap = isImage ? 5 : isVideo ? 200 : 25;
+        if (file.size > cap * 1024 * 1024) {
+          toast.error(`${file.name} is over ${cap} MB.`);
+          continue;
+        }
+        const fd = new FormData();
+        fd.append("file", file);
+        fd.append("kind", isImage ? "image" : isVideo ? "video" : "doc");
+        const res = await fetch("/api/upload", { method: "POST", body: fd });
+        const json = await res.json().catch(() => null);
+        if (!res.ok || !json?.success) {
+          toast.error(`${file.name}: ${json?.error?.message ?? "upload failed"}`);
+          continue;
+        }
+        added.push({
+          kind: kindOf(file.type),
+          url: json.data.url as string,
+          name: file.name,
+          mimeType: file.type,
+        });
+      }
+      if (added.length > 0) {
+        setForm((f) =>
+          f
+            ? {
+                ...f,
+                assets: [...f.assets, ...added],
+                title: f.title || added[0].name.replace(/\.[^.]+$/, ""),
+              }
+            : f,
+        );
+        toast.success(`${added.length} file${added.length === 1 ? "" : "s"} attached.`);
+      }
     } finally {
       setUploading(false);
     }
   }
 
+  /** A link out — a recording, a reference, anything already on the web. */
+  function addLink() {
+    const url = window.prompt("Paste the link")?.trim();
+    if (!url) return;
+    if (!/^https?:\/\//i.test(url)) {
+      toast.error("A link should start with http:// or https://");
+      return;
+    }
+    const name = window.prompt("What should it be called?")?.trim() || url;
+    setForm((f) => (f ? { ...f, assets: [...f.assets, { kind: "LINK", url, name }] } : f));
+  }
+
   async function save(e: FormEvent) {
     e.preventDefault();
     if (!form) return;
-    if (!form.fileUrl && !form.body.trim()) {
-      toast.error("Upload a file or write the material in the panel.");
+    if (form.assets.length === 0 && !form.body.trim()) {
+      toast.error("Attach a file or a link, or write the reading in the panel.");
       return;
     }
     setSaving(true);
     try {
+      // The first attachment stays on the row as the main file — the learner's
+      // download button and the "kind" column both read it — and the rest ride
+      // alongside it.
+      const [first, ...rest] = form.assets;
       const payload = {
         title: form.title,
         description: form.description,
-        courseId: form.courseId,
-        categoryId: form.categoryId,
-        subCategoryId: form.subCategoryId,
-        fileUrl: form.fileUrl,
-        fileName: form.fileName,
-        mimeType: form.mimeType,
+        courseId: form.courseIds[0] ?? "",
+        courseIds: form.courseIds,
+        groupIds: form.groupIds,
+        fileUrl: first && first.kind !== "LINK" ? first.url : "",
+        fileName: first && first.kind !== "LINK" ? first.name : "",
+        mimeType: first?.mimeType ?? "",
+        assets: (first?.kind === "LINK" ? form.assets : rest).map((a) => ({
+          kind: a.kind,
+          url: a.url,
+          name: a.name,
+          mimeType: a.mimeType ?? "",
+        })),
         body: form.body,
         downloadsEnabled: form.downloadsEnabled,
         isPublished: form.isPublished,
@@ -403,8 +487,8 @@ export function MaterialsClient({
         <div className="min-w-0">
           <p className="truncate font-medium">{m.title}</p>
           <p className="text-muted-foreground truncate text-xs">
-            {[m.categoryName, m.subCategoryName].filter(Boolean).join(" → ") || "Ungrouped"}
-            {m.courseTitle ? ` · ${m.courseTitle}` : ""}
+            {m.groupPaths.length ? m.groupPaths.join(" · ") : "Ungrouped"}
+            {m.courseTitles.length ? ` · ${m.courseTitles.join(", ")}` : ""}
             {m.batchNames.length ? ` · ${m.batchNames.join(", ")}` : ""}
           </p>
         </div>
@@ -485,12 +569,28 @@ export function MaterialsClient({
                   id: m.id,
                   title: m.title,
                   description: m.description ?? "",
-                  courseId: m.courseId ?? "",
-                  categoryId: m.categoryId ?? "",
-                  subCategoryId: m.subCategoryId ?? "",
-                  fileUrl: m.fileUrl ?? "",
-                  fileName: m.fileName ?? "",
-                  mimeType: m.mimeType ?? "",
+                  courseIds: m.courseIds,
+                  groupIds: m.groupIds,
+                  // The old single file is the first attachment; anything else
+                  // added since follows it.
+                  assets: [
+                    ...(m.fileUrl
+                      ? [
+                          {
+                            kind: "FILE" as const,
+                            url: m.fileUrl,
+                            name: m.fileName ?? "",
+                            mimeType: m.mimeType ?? undefined,
+                          },
+                        ]
+                      : []),
+                    ...m.assets.map((a) => ({
+                      kind: a.kind as Asset["kind"],
+                      url: a.url,
+                      name: a.name ?? "",
+                      mimeType: a.mimeType ?? undefined,
+                    })),
+                  ],
                   body: "",
                   downloadsEnabled: m.downloadsEnabled,
                   isPublished: m.isPublished,
@@ -536,7 +636,7 @@ export function MaterialsClient({
             <Button
               variant="outline"
               nativeButton={false}
-              render={<Link href={`${basePath}/material-groups`} />}
+              render={<Link href={`${basePath}/groups/material`} />}
             >
               <FolderTree className="size-4" /> Groups
             </Button>
@@ -571,9 +671,87 @@ export function MaterialsClient({
         <StatCard label="Reading records" value={String(stats.readers)} icon={Users} tint="from-sky-500 to-blue-600" />
       </div>
 
+      {/* Folder view: the academy's own tree, each folder opening to what is
+          filed in it. The table is still a tap away for a flat list. */}
+      {view === "folders" && (
+        <div className="space-y-2">
+          {folders.length === 0 ? (
+            <p className="text-muted-foreground rounded-xl border p-6 text-center text-sm">
+              Nothing matches those filters.
+            </p>
+          ) : (
+            folders.map(([path, list]) => {
+              const open = openFolders.has(path);
+              return (
+                <div key={path} className="overflow-hidden rounded-xl border">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setOpenFolders((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(path)) next.delete(path);
+                        else next.add(path);
+                        return next;
+                      })
+                    }
+                    className="hover:bg-accent/40 flex w-full items-center gap-2 px-4 py-3 text-left"
+                  >
+                    <ChevronRight
+                      className={cn(
+                        "text-muted-foreground size-4 shrink-0 transition-transform",
+                        open && "rotate-90",
+                      )}
+                    />
+                    <FolderTree className="text-muted-foreground size-4 shrink-0" />
+                    <span className="min-w-0 flex-1 truncate font-medium">{path}</span>
+                    <Badge variant="secondary" className="shrink-0 text-[10px]">
+                      {list.length} {list.length === 1 ? "item" : "items"}
+                    </Badge>
+                  </button>
+                  {open && (
+                    <ul className="divide-y border-t">
+                      {list.map((m) => (
+                        <li
+                          key={m.id}
+                          className="flex items-center gap-3 px-4 py-2.5"
+                        >
+                          <span className="text-muted-foreground w-8 shrink-0 text-xs tabular-nums">
+                            {m.number}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium">{m.title}</p>
+                            <p className="text-muted-foreground truncate text-xs">
+                              {m.courseTitles.join(", ") || "Any course"}
+                              {m.batchNames.length ? ` · ${m.batchNames.join(", ")}` : ""}
+                            </p>
+                          </div>
+                          <Badge variant="secondary" className="shrink-0 text-[10px]">
+                            {m.fileUrl || m.assets.length ? "File" : "Written"}
+                          </Badge>
+                          <Badge
+                            variant="secondary"
+                            className={cn(
+                              "shrink-0 text-[10px]",
+                              m.isPublished &&
+                                "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
+                            )}
+                          >
+                            {m.isPublished ? "Published" : "Draft"}
+                          </Badge>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+
       <DataTable
         columns={columns}
-        data={rows}
+        data={view === "folders" ? [] : rows}
         rowKey={(m) => m.id}
         emptyTitle="No study material yet"
         emptyDescription="Upload a PDF, a spreadsheet or a document — or write the reading straight into the panel."
@@ -594,18 +772,42 @@ export function MaterialsClient({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={ALL}>Every group</SelectItem>
-                {parents.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.name}
+                {groups.map((g) => (
+                  <SelectItem key={g.id} value={g.id}>
+                    {g.path}
                   </SelectItem>
                 ))}
-                {categories
-                  .filter((c) => c.parentId)
-                  .map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {parents.find((p) => p.id === c.parentId)?.name} → {c.name}
-                    </SelectItem>
-                  ))}
+              </SelectContent>
+            </Select>
+            {/* The two filters the academy said were missing here. */}
+            <Select value={course} onValueChange={(v) => setCourse(String(v))}>
+              <SelectTrigger className="w-full sm:w-56">
+                <SelectValue placeholder="Any course">
+                  {(v) => (!v || v === ALL ? "Any course" : courseLabel(String(v)))}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>Any course</SelectItem>
+                {courses.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={batch} onValueChange={(v) => setBatch(String(v))}>
+              <SelectTrigger className="w-full sm:w-52">
+                <SelectValue placeholder="Any batch">
+                  {(v) => (!v || v === ALL ? "Any batch" : batchLabel(String(v)))}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>Any batch</SelectItem>
+                {batches.map((b) => (
+                  <SelectItem key={b.id} value={b.id}>
+                    {b.name}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <Select value={published} onValueChange={(v) => setPublished(String(v))}>
@@ -622,6 +824,22 @@ export function MaterialsClient({
                 <SelectItem value="no">Draft</SelectItem>
               </SelectContent>
             </Select>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setView(view === "folders" ? "table" : "folders")}
+            >
+              {view === "folders" ? (
+                <>
+                  <Rows3 className="size-4" /> Table
+                </>
+              ) : (
+                <>
+                  <FolderTree className="size-4" /> Folders
+                </>
+              )}
+            </Button>
             <Select value={sort} onValueChange={(v) => setSort(String(v) as typeof sort)}>
               <SelectTrigger className="w-full sm:w-44">
                 <SelectValue placeholder="Sort">
@@ -677,135 +895,85 @@ export function MaterialsClient({
                 />
               </div>
 
+              {/* Folders, courses and cohorts — all of them multiple, because
+                  one piece of reading is rarely for exactly one of anything. */}
+              <GroupPicker
+                options={groups}
+                value={form.groupIds}
+                onChange={(next) => setForm({ ...form, groupIds: next })}
+                emptyHint="No groups yet — add some under Groups."
+              />
+
               <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label>Group</Label>
-                  <Select
-                    value={form.categoryId || ALL}
-                    onValueChange={(v) =>
-                      setForm({
-                        ...form,
-                        categoryId: String(v) === ALL ? "" : String(v),
-                        subCategoryId: "",
-                      })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Ungrouped">
-                        {(v) => (!v || v === ALL ? "Ungrouped" : groupLabel(String(v)))}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={ALL}>Ungrouped</SelectItem>
-                      {parents.map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Sub-group</Label>
-                  <Select
-                    value={form.subCategoryId || ALL}
-                    onValueChange={(v) =>
-                      setForm({ ...form, subCategoryId: String(v) === ALL ? "" : String(v) })
-                    }
-                    disabled={!form.categoryId || childrenOf(form.categoryId).length === 0}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="None">
-                        {(v) =>
-                          !v || v === ALL
-                            ? "None"
-                            : (categories.find((c) => c.id === v)?.name ?? "None")
-                        }
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={ALL}>None</SelectItem>
-                      {childrenOf(form.categoryId).map((c) => (
-                        <SelectItem key={c.id} value={c.id}>
-                          {c.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Course</Label>
-                  <Select
-                    value={form.courseId || ALL}
-                    onValueChange={(v) =>
-                      setForm({ ...form, courseId: String(v) === ALL ? "" : String(v) })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Any course">
-                        {(v) => (!v || v === ALL ? "Any course" : courseLabel(String(v)))}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={ALL}>Any course</SelectItem>
-                      {courses.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>
-                          {c.title}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Batches</Label>
-                  <Select
-                    value={form.batchIds[0] ?? ALL}
-                    onValueChange={(v) =>
-                      setForm({ ...form, batchIds: String(v) === ALL ? [] : [String(v)] })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Everyone on the course">
-                        {(v) =>
-                          !v || v === ALL ? "Everyone on the course" : batchLabel(String(v))
-                        }
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={ALL}>Everyone on the course</SelectItem>
-                      {batches.map((b) => (
-                        <SelectItem key={b.id} value={b.id}>
-                          {b.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                <MultiPicker
+                  label="Courses"
+                  hint="Leave empty to set it for no course in particular."
+                  options={courses.map((c) => ({ id: c.id, label: c.title }))}
+                  value={form.courseIds}
+                  onChange={(next) => setForm({ ...form, courseIds: next })}
+                  emptyHint="No courses yet."
+                />
+                <MultiPicker
+                  label="Batches"
+                  hint="Empty means everyone on the courses above."
+                  options={batches.map((b) => ({ id: b.id, label: b.name }))}
+                  value={form.batchIds}
+                  onChange={(next) => setForm({ ...form, batchIds: next })}
+                  emptyHint="No batches yet."
+                />
               </div>
 
-              <div className="space-y-1.5">
-                <Label>File</Label>
-                {form.fileUrl ? (
-                  <div className="bg-muted/50 flex min-w-0 items-center gap-2 rounded-lg px-3 py-2">
-                    <FileText className="size-4 shrink-0" />
-                    <a
-                      href={form.fileUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="min-w-0 flex-1 truncate text-sm hover:underline"
-                    >
-                      {form.fileName || "View the file"}
-                    </a>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setForm({ ...form, fileUrl: "", fileName: "", mimeType: "" })}
-                    >
-                      Remove
-                    </Button>
-                  </div>
-                ) : (
+              {/* Attachments: as many as the reading needs, in any mix of
+                  documents, images, video and links out. */}
+              <div className="space-y-2">
+                <Label>Files, images, video and links</Label>
+                {form.assets.length > 0 && (
+                  <ul className="divide-y rounded-lg border">
+                    {form.assets.map((a, i) => (
+                      <li key={`${a.url}-${i}`} className="flex items-center gap-2 px-3 py-2">
+                        <span className="text-muted-foreground shrink-0">
+                          {a.kind === "LINK" ? (
+                            <LinkIcon className="size-4" />
+                          ) : a.kind === "IMAGE" ? (
+                            <ImageIcon className="size-4" />
+                          ) : a.kind === "VIDEO" ? (
+                            <Video className="size-4" />
+                          ) : (
+                            <FileText className="size-4" />
+                          )}
+                        </span>
+                        <a
+                          href={a.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="min-w-0 flex-1 truncate text-sm hover:underline"
+                        >
+                          {a.name || a.url}
+                        </a>
+                        {i === 0 && (
+                          <Badge variant="secondary" className="shrink-0 text-[10px]">
+                            Main
+                          </Badge>
+                        )}
+                        <Button
+                          type="button"
+                          size="icon-sm"
+                          variant="ghost"
+                          aria-label={`Remove ${a.name || a.url}`}
+                          onClick={() =>
+                            setForm({
+                              ...form,
+                              assets: form.assets.filter((_, at) => at !== i),
+                            })
+                          }
+                        >
+                          <X className="size-4" />
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="flex flex-wrap items-center gap-2">
                   <label className="hover:bg-accent/50 flex cursor-pointer items-center gap-2 rounded-lg border border-dashed px-3 py-2 text-sm">
                     {uploading ? (
                       <Loader2 className="size-4 animate-spin" />
@@ -813,25 +981,32 @@ export function MaterialsClient({
                       <Upload className="text-muted-foreground size-4" />
                     )}
                     <span className="text-muted-foreground">
-                      {uploading ? "Uploading…" : "PDF, Word, Excel, PowerPoint, text or an image"}
+                      {uploading ? "Uploading…" : "Add files — documents, images or video"}
                     </span>
                     <input
                       type="file"
+                      multiple
                       className="hidden"
-                      onChange={(e) => void upload(e.target.files?.[0])}
+                      onChange={(e) => void upload(e.target.files)}
                     />
                   </label>
-                )}
+                  <Button type="button" variant="outline" size="sm" onClick={addLink}>
+                    <LinkIcon className="size-4" /> Add a link
+                  </Button>
+                </div>
+                <p className="text-muted-foreground text-xs">
+                  The first one is what a learner downloads; the rest sit beneath it.
+                </p>
               </div>
 
+              {/* The reading itself, written properly — headings, lists,
+                  emphasis, quotes — rather than in a plain box. */}
               <div className="space-y-1.5">
-                <Label htmlFor="m-body">Or write it here</Label>
-                <Textarea
-                  id="m-body"
-                  rows={6}
-                  placeholder="Paste or type the reading. Learners can highlight this and keep their own notes against it."
+                <Label>Or write it here</Label>
+                <RichTextEditor
                   value={form.body}
-                  onChange={(e) => setForm({ ...form, body: e.target.value })}
+                  onChange={(html) => setForm({ ...form, body: html })}
+                  placeholder="Paste or type the reading. Learners can highlight this and keep their own notes against it."
                 />
                 {form.id && (
                   <p className="text-muted-foreground text-xs">
@@ -842,7 +1017,7 @@ export function MaterialsClient({
 
               {/* Neither a course nor a cohort means nobody is its audience —
                   the same rule quizzes follow, and worth saying out loud. */}
-              {!form.courseId && form.batchIds.length === 0 && (
+              {form.courseIds.length === 0 && form.batchIds.length === 0 && (
                 <p className="rounded-xl border border-amber-300/60 bg-amber-50/60 p-3 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
                   Pick a course or a batch — material with neither reaches no learners.
                 </p>
