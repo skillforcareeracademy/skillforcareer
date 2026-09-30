@@ -1,3 +1,0 @@
-{
-  "/(dashboard)/instructor/groups/[kind]/page": "app/(dashboard)/instructor/groups/[kind]/page.js"
-}

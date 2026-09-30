@@ -798,6 +798,52 @@ model BatchGroupAccess {
   @@index([groupId])
 }
 
+/// A stage on the academy's own pipeline.
+///
+/// "Provide me an option to add, change and delete lead stages and status
+/// dynamically." The nine that shipped are seeded here and can be renamed,
+/// reordered or switched off; anything new sits beside them. `systemStage` is
+/// what it behaves like underneath — which is how a renamed pipeline keeps its
+/// reports, its conversion counting and its automation.
+model LeadStageOption {
+  id          String    @id @default(cuid())
+  /// Written onto `Lead.stageKey`. Stable across renames.
+  key         String
+  name        String
+  order       Int       @default(0)
+  /// A tint for the board column.
+  color       String?
+  isActive    Boolean   @default(true)
+  /// Where a new enquiry starts.
+  isDefault   Boolean   @default(false)
+  systemStage LeadStage @default(FRESH_LEAD)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  statuses LeadStatusOption[]
+
+  @@index([key])
+  @@index([isActive])
+}
+
+/// A sub-status under a stage — "Fees pending", "Demo booked", and whatever
+/// else the academy decides it needs. Global when no stage is named.
+model LeadStatusOption {
+  id            String  @id @default(cuid())
+  name          String
+  order         Int     @default(0)
+  isActive      Boolean @default(true)
+  stageOptionId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  stage LeadStageOption? @relation(fields: [stageOptionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([stageOptionId])
+}
+
 model Role {
   id          String  @id @default(cuid())
   name        String
@@ -2476,6 +2522,15 @@ model Lead {
   quality   LeadQuality?
   leadScore Int?
   stage     LeadStage      @default(FRESH_LEAD)
+  /// The academy's own stage, when it has defined its own.
+  ///
+  /// The nine built-in stages stay in `stage`, which every report and every
+  /// automation reads. A stage the academy adds itself is written here and
+  /// mapped onto whichever built-in it behaves like, so the pipeline keeps
+  /// working while the names on screen are entirely theirs. Additive on
+  /// purpose: turning the column itself into free text would mean an ALTER
+  /// across every lead on file.
+  stageKey  String?
   /// One of the stage's sub-statuses (see LEAD_SUB_STATUSES).
   subStatus String?
   status    LeadStatus     @default(NEW) // legacy — superseded by `stage`

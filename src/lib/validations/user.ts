@@ -56,12 +56,36 @@ export const createUserAdminSchema = z.object({
 
 export type CreateUserAdminInput = z.infer<typeof createUserAdminSchema>;
 
+/**
+ * The cuts the admissions team asked to make on this list: "as per course,
+ * batch, fees status, account verified or not, detailed profile filled or not,
+ * course delayed based filters, performance based filters, placement done or
+ * not, active or inactive status."
+ */
 export const listUsersQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(10),
   search: z.string().trim().optional(),
   role: z.string().trim().optional(),
   status: z.string().trim().optional(),
+  /** Enrolled on this course, or in this cohort. */
+  courseId: z.string().trim().optional(),
+  batchId: z.string().trim().optional(),
+  /** paid | partial | unpaid — measured against what has been invoiced. */
+  fees: z.enum(["paid", "partial", "unpaid"]).optional(),
+  /** Has the email been confirmed. */
+  verified: z.enum(["yes", "no"]).optional(),
+  /** Has the learner finished the onboarding form. */
+  profile: z.enum(["yes", "no"]).optional(),
+  /**
+   * Behind where the cohort should be: enrolled, past the batch's start, and
+   * still under a tenth of the way through.
+   */
+  delayed: z.enum(["yes"]).optional(),
+  /** Quiz average — strong is 75 and up, weak is under 40. */
+  performance: z.enum(["strong", "average", "weak", "none"]).optional(),
+  /** Placement recorded against their careers application. */
+  placed: z.enum(["yes", "no"]).optional(),
 });
 
 export type ListUsersQuery = z.infer<typeof listUsersQuerySchema>;

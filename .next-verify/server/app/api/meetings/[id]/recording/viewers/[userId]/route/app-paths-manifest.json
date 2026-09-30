@@ -1,3 +1,0 @@
-{
-  "/api/meetings/[id]/recording/viewers/[userId]/route": "app/api/meetings/[id]/recording/viewers/[userId]/route.js"
-}

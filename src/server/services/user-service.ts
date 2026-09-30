@@ -26,6 +26,8 @@ export interface UserRow {
   emailVerified: boolean;
   /** Settled fees, so the list answers "have they paid?" without a drill-down. */
   paidTotal: number;
+  /** The enquiry they were converted from, for the link into its history. */
+  lead: { id: string; leadNo: string | null } | null;
   createdAt: string;
 }
 
@@ -52,6 +54,28 @@ export async function listUsers(q: ListUsersQuery): Promise<UserListResult> {
   if (q.status) {
     and.push({ status: q.status as Prisma.UserWhereInput["status"] });
   }
+
+  // ── The admissions team's own cuts ────────────────────────────────────────
+  if (q.courseId) and.push({ enrollments: { some: { courseId: q.courseId } } });
+  if (q.batchId) and.push({ enrollments: { some: { batchId: q.batchId } } });
+  if (q.verified === "yes") and.push({ emailVerified: { not: null } });
+  if (q.verified === "no") and.push({ emailVerified: null });
+  // "Detailed profile filled or not" — the onboarding form, submitted.
+  if (q.profile === "yes") and.push({ detail: { is: { submittedAt: { not: null } } } });
+  if (q.profile === "no") {
+    and.push({ OR: [{ detail: { is: null } }, { detail: { is: { submittedAt: null } } }] });
+  }
+  if (q.placed === "yes") {
+    and.push({ id: { in: await placedUserIds() } });
+  }
+  if (q.placed === "no") {
+    const placed = await placedUserIds();
+    if (placed.length) and.push({ id: { notIn: placed } });
+  }
+  if (q.fees) and.push({ id: { in: await feeStatusUserIds(q.fees) } });
+  if (q.performance) and.push({ id: { in: await performanceUserIds(q.performance) } });
+  if (q.delayed === "yes") and.push({ id: { in: await delayedUserIds() } });
+
   const where: Prisma.UserWhereInput = and.length ? { AND: and } : {};
 
   const [total, rows] = await Promise.all([
@@ -70,7 +94,11 @@ export async function listUsers(q: ListUsersQuery): Promise<UserListResult> {
   // row. A single grouped read over just the ids on screen keeps it to one
   // extra round-trip however long the page is.
   const ids = rows.map((u) => u.id);
-  const [paid, extras] = await Promise.all([paidTotalsFor(ids), extraRolesFor(ids)]);
+  const [paid, extras, leads] = await Promise.all([
+    paidTotalsFor(ids),
+    extraRolesFor(ids),
+    leadsFor(ids),
+  ]);
 
   return {
     total,
@@ -85,9 +113,124 @@ export async function listUsers(q: ListUsersQuery): Promise<UserListResult> {
       extraRoles: extras.get(u.id) ?? [],
       emailVerified: Boolean(u.emailVerified),
       paidTotal: paid.get(u.id) ?? 0,
+      /** The enquiry they were converted from, for the link into its history. */
+      lead: leads.get(u.id) ?? null,
       createdAt: u.createdAt.toISOString(),
     })),
   };
+}
+
+/** Learners with a placement recorded against their careers application. */
+async function placedUserIds(): Promise<string[]> {
+  const rows = await prisma.jobApplication.findMany({
+    where: { userId: { not: null }, OR: [{ status: "PLACED" }, { placedAt: { not: null } }] },
+    select: { userId: true },
+  });
+  return [...new Set(rows.map((r) => r.userId).filter((id): id is string => Boolean(id)))];
+}
+
+/**
+ * Who has paid, part-paid or not paid at all.
+ *
+ * Measured against what has actually been invoiced: somebody with nothing
+ * billed is not in debt, so they count as unpaid only if a bill exists.
+ */
+async function feeStatusUserIds(status: "paid" | "partial" | "unpaid"): Promise<string[]> {
+  const rows = await prisma.$queryRaw<
+    { userId: string; billed: number | null; paid: number | null }[]
+  >`
+    SELECT userId,
+           SUM(netAmount) AS billed,
+           SUM(CASE WHEN status = 'PAID' THEN netAmount ELSE 0 END) AS paid
+      FROM \`Payment\`
+     GROUP BY userId`;
+  return rows
+    .filter((r) => {
+      const billed = Number(r.billed ?? 0);
+      const paid = Number(r.paid ?? 0);
+      if (billed <= 0) return false;
+      if (status === "paid") return paid >= billed;
+      if (status === "partial") return paid > 0 && paid < billed;
+      return paid <= 0;
+    })
+    .map((r) => r.userId);
+}
+
+/** Quiz averages, bucketed the way the academy talks about them. */
+async function performanceUserIds(
+  band: "strong" | "average" | "weak" | "none",
+): Promise<string[]> {
+  const rows = await prisma.$queryRaw<{ studentId: string; pct: number | null }[]>`
+    SELECT studentId,
+           CASE WHEN SUM(maxScore) > 0
+                THEN ROUND(SUM(COALESCE(score, 0)) * 100 / SUM(maxScore))
+                ELSE NULL END AS pct
+      FROM \`QuizAttempt\`
+     WHERE status IN ('SUBMITTED', 'GRADED')
+     GROUP BY studentId`;
+
+  if (band === "none") {
+    // Nobody with a finished attempt — the ones who have not started.
+    const attempted = rows.map((r) => r.studentId);
+    const all = await prisma.user.findMany({
+      where: { role: { slug: "STUDENT" }, id: { notIn: attempted.length ? attempted : ["-"] } },
+      select: { id: true },
+    });
+    return all.map((u) => u.id);
+  }
+  return rows
+    .filter((r) => {
+      const pct = r.pct == null ? null : Number(r.pct);
+      if (pct == null) return false;
+      if (band === "strong") return pct >= 75;
+      if (band === "weak") return pct < 40;
+      return pct >= 40 && pct < 75;
+    })
+    .map((r) => r.studentId);
+}
+
+/**
+ * Behind where their cohort should be.
+ *
+ * A learner whose batch started at least a fortnight ago and who is still under
+ * a tenth of the way through the course — the cut the academy uses when it
+ * decides who to ring.
+ */
+async function delayedUserIds(): Promise<string[]> {
+  const cutoff = new Date(Date.now() - 14 * 86_400_000);
+  const rows = await prisma.enrollment.findMany({
+    where: {
+      status: "ACTIVE",
+      progressPercent: { lt: 10 },
+      batch: { startDate: { lte: cutoff } },
+    },
+    select: { userId: true },
+  });
+  return [...new Set(rows.map((r) => r.userId))];
+}
+
+/**
+ * The lead each of these learners was converted from.
+ *
+ * "Show its lead from where it got converted to student so that i can click and
+ * go directly in its lead to check its lead history." One read for the page.
+ */
+async function leadsFor(
+  userIds: string[],
+): Promise<Map<string, { id: string; leadNo: string | null }>> {
+  const map = new Map<string, { id: string; leadNo: string | null }>();
+  if (userIds.length === 0) return map;
+  const rows = await prisma.lead.findMany({
+    where: { convertedUserId: { in: userIds } },
+    orderBy: { convertedAt: "desc" },
+    select: { id: true, leadNo: true, convertedUserId: true },
+  });
+  for (const r of rows) {
+    if (r.convertedUserId && !map.has(r.convertedUserId)) {
+      map.set(r.convertedUserId, { id: r.id, leadNo: r.leadNo });
+    }
+  }
+  return map;
 }
 
 /** Extra roles per user, for the ids given — one query for the whole page. */

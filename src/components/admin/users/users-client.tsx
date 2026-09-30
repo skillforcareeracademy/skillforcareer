@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import {
   Search,
+  Target,
   MoreHorizontal,
   ShieldCheck,
   Ban,
@@ -96,8 +97,10 @@ interface ImportResult {
 }
 
 const STATUS_BADGE: Record<string, string> = {
-  ACTIVE: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
-  PENDING: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
+  ACTIVE:
+    "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
+  PENDING:
+    "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
   INACTIVE: "bg-muted text-muted-foreground",
   SUSPENDED: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300",
 };
@@ -116,19 +119,88 @@ const emptyCreate = {
   status: "ACTIVE" as string,
 };
 
+/** The nine cuts the admissions team asked for, beside role and status. */
+const FEE_OPTIONS = [
+  { value: "paid", label: "Fees fully paid" },
+  { value: "partial", label: "Part paid" },
+  { value: "unpaid", label: "Nothing paid" },
+];
+const PERFORMANCE_OPTIONS = [
+  { value: "strong", label: "Strong (75%+)" },
+  { value: "average", label: "Average (40–74%)" },
+  { value: "weak", label: "Weak (under 40%)" },
+  { value: "none", label: "No quiz taken" },
+];
+
+/** One filter dropdown, so nine of them read the same. */
+function FilterSelect({
+  value,
+  onChange,
+  options,
+  placeholder,
+  width,
+}: {
+  value: string | undefined;
+  onChange: (next: string | undefined) => void;
+  options: { value: string; label: string }[];
+  placeholder: string;
+  width: string;
+}) {
+  return (
+    <Select
+      value={value ?? ALL}
+      onValueChange={(v) => onChange(!v || v === ALL ? undefined : String(v))}
+    >
+      <SelectTrigger className={width}>
+        <SelectValue placeholder={placeholder}>
+          {(v) =>
+            !v || v === ALL
+              ? placeholder
+              : (options.find((o) => o.value === v)?.label ?? placeholder)
+          }
+        </SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value={ALL}>{placeholder}</SelectItem>
+        {options.map((o) => (
+          <SelectItem key={o.value} value={o.value}>
+            {o.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
 export function UsersClient({
   users,
   total,
   query,
+  courses = [],
+  batches = [],
 }: {
   users: UserRow[];
   total: number;
   query: ListUsersQuery;
+  courses?: { id: string; title: string }[];
+  batches?: { id: string; name: string }[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const [search, setSearch] = useState(query.search ?? "");
   const [deleting, setDeleting] = useState<UserRow | null>(null);
+  const hasFilters = Boolean(
+    query.role ||
+    query.status ||
+    query.courseId ||
+    query.batchId ||
+    query.fees ||
+    query.verified ||
+    query.profile ||
+    query.delayed ||
+    query.performance ||
+    query.placed,
+  );
 
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState(emptyCreate);
@@ -137,7 +209,8 @@ export function UsersClient({
   // easy to miss on a tablet, and the admin was left with a button that
   // seemed to do nothing.
   const [createError, setCreateError] = useState<string | null>(null);
-  const [existingAccount, setExistingAccount] = useState<ExistingAccount | null>(null);
+  const [existingAccount, setExistingAccount] =
+    useState<ExistingAccount | null>(null);
   const [addingRole, setAddingRole] = useState(false);
 
   const [importOpen, setImportOpen] = useState(false);
@@ -180,13 +253,33 @@ export function UsersClient({
         search: query.search,
         role: query.role,
         status: query.status,
+        courseId: query.courseId,
+        batchId: query.batchId,
+        fees: query.fees,
+        verified: query.verified,
+        profile: query.profile,
+        delayed: query.delayed,
+        performance: query.performance,
+        placed: query.placed,
         page: query.page,
         ...next,
       };
       const params = new URLSearchParams();
-      if (merged.search) params.set("search", String(merged.search));
-      if (merged.role) params.set("role", String(merged.role));
-      if (merged.status) params.set("status", String(merged.status));
+      for (const key of [
+        "search",
+        "role",
+        "status",
+        "courseId",
+        "batchId",
+        "fees",
+        "verified",
+        "profile",
+        "delayed",
+        "performance",
+        "placed",
+      ] as const) {
+        if (merged[key]) params.set(key, String(merged[key]));
+      }
       if (merged.page && Number(merged.page) > 1) {
         params.set("page", String(merged.page));
       }
@@ -201,7 +294,11 @@ export function UsersClient({
     setParams({ search: search || undefined, page: 1 });
   }
 
-  async function patchUser(u: UserRow, body: Record<string, string>, msg: string) {
+  async function patchUser(
+    u: UserRow,
+    body: Record<string, string>,
+    msg: string,
+  ) {
     try {
       await api.patch(`/api/admin/users/${u.id}`, body);
       toast.success(msg);
@@ -229,8 +326,7 @@ export function UsersClient({
         ? (e.details as { issues?: { message: string }[] } | undefined)
         : undefined;
     return (
-      d?.issues?.[0]?.message ??
-      (e instanceof ApiError ? e.message : fallback)
+      d?.issues?.[0]?.message ?? (e instanceof ApiError ? e.message : fallback)
     );
   }
 
@@ -252,7 +348,11 @@ export function UsersClient({
       setCreateForm(emptyCreate);
       router.refresh();
     } catch (err) {
-      const existing = err instanceof ApiError ? (err.details as { existing?: ExistingAccount } | undefined)?.existing : undefined;
+      const existing =
+        err instanceof ApiError
+          ? (err.details as { existing?: ExistingAccount } | undefined)
+              ?.existing
+          : undefined;
       if (existing) setExistingAccount(existing);
       else setCreateError(issueMessage(err, "Couldn't create user."));
     } finally {
@@ -264,8 +364,12 @@ export function UsersClient({
     if (!existingAccount) return;
     setAddingRole(true);
     try {
-      await api.post(`/api/admin/users/${existingAccount.id}/roles`, { roleSlug: createForm.roleSlug });
-      toast.success(`${existingAccount.name} is now also ${ROLE_LABELS[createForm.roleSlug]}.`);
+      await api.post(`/api/admin/users/${existingAccount.id}/roles`, {
+        roleSlug: createForm.roleSlug,
+      });
+      toast.success(
+        `${existingAccount.name} is now also ${ROLE_LABELS[createForm.roleSlug]}.`,
+      );
       setCreateOpen(false);
       setCreateForm(emptyCreate);
       setExistingAccount(null);
@@ -321,10 +425,15 @@ export function UsersClient({
     try {
       const { extraRoles, ...profile } = editForm;
       await api.patch(`/api/admin/users/${editing.id}`, profile);
-      const before = editing.extraRoles.map((r) => r.slug).sort().join();
+      const before = editing.extraRoles
+        .map((r) => r.slug)
+        .sort()
+        .join();
       const after = extraRoles.filter((r) => r !== profile.roleSlug).sort();
       if (after.join() !== before) {
-        await api.patch(`/api/admin/users/${editing.id}/roles`, { extraRoles: after });
+        await api.patch(`/api/admin/users/${editing.id}/roles`, {
+          extraRoles: after,
+        });
       }
       toast.success("User updated.");
       setEditing(null);
@@ -377,7 +486,19 @@ export function UsersClient({
               >
                 {u.name}
               </Link>
-              <p className="text-muted-foreground truncate text-xs">{u.email}</p>
+              <p className="text-muted-foreground truncate text-xs">
+                {u.email}
+              </p>
+              {/* The enquiry they came from, so their history is one tap away. */}
+              {u.lead && (
+                <Link
+                  href={`/admin/leads?lead=${u.lead.id}`}
+                  className="text-primary inline-flex items-center gap-1 text-xs hover:underline"
+                >
+                  <Target className="size-3" />
+                  {u.lead.leadNo ?? "From a lead"}
+                </Link>
+              )}
             </div>
           </div>
         );
@@ -423,7 +544,7 @@ export function UsersClient({
       header: "Verified",
       cell: (u) =>
         u.emailVerified ? (
-          <CircleCheck className="text-emerald-500 size-4" />
+          <CircleCheck className="size-4 text-emerald-500" />
         ) : (
           <span className="text-muted-foreground text-xs">—</span>
         ),
@@ -479,7 +600,11 @@ export function UsersClient({
                 <DropdownMenuItem
                   key={r}
                   onClick={() =>
-                    patchUser(u, { roleSlug: r }, `${u.name} is now ${ROLE_LABELS[r]}.`)
+                    patchUser(
+                      u,
+                      { roleSlug: r },
+                      `${u.name} is now ${ROLE_LABELS[r]}.`,
+                    )
                   }
                 >
                   Make {ROLE_LABELS[r]}
@@ -489,14 +614,18 @@ export function UsersClient({
             <DropdownMenuSeparator />
             {u.status !== "ACTIVE" && (
               <DropdownMenuItem
-                onClick={() => patchUser(u, { status: "ACTIVE" }, "User activated.")}
+                onClick={() =>
+                  patchUser(u, { status: "ACTIVE" }, "User activated.")
+                }
               >
                 <ShieldCheck className="size-4" /> Activate
               </DropdownMenuItem>
             )}
             {u.status !== "SUSPENDED" && (
               <DropdownMenuItem
-                onClick={() => patchUser(u, { status: "SUSPENDED" }, "User suspended.")}
+                onClick={() =>
+                  patchUser(u, { status: "SUSPENDED" }, "User suspended.")
+                }
               >
                 <Ban className="size-4" /> Suspend
               </DropdownMenuItem>
@@ -521,7 +650,11 @@ export function UsersClient({
         description="Manage accounts, roles and access across the platform."
         actions={
           <div className="flex items-center gap-2">
-            <Button variant="outline" nativeButton={false} render={<a href={usersExportHref} />}>
+            <Button
+              variant="outline"
+              nativeButton={false}
+              render={<a href={usersExportHref} />}
+            >
               <Download className="size-4" /> Export
             </Button>
             <Button
@@ -546,57 +679,172 @@ export function UsersClient({
         rowKey={(u) => u.id}
         emptyTitle="No users match your filters"
         toolbar={
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <form onSubmit={submitSearch} className="relative max-w-xs flex-1">
-              <Search className="text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2" />
-              <Input
-                placeholder="Search name or email…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9"
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <form
+                onSubmit={submitSearch}
+                className="relative max-w-xs flex-1"
+              >
+                <Search className="text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+                <Input
+                  placeholder="Search name or email…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="pl-9"
+                />
+              </form>
+              <div className="flex gap-2">
+                <Select
+                  value={query.role ?? ALL}
+                  onValueChange={(v) =>
+                    setParams({
+                      role: !v || v === ALL ? undefined : v,
+                      page: 1,
+                    })
+                  }
+                >
+                  <SelectTrigger className="w-36">
+                    <SelectValue placeholder="All roles">
+                      {(v) =>
+                        !v || v === ALL
+                          ? "All roles"
+                          : (ROLE_LABELS[
+                              String(v) as keyof typeof ROLE_LABELS
+                            ] ?? "All roles")
+                      }
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ALL}>All roles</SelectItem>
+                    {ROLE_OPTIONS.map((r) => (
+                      <SelectItem key={r} value={r}>
+                        {ROLE_LABELS[r]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={query.status ?? ALL}
+                  onValueChange={(v) =>
+                    setParams({
+                      status: !v || v === ALL ? undefined : v,
+                      page: 1,
+                    })
+                  }
+                >
+                  <SelectTrigger className="w-36">
+                    <SelectValue placeholder="All statuses">
+                      {(v) =>
+                        !v || v === ALL
+                          ? "All statuses"
+                          : String(v).charAt(0) +
+                            String(v).slice(1).toLowerCase()
+                      }
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ALL}>All statuses</SelectItem>
+                    {USER_STATUSES.map((s) => (
+                      <SelectItem key={s} value={s}>
+                        {s.charAt(0) + s.slice(1).toLowerCase()}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* The cuts admissions actually works from. */}
+            <div className="flex flex-wrap items-center gap-2">
+              <FilterSelect
+                width="w-52"
+                placeholder="Any course"
+                value={query.courseId}
+                onChange={(v) => setParams({ courseId: v, page: 1 })}
+                options={courses.map((c) => ({ value: c.id, label: c.title }))}
               />
-            </form>
-            <div className="flex gap-2">
-              <Select
-                value={query.role ?? ALL}
-                onValueChange={(v) => setParams({ role: !v || v === ALL ? undefined : v, page: 1 })}
-              >
-                <SelectTrigger className="w-36">
-                  <SelectValue placeholder="All roles">
-                    {(v) => (!v || v === ALL ? "All roles" : (ROLE_LABELS[String(v) as keyof typeof ROLE_LABELS] ?? "All roles"))}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL}>All roles</SelectItem>
-                  {ROLE_OPTIONS.map((r) => (
-                    <SelectItem key={r} value={r}>
-                      {ROLE_LABELS[r]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select
-                value={query.status ?? ALL}
-                onValueChange={(v) => setParams({ status: !v || v === ALL ? undefined : v, page: 1 })}
-              >
-                <SelectTrigger className="w-36">
-                  <SelectValue placeholder="All statuses">
-                    {(v) =>
-                      !v || v === ALL
-                        ? "All statuses"
-                        : String(v).charAt(0) + String(v).slice(1).toLowerCase()
-                    }
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL}>All statuses</SelectItem>
-                  {USER_STATUSES.map((s) => (
-                    <SelectItem key={s} value={s}>
-                      {s.charAt(0) + s.slice(1).toLowerCase()}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <FilterSelect
+                width="w-48"
+                placeholder="Any batch"
+                value={query.batchId}
+                onChange={(v) => setParams({ batchId: v, page: 1 })}
+                options={batches.map((b) => ({ value: b.id, label: b.name }))}
+              />
+              <FilterSelect
+                width="w-40"
+                placeholder="Any fees"
+                value={query.fees}
+                onChange={(v) => setParams({ fees: v, page: 1 })}
+                options={FEE_OPTIONS}
+              />
+              <FilterSelect
+                width="w-44"
+                placeholder="Any performance"
+                value={query.performance}
+                onChange={(v) => setParams({ performance: v, page: 1 })}
+                options={PERFORMANCE_OPTIONS}
+              />
+              <FilterSelect
+                width="w-40"
+                placeholder="Verified?"
+                value={query.verified}
+                onChange={(v) => setParams({ verified: v, page: 1 })}
+                options={[
+                  { value: "yes", label: "Verified" },
+                  { value: "no", label: "Not verified" },
+                ]}
+              />
+              <FilterSelect
+                width="w-44"
+                placeholder="Profile filled?"
+                value={query.profile}
+                onChange={(v) => setParams({ profile: v, page: 1 })}
+                options={[
+                  { value: "yes", label: "Profile submitted" },
+                  { value: "no", label: "Profile not filled" },
+                ]}
+              />
+              <FilterSelect
+                width="w-40"
+                placeholder="Placement?"
+                value={query.placed}
+                onChange={(v) => setParams({ placed: v, page: 1 })}
+                options={[
+                  { value: "yes", label: "Placed" },
+                  { value: "no", label: "Not placed" },
+                ]}
+              />
+              <FilterSelect
+                width="w-40"
+                placeholder="Any progress"
+                value={query.delayed}
+                onChange={(v) => setParams({ delayed: v, page: 1 })}
+                options={[{ value: "yes", label: "Falling behind" }]}
+              />
+              {hasFilters && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground"
+                  onClick={() =>
+                    setParams({
+                      courseId: undefined,
+                      batchId: undefined,
+                      fees: undefined,
+                      verified: undefined,
+                      profile: undefined,
+                      delayed: undefined,
+                      performance: undefined,
+                      placed: undefined,
+                      role: undefined,
+                      status: undefined,
+                      page: 1,
+                    })
+                  }
+                >
+                  Clear filters
+                </Button>
+              )}
             </div>
           </div>
         }
@@ -638,8 +886,8 @@ export function UsersClient({
           <DialogHeader>
             <DialogTitle>Add user</DialogTitle>
             <DialogDescription>
-              Create an account directly. It&apos;s pre-verified — the person can
-              sign in with the password you set.
+              Create an account directly. It&apos;s pre-verified — the person
+              can sign in with the password you set.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={onCreate} className="space-y-4">
@@ -648,7 +896,9 @@ export function UsersClient({
               <Input
                 id="c-name"
                 value={createForm.name}
-                onChange={(e) => setCreateForm((f) => ({ ...f, name: e.target.value }))}
+                onChange={(e) =>
+                  setCreateForm((f) => ({ ...f, name: e.target.value }))
+                }
                 placeholder="e.g. Priya Nair"
               />
             </div>
@@ -658,7 +908,9 @@ export function UsersClient({
                 id="c-email"
                 type="email"
                 value={createForm.email}
-                onChange={(e) => setCreateForm((f) => ({ ...f, email: e.target.value }))}
+                onChange={(e) =>
+                  setCreateForm((f) => ({ ...f, email: e.target.value }))
+                }
                 placeholder="priya@example.com"
               />
             </div>
@@ -669,7 +921,9 @@ export function UsersClient({
                 type="text"
                 autoComplete="off"
                 value={createForm.password}
-                onChange={(e) => setCreateForm((f) => ({ ...f, password: e.target.value }))}
+                onChange={(e) =>
+                  setCreateForm((f) => ({ ...f, password: e.target.value }))
+                }
                 placeholder="At least 8 characters"
               />
             </div>
@@ -678,14 +932,23 @@ export function UsersClient({
                 <Label>Role</Label>
                 <Select
                   value={createForm.roleSlug}
-                  onValueChange={(v) => setCreateForm((f) => ({ ...f, roleSlug: (v as Role) ?? ROLES.STUDENT }))}
+                  onValueChange={(v) =>
+                    setCreateForm((f) => ({
+                      ...f,
+                      roleSlug: (v as Role) ?? ROLES.STUDENT,
+                    }))
+                  }
                 >
                   <SelectTrigger className="w-full">
-                    <SelectValue>{(v) => (v ? ROLE_LABELS[v as Role] : "Select role")}</SelectValue>
+                    <SelectValue>
+                      {(v) => (v ? ROLE_LABELS[v as Role] : "Select role")}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {ROLE_OPTIONS.map((r) => (
-                      <SelectItem key={r} value={r}>{ROLE_LABELS[r]}</SelectItem>
+                      <SelectItem key={r} value={r}>
+                        {ROLE_LABELS[r]}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -694,51 +957,87 @@ export function UsersClient({
                 <Label>Status</Label>
                 <Select
                   value={createForm.status}
-                  onValueChange={(v) => setCreateForm((f) => ({ ...f, status: v ?? "ACTIVE" }))}
+                  onValueChange={(v) =>
+                    setCreateForm((f) => ({ ...f, status: v ?? "ACTIVE" }))
+                  }
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue>{(v) => (v ? cap(v) : "Status")}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {USER_STATUSES.map((s) => (
-                      <SelectItem key={s} value={s}>{cap(s)}</SelectItem>
+                      <SelectItem key={s} value={s}>
+                        {cap(s)}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
             </div>
             {createError && (
-              <div role="alert" className="border-destructive/30 bg-destructive/5 text-destructive flex items-start gap-2 rounded-lg border p-3 text-sm">
+              <div
+                role="alert"
+                className="border-destructive/30 bg-destructive/5 text-destructive flex items-start gap-2 rounded-lg border p-3 text-sm"
+              >
                 <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden />
                 <p>{createError}</p>
               </div>
             )}
             {existingAccount && (
-              <div role="alert" className="space-y-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-500/40 dark:bg-amber-500/10">
+              <div
+                role="alert"
+                className="space-y-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-500/40 dark:bg-amber-500/10"
+              >
                 <p>
-                  <span className="font-medium">{createForm.email}</span> already has an account —{" "}
-                  <span className="font-medium">{existingAccount.name}</span> ({existingAccount.roleLabel}
-                  {existingAccount.extraRoles.map((r) => `, ${r.label}`).join("")}).
+                  <span className="font-medium">{createForm.email}</span>{" "}
+                  already has an account —{" "}
+                  <span className="font-medium">{existingAccount.name}</span> (
+                  {existingAccount.roleLabel}
+                  {existingAccount.extraRoles
+                    .map((r) => `, ${r.label}`)
+                    .join("")}
+                  ).
                 </p>
                 {existingAccount.role === createForm.roleSlug ||
-                existingAccount.extraRoles.some((r) => r.slug === createForm.roleSlug) ? (
-                  <p className="text-muted-foreground">They already have the {ROLE_LABELS[createForm.roleSlug]} role.</p>
+                existingAccount.extraRoles.some(
+                  (r) => r.slug === createForm.roleSlug,
+                ) ? (
+                  <p className="text-muted-foreground">
+                    They already have the {ROLE_LABELS[createForm.roleSlug]}{" "}
+                    role.
+                  </p>
                 ) : (
                   <>
                     <p className="text-muted-foreground">
-                      One person can hold more than one role. Give this account the{" "}
-                      {ROLE_LABELS[createForm.roleSlug]} role as well — their existing sign-in, courses and history stay as they are.
+                      One person can hold more than one role. Give this account
+                      the {ROLE_LABELS[createForm.roleSlug]} role as well —
+                      their existing sign-in, courses and history stay as they
+                      are.
                     </p>
-                    <Button type="button" size="sm" onClick={addRoleToExisting} disabled={addingRole}>
-                      {addingRole ? <Loader2 className="size-4 animate-spin" /> : <UserPlus className="size-4" />}
-                      Add {ROLE_LABELS[createForm.roleSlug]} role to {existingAccount.name}
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={addRoleToExisting}
+                      disabled={addingRole}
+                    >
+                      {addingRole ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <UserPlus className="size-4" />
+                      )}
+                      Add {ROLE_LABELS[createForm.roleSlug]} role to{" "}
+                      {existingAccount.name}
                     </Button>
                   </>
                 )}
               </div>
             )}
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => openCreate(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => openCreate(false)}
+              >
                 Cancel
               </Button>
               <Button type="submit" disabled={creating}>
@@ -757,17 +1056,30 @@ export function UsersClient({
             <DialogTitle>Import users</DialogTitle>
             <DialogDescription>
               Upload a CSV with columns name, email, phone, role, password.{" "}
-              <a href={IMPORT_TEMPLATE_HREF} className="text-primary font-medium hover:underline">
+              <a
+                href={IMPORT_TEMPLATE_HREF}
+                className="text-primary font-medium hover:underline"
+              >
                 Download the template
               </a>
-              . Accounts are pre-verified; anyone without a password signs in with an emailed code.
+              . Accounts are pre-verified; anyone without a password signs in
+              with an emailed code.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="import-file">CSV file</Label>
-              <Input id="import-file" type="file" accept=".csv,text/csv" onChange={(e) => void onImportFile(e.target.files?.[0])} />
-              {importFileName && <p className="text-muted-foreground text-xs">{importFileName} loaded.</p>}
+              <Input
+                id="import-file"
+                type="file"
+                accept=".csv,text/csv"
+                onChange={(e) => void onImportFile(e.target.files?.[0])}
+              />
+              {importFileName && (
+                <p className="text-muted-foreground text-xs">
+                  {importFileName} loaded.
+                </p>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="import-paste">…or paste the sheet</Label>
@@ -779,29 +1091,46 @@ export function UsersClient({
                   setImportCsv(e.target.value);
                   setImportResult(null);
                 }}
-                placeholder={"name,email,phone,role\nPriya Nair,priya@example.com,+91 98765 43210,Student"}
+                placeholder={
+                  "name,email,phone,role\nPriya Nair,priya@example.com,+91 98765 43210,Student"
+                }
                 className="font-mono text-xs"
               />
             </div>
             <div className="space-y-1.5">
               <Label>Role for rows without one</Label>
-              <Select value={importRole} onValueChange={(v) => setImportRole((v as Role) ?? ROLES.STUDENT)}>
+              <Select
+                value={importRole}
+                onValueChange={(v) =>
+                  setImportRole((v as Role) ?? ROLES.STUDENT)
+                }
+              >
                 <SelectTrigger className="w-full">
-                  <SelectValue>{(v) => (v ? ROLE_LABELS[v as Role] : "Select role")}</SelectValue>
+                  <SelectValue>
+                    {(v) => (v ? ROLE_LABELS[v as Role] : "Select role")}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {ROLE_OPTIONS.map((r) => (
-                    <SelectItem key={r} value={r}>{ROLE_LABELS[r]}</SelectItem>
+                    <SelectItem key={r} value={r}>
+                      {ROLE_LABELS[r]}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <label className="flex items-center gap-2 text-sm">
-              <Checkbox checked={importAddRole} onCheckedChange={(v) => setImportAddRole(Boolean(v))} />
+              <Checkbox
+                checked={importAddRole}
+                onCheckedChange={(v) => setImportAddRole(Boolean(v))}
+              />
               If an email already has an account, add the row&apos;s role to it
             </label>
             <label className="flex items-center gap-2 text-sm">
-              <Checkbox checked={importWelcome} onCheckedChange={(v) => setImportWelcome(Boolean(v))} />
+              <Checkbox
+                checked={importWelcome}
+                onCheckedChange={(v) => setImportWelcome(Boolean(v))}
+              />
               Send each new person a welcome email
             </label>
             {importResult && (
@@ -820,11 +1149,23 @@ export function UsersClient({
             )}
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setImportOpen(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setImportOpen(false)}
+            >
               Close
             </Button>
-            <Button type="button" onClick={runImport} disabled={importing || !importCsv.trim()}>
-              {importing ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
+            <Button
+              type="button"
+              onClick={runImport}
+              disabled={importing || !importCsv.trim()}
+            >
+              {importing ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Upload className="size-4" />
+              )}
               Import
             </Button>
           </DialogFooter>
@@ -846,7 +1187,9 @@ export function UsersClient({
               <Input
                 id="e-name"
                 value={editForm.name}
-                onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
+                onChange={(e) =>
+                  setEditForm((f) => ({ ...f, name: e.target.value }))
+                }
               />
             </div>
             <div className="space-y-1.5">
@@ -855,7 +1198,9 @@ export function UsersClient({
                 id="e-email"
                 type="email"
                 value={editForm.email}
-                onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))}
+                onChange={(e) =>
+                  setEditForm((f) => ({ ...f, email: e.target.value }))
+                }
               />
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -863,14 +1208,23 @@ export function UsersClient({
                 <Label>Role</Label>
                 <Select
                   value={editForm.roleSlug}
-                  onValueChange={(v) => setEditForm((f) => ({ ...f, roleSlug: (v as Role) ?? ROLES.STUDENT }))}
+                  onValueChange={(v) =>
+                    setEditForm((f) => ({
+                      ...f,
+                      roleSlug: (v as Role) ?? ROLES.STUDENT,
+                    }))
+                  }
                 >
                   <SelectTrigger className="w-full">
-                    <SelectValue>{(v) => (v ? ROLE_LABELS[v as Role] : "Select role")}</SelectValue>
+                    <SelectValue>
+                      {(v) => (v ? ROLE_LABELS[v as Role] : "Select role")}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {ROLE_OPTIONS.map((r) => (
-                      <SelectItem key={r} value={r}>{ROLE_LABELS[r]}</SelectItem>
+                      <SelectItem key={r} value={r}>
+                        {ROLE_LABELS[r]}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -879,14 +1233,18 @@ export function UsersClient({
                 <Label>Status</Label>
                 <Select
                   value={editForm.status}
-                  onValueChange={(v) => setEditForm((f) => ({ ...f, status: v ?? "ACTIVE" }))}
+                  onValueChange={(v) =>
+                    setEditForm((f) => ({ ...f, status: v ?? "ACTIVE" }))
+                  }
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue>{(v) => (v ? cap(v) : "Status")}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {USER_STATUSES.map((s) => (
-                      <SelectItem key={s} value={s}>{cap(s)}</SelectItem>
+                      <SelectItem key={s} value={s}>
+                        {cap(s)}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -895,27 +1253,36 @@ export function UsersClient({
             <div className="space-y-2">
               <Label>Also holds these roles</Label>
               <p className="text-muted-foreground text-xs">
-                For someone who is, say, an instructor and also studying. They can switch panels from their menu.
+                For someone who is, say, an instructor and also studying. They
+                can switch panels from their menu.
               </p>
               <div className="grid grid-cols-2 gap-2">
-                {ROLE_OPTIONS.filter((r) => r !== editForm.roleSlug).map((r) => (
-                  <label key={r} className="flex items-center gap-2 text-sm">
-                    <Checkbox
-                      checked={editForm.extraRoles.includes(r)}
-                      onCheckedChange={(v) =>
-                        setEditForm((f) => ({
-                          ...f,
-                          extraRoles: v ? [...f.extraRoles, r] : f.extraRoles.filter((x) => x !== r),
-                        }))
-                      }
-                    />
-                    {ROLE_LABELS[r]}
-                  </label>
-                ))}
+                {ROLE_OPTIONS.filter((r) => r !== editForm.roleSlug).map(
+                  (r) => (
+                    <label key={r} className="flex items-center gap-2 text-sm">
+                      <Checkbox
+                        checked={editForm.extraRoles.includes(r)}
+                        onCheckedChange={(v) =>
+                          setEditForm((f) => ({
+                            ...f,
+                            extraRoles: v
+                              ? [...f.extraRoles, r]
+                              : f.extraRoles.filter((x) => x !== r),
+                          }))
+                        }
+                      />
+                      {ROLE_LABELS[r]}
+                    </label>
+                  ),
+                )}
               </div>
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setEditing(null)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setEditing(null)}
+              >
                 Cancel
               </Button>
               <Button type="submit" disabled={saving}>
@@ -927,7 +1294,10 @@ export function UsersClient({
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>
+      <AlertDialog
+        open={!!deleting}
+        onOpenChange={(o) => !o && setDeleting(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete {deleting?.name}?</AlertDialogTitle>

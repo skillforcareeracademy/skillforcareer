@@ -8,6 +8,7 @@ import {
   Search,
   Download,
   Upload,
+  Workflow,
   Target,
   MoreHorizontal,
   Eye,
@@ -48,6 +49,7 @@ import {
 } from "@/lib/validations/lead";
 import type { Role } from "@/config/roles";
 import { DataTable, type Column } from "@/components/shared/data-table";
+import Link from "next/link";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -675,6 +677,14 @@ export function LeadsClient({
                 <CopyCheck className="size-4" /> Duplicates
               </Button>
             )}
+            {/* The academy's own stages and statuses. */}
+            <Button
+              variant="outline"
+              nativeButton={false}
+              render={<Link href="/admin/leads/pipeline" />}
+            >
+              <Workflow className="size-4" /> Stages
+            </Button>
             <Button variant="outline" onClick={() => setImportOpen(true)}>
               <Upload className="size-4" /> Import
             </Button>

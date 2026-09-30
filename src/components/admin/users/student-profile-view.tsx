@@ -28,6 +28,10 @@ import {
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
 import { PageHeader } from "@/components/shared/page-header";
+import {
+  StudentBreakdownSheet,
+  type BreakdownKind,
+} from "@/components/admin/users/student-breakdown-sheet";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -91,21 +95,45 @@ function clock(hhmm: string): string {
   return `${hour}:${String(m).padStart(2, "0")} ${suffix}`;
 }
 
+/**
+ * One figure. Given an `onOpen` it becomes a button, because the academy asked
+ * to see what each number is made of rather than just its total.
+ */
 function Stat({
   icon: Icon,
   label,
   value,
   hint,
   tone,
+  onOpen,
 }: {
   icon: typeof BookOpen;
   label: string;
   value: string;
   hint?: string;
   tone?: string;
+  onOpen?: () => void;
 }) {
   return (
-    <Card className="gap-0 p-4">
+    <Card
+      className={cn(
+        "gap-0 p-4",
+        onOpen && "hover:border-primary/60 cursor-pointer transition-colors",
+      )}
+      {...(onOpen
+        ? {
+            role: "button" as const,
+            tabIndex: 0,
+            onClick: onOpen,
+            onKeyDown: (e: React.KeyboardEvent) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onOpen();
+              }
+            },
+          }
+        : {})}
+    >
       <div className="flex items-center gap-2">
         <span
           className={cn(
@@ -119,6 +147,7 @@ function Stat({
       </div>
       <p className="mt-2 text-2xl font-semibold tabular-nums">{value}</p>
       {hint && <p className="text-muted-foreground mt-0.5 text-xs">{hint}</p>}
+      {onOpen && <p className="text-primary mt-1 text-xs">See the detail →</p>}
     </Card>
   );
 }
@@ -138,6 +167,8 @@ export function StudentProfileView({ profile }: { profile: StudentProfile }) {
   const [saving, setSaving] = useState(false);
   const [internStart, setInternStart] = useState(profile.internshipStartAt?.slice(0, 10) ?? "");
   const [internEnd, setInternEnd] = useState(profile.internshipEndAt?.slice(0, 10) ?? "");
+  /** Which figure the office has opened up. */
+  const [breakdown, setBreakdown] = useState<BreakdownKind | null>(null);
   const [savingIntern, setSavingIntern] = useState(false);
 
   const internDirty =
@@ -298,6 +329,7 @@ export function StudentProfileView({ profile }: { profile: StudentProfile }) {
           tone="bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
         />
         <Stat
+          onOpen={() => setBreakdown("attendance")}
           icon={CalendarClock}
           label="Attendance"
           value={profile.attendance.percent != null ? `${profile.attendance.percent}%` : "—"}
@@ -308,6 +340,7 @@ export function StudentProfileView({ profile }: { profile: StudentProfile }) {
           }
         />
         <Stat
+          onOpen={() => setBreakdown("quizzes")}
           icon={FileQuestion}
           label="Quizzes completed"
           value={String(profile.quizzes.completed)}
@@ -318,6 +351,7 @@ export function StudentProfileView({ profile }: { profile: StudentProfile }) {
           }
         />
         <Stat
+          onOpen={() => setBreakdown("assignments")}
           icon={ClipboardList}
           label="Assignments done"
           value={
@@ -327,7 +361,27 @@ export function StudentProfileView({ profile }: { profile: StudentProfile }) {
           }
           hint={`${profile.assignments.graded} graded`}
         />
+        <Stat
+          onOpen={() => setBreakdown("lessons")}
+          icon={BookOpen}
+          label="Lectures watched"
+          value="—"
+          hint="Which ones, and for how long"
+        />
+        <Stat
+          onOpen={() => setBreakdown("materials")}
+          icon={ActivityIcon}
+          label="Study material read"
+          value="—"
+          hint="What they opened, and for how long"
+        />
       </div>
+
+      <StudentBreakdownSheet
+        userId={profile.id}
+        kind={breakdown}
+        onOpenChange={(open) => !open && setBreakdown(null)}
+      />
 
       {/* ── Attendance breakdown ───────────────────────────────────────── */}
       <Card>
@@ -500,13 +554,19 @@ export function StudentProfileView({ profile }: { profile: StudentProfile }) {
                       label="Batch"
                       value={
                         e.batch ? (
-                          <span className="flex items-center gap-1.5">
+                          // The cohort's own page, one tap away — "batch should
+                          // be clickable so that i can click and check batch
+                          // details".
+                          <Link
+                            href={`/admin/batches/${e.batch.id}`}
+                            className="hover:text-primary flex items-center gap-1.5 transition-colors"
+                          >
                             <Layers className="text-muted-foreground size-3.5 shrink-0" />
                             {e.batch.name}
                             <span className="text-muted-foreground font-mono text-xs">
                               {e.batch.code}
                             </span>
-                          </span>
+                          </Link>
                         ) : (
                           "Not assigned"
                         )
