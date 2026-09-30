@@ -1,0 +1,3 @@
+{
+  "/api/admin/careers/candidates/export/route": "app/api/admin/careers/candidates/export/route.js"
+}

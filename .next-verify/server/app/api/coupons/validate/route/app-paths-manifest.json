@@ -1,0 +1,3 @@
+{
+  "/api/coupons/validate/route": "app/api/coupons/validate/route.js"
+}

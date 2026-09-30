@@ -1,0 +1,1 @@
+(globalThis.TURBOPACK||(globalThis.TURBOPACK=[])).push(["object"==typeof document?document.currentScript:void 0,946503,i=>{"use strict";var o=i.i(843476),r=i.i(892476);i.s(["ProgramEnquiryDialog",0,function({courseTitle:i}){return(0,o.jsx)(r.EnquiryDialog,{courseTitle:i})}])}]);

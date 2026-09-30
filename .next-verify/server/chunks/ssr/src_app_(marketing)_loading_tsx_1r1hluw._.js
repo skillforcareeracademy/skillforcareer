@@ -1,0 +1,3 @@
+module.exports=[9141,a=>{"use strict";var b=a.i(907997),c=a.i(354119);a.s(["default",0,function(){return(0,b.jsxs)("div",{className:"container-page flex min-h-[60vh] items-center justify-center py-24",children:[(0,b.jsx)(c.Loader2,{className:"text-primary size-7 animate-spin"}),(0,b.jsx)("span",{className:"sr-only",children:"Loading…"})]})}])},476830,a=>{a.n(a.i(9141))}];
+
+//# sourceMappingURL=src_app_%28marketing%29_loading_tsx_1r1hluw._.js.map

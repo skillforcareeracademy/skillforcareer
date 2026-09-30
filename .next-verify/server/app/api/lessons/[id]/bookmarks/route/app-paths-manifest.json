@@ -1,0 +1,3 @@
+{
+  "/api/lessons/[id]/bookmarks/route": "app/api/lessons/[id]/bookmarks/route.js"
+}

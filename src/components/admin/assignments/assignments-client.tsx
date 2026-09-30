@@ -21,6 +21,7 @@ import {
   ListChecks,
 } from "lucide-react";
 import { toast } from "sonner";
+import { GroupField } from "@/components/admin/groups/group-field";
 import { api, ApiError } from "@/lib/api-client";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
@@ -827,6 +828,9 @@ export function AssignmentsClient({
                   : " Written answers are marked by hand against the model answer you set."}
               </p>
             )}
+
+            {/* Folders, so a whole set can be handed to a batch at once. */}
+            {editing && <GroupField kind="ASSIGNMENT" itemId={editing.id} />}
 
             {/* Who it's set for. Nothing chosen = the whole course, which is how
                 assignments behaved before cohorts could be named. */}

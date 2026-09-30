@@ -21,6 +21,7 @@ import { api, ApiError } from "@/lib/api-client";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
 import { AudiencePicker } from "@/components/shared/audience-picker";
+import { GroupField } from "@/components/admin/groups/group-field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -339,6 +340,11 @@ export function CurriculumClient({
                 <Plus className="size-4" /> Add section
               </Button>
             </div>
+
+            {/* Folders, so a batch can be handed a whole set of curriculums. */}
+            {editingId && editingId !== "new" && (
+              <GroupField kind="CURRICULUM" itemId={editingId} />
+            )}
 
             <AudiencePicker
               label="Courses this is for"

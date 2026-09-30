@@ -1,0 +1,3 @@
+{
+  "/api/webinars/[id]/participants/[registrationId]/route": "app/api/webinars/[id]/participants/[registrationId]/route.js"
+}

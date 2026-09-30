@@ -27,6 +27,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ContentTab } from "./content-tab";
 import {
   BatchStudentsSheet,
   type BatchStudentsTarget,
@@ -231,6 +232,7 @@ export function BatchProfileView({
             Notes ({profile.notes.length})
           </TabsTrigger>
           <TabsTrigger value="assessments">Quizzes &amp; tests</TabsTrigger>
+          <TabsTrigger value="content">Set work</TabsTrigger>
           <TabsTrigger value="similar">Similar batches</TabsTrigger>
         </TabsList>
 
@@ -267,6 +269,12 @@ export function BatchProfileView({
 
         <TabsContent value="assessments" className="mt-4">
           <AssessmentsTab profile={profile} access={access} />
+        </TabsContent>
+
+        {/* Assigning from here is the point: the alternative was opening every
+            quiz, every piece of reading and every assignment in turn. */}
+        <TabsContent value="content" className="mt-4">
+          <ContentTab batchId={profile.id} />
         </TabsContent>
 
         <TabsContent value="similar" className="mt-4">

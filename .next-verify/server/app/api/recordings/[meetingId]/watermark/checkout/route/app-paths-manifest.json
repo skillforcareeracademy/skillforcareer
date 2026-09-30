@@ -1,0 +1,3 @@
+{
+  "/api/recordings/[meetingId]/watermark/checkout/route": "app/api/recordings/[meetingId]/watermark/checkout/route.js"
+}

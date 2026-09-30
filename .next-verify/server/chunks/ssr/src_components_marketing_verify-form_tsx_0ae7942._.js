@@ -1,0 +1,3 @@
+module.exports=[626624,a=>{"use strict";var b=a.i(187924),c=a.i(572131),d=a.i(50944),e=a.i(233540),f=a.i(866718),g=a.i(699570);a.s(["VerifyForm",0,function({initial:a=""}){let h=(0,d.useRouter)(),[i,j]=(0,c.useState)(a);return(0,b.jsxs)("form",{onSubmit:function(a){a.preventDefault();let b=i.trim().toUpperCase();b&&h.push(`/verify/${encodeURIComponent(b)}`)},className:"flex gap-2",children:[(0,b.jsx)(f.Input,{value:i,onChange:a=>j(a.target.value),placeholder:"Enter verification code",className:"font-mono uppercase","aria-label":"Verification code"}),(0,b.jsxs)(g.Button,{type:"submit",disabled:!i.trim(),children:[(0,b.jsx)(e.Search,{className:"size-4"})," Verify"]})]})}])}];
+
+//# sourceMappingURL=src_components_marketing_verify-form_tsx_0ae7942._.js.map

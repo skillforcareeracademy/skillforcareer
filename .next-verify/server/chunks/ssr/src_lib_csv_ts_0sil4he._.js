@@ -1,0 +1,3 @@
+module.exports=[546303,a=>{"use strict";a.s(["parseCsv",0,function(a){let b=a.replace(/^﻿/,""),c=[],d=[],e="",f=!1,g=()=>{d.push(e),e=""},h=()=>{g(),d.some(a=>""!==a.trim())&&c.push(d),d=[]};for(let a=0;a<b.length;a+=1){let c=b[a];if(f){'"'===c?'"'===b[a+1]?(e+='"',a+=1):f=!1:e+=c;continue}'"'===c?f=!0:","===c?g():"\n"===c?h():"\r"!==c&&(e+=c)}(""!==e||d.length)&&h();let[i,...j]=c;if(!i)return{headers:[],rows:[]};let k=i.map(a=>a.trim()),l=j.map(a=>{let b={};return k.forEach((c,d)=>{b[c]=(a[d]??"").trim()}),b});return{headers:k,rows:l}}])}];
+
+//# sourceMappingURL=src_lib_csv_ts_0sil4he._.js.map

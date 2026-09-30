@@ -21,6 +21,7 @@ import {
   ArrowDown,
 } from "lucide-react";
 import { toast } from "sonner";
+import { GroupField } from "@/components/admin/groups/group-field";
 import { api, ApiError } from "@/lib/api-client";
 import { parseQuestionBank } from "@/lib/question-csv";
 import {
@@ -360,6 +361,8 @@ export function QuizEditor({
             <CardDescription>How this quiz behaves.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* Which folders it is filed in — as many as suit, saved as ticked. */}
+            <GroupField kind="QUIZ" itemId={quiz.id} />
             <div className="space-y-1.5">
               <Label htmlFor="q-title">Title</Label>
               <Input id="q-title" value={form.title} onChange={(e) => set("title", e.target.value)} />
