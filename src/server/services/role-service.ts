@@ -92,3 +92,104 @@ export async function deleteRole(id: string): Promise<void> {
   await prisma.rolePermission.deleteMany({ where: { roleId: id } });
   await prisma.role.delete({ where: { id } });
 }
+
+// ── One person's own permissions ───────────────────────────────────────────
+
+export interface UserPermissionOverride {
+  key: string;
+  allow: boolean;
+}
+
+export interface UserPermissionView {
+  user: { id: string; name: string; email: string; roleName: string };
+  /** What the person's roles already give them, before any override. */
+  fromRole: string[];
+  overrides: UserPermissionOverride[];
+}
+
+/**
+ * What one person may do, and why.
+ *
+ * The screen needs all three: what the role gives, what was added for them
+ * alone, and what was taken away — otherwise a tick box cannot say whether it
+ * is ticked because of the role or because of this person.
+ */
+export async function getUserPermissions(
+  userId: string,
+): Promise<UserPermissionView> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: { select: { name: true, permissions: { select: { permission: { select: { key: true } } } } } },
+      extraRoles: {
+        select: { role: { select: { permissions: { select: { permission: { select: { key: true } } } } } } },
+      },
+      extraPermissions: {
+        select: { allow: true, permission: { select: { key: true } } },
+      },
+    },
+  });
+  if (!user) throw AppError.notFound("User not found.");
+
+  const fromRole = new Set(user.role.permissions.map((rp) => rp.permission.key));
+  for (const extra of user.extraRoles) {
+    for (const rp of extra.role.permissions) fromRole.add(rp.permission.key);
+  }
+
+  return {
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      roleName: user.role.name,
+    },
+    fromRole: [...fromRole],
+    overrides: user.extraPermissions.map((up) => ({
+      key: up.permission.key,
+      allow: up.allow,
+    })),
+  };
+}
+
+/**
+ * Replace one person's overrides.
+ *
+ * Sent as a whole set rather than one tick at a time: the screen knows the
+ * final state, and replacing it means a half-failed save cannot leave someone
+ * holding a permission nobody meant to give them. An override matching what
+ * the role already says is dropped rather than stored — keeping it would
+ * silently freeze that person's access when the role later changes.
+ */
+export async function setUserPermissions(
+  userId: string,
+  overrides: UserPermissionOverride[],
+): Promise<void> {
+  const view = await getUserPermissions(userId);
+  const fromRole = new Set(view.fromRole);
+
+  const meaningful = overrides.filter((o) =>
+    o.allow ? !fromRole.has(o.key) : fromRole.has(o.key),
+  );
+
+  const perms = meaningful.length
+    ? await prisma.permission.findMany({
+        where: { key: { in: meaningful.map((o) => o.key) } },
+        select: { id: true, key: true },
+      })
+    : [];
+  const idFor = new Map(perms.map((p) => [p.key, p.id]));
+
+  await prisma.$transaction([
+    prisma.userPermission.deleteMany({ where: { userId } }),
+    ...meaningful
+      .filter((o) => idFor.has(o.key))
+      .map((o) =>
+        prisma.userPermission.create({
+          data: { userId, permissionId: idFor.get(o.key)!, allow: o.allow },
+        }),
+      ),
+  ]);
+}

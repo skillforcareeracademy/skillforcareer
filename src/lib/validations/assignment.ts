@@ -47,6 +47,8 @@ export const assignmentSchema = z
     type: z.enum(ASSIGNMENT_TYPES).default("FILE"),
     gradingMode: z.enum(ASSIGNMENT_GRADING_MODES).default("MANUAL"),
     maxScore: z.coerce.number().int().min(1).max(1000).default(100),
+    /** Set when the admin typed the total instead of letting the questions set it. */
+    maxScoreManual: z.boolean().default(false),
     dueDate: z.string().regex(DT, "Invalid date/time").optional().or(z.literal("")),
     allowLate: z.boolean().default(false),
     /** Hidden from learners until this moment. Blank = visible straight away. */

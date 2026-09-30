@@ -29,6 +29,8 @@ import { PageHeader } from "@/components/shared/page-header";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import type { PermissionGroup } from "@/server/services/role-service";
+import { UserPermissionsDialog } from "./user-permissions-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
@@ -178,15 +180,22 @@ export function UsersClient({
   query,
   courses = [],
   batches = [],
+  permissionCatalog = [],
+  canManageRoles = false,
 }: {
   users: UserRow[];
   total: number;
   query: ListUsersQuery;
   courses?: { id: string; title: string }[];
   batches?: { id: string; name: string }[];
+  /** Every permission that can be given to one person, grouped for the dialog. */
+  permissionCatalog?: PermissionGroup[];
+  /** Whether the viewer may hand out permissions at all. */
+  canManageRoles?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
+  const [permissionsFor, setPermissionsFor] = useState<string | null>(null);
   const [search, setSearch] = useState(query.search ?? "");
   const [deleting, setDeleting] = useState<UserRow | null>(null);
   const hasFilters = Boolean(
@@ -580,6 +589,13 @@ export function UsersClient({
             <DropdownMenuItem onClick={() => openEdit(u)}>
               <Pencil className="size-4" /> Edit user
             </DropdownMenuItem>
+            {/* One person's own access, beside their role: "sirf shagun ko
+                dena hai". */}
+            {canManageRoles && (
+              <DropdownMenuItem onClick={() => setPermissionsFor(u.id)}>
+                <ShieldCheck className="size-4" /> Permissions
+              </DropdownMenuItem>
+            )}
             {u.role !== ROLES.SUPER_ADMIN && u.role !== ROLES.ADMIN && (
               <DropdownMenuItem
                 onClick={() => impersonate(u)}
@@ -1317,6 +1333,13 @@ export function UsersClient({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <UserPermissionsDialog
+        userId={permissionsFor}
+        catalog={permissionCatalog}
+        open={permissionsFor !== null}
+        onOpenChange={(next) => !next && setPermissionsFor(null)}
+      />
     </div>
   );
 }

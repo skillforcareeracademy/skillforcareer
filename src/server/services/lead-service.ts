@@ -466,6 +466,55 @@ function dayBound(value: string | undefined, end: boolean): Date | undefined {
   return Number.isNaN(d.getTime()) ? undefined : d;
 }
 
+/**
+ * The same population a stat card counted, as a where-clause.
+ *
+ * Clicking a card has to land on exactly the rows behind its number, so the
+ * card and the list read from one definition rather than two that drift. Keep
+ * this in step with `leadStats` — they are the same questions, one asked with
+ * COUNT and one with SELECT.
+ */
+function cardWhere(
+  card: string,
+  viewerId: string | undefined,
+): Prisma.LeadWhereInput | undefined {
+  const today = istDayStart()!;
+  const tomorrow = new Date(today.getTime() + DAY_MS);
+  const open: Prisma.LeadWhereInput = { stage: { in: [...OPEN_LEAD_STAGES] } };
+
+  switch (card) {
+    case "total":
+      return {};
+    case "fresh":
+      return { stage: "FRESH_LEAD" };
+    case "inProgress":
+      return { stage: { in: OPEN_LEAD_STAGES.filter((st) => st !== "FRESH_LEAD") } };
+    case "interested":
+      return { stage: { in: [...INTERESTED_LEAD_STAGES] } };
+    case "converted":
+      return { stage: "CONVERTED" };
+    case "notInterested":
+      return { stage: { in: ["NOT_INTERESTED", "INVALID_LEAD"] } };
+    case "followUpsToday":
+      return { AND: [open, { followUpDate: { gte: today, lt: tomorrow } }] };
+    case "overdue":
+      return { AND: [open, { followUpDate: { lt: today } }] };
+    case "visitsToday":
+      return { AND: [open, { visitDate: { gte: today, lt: tomorrow } }] };
+    case "hot":
+      return { AND: [open, { quality: "HOT" }] };
+    case "unassigned":
+      return { assignedToId: null };
+    case "mine":
+      // Nobody signed in owns nothing, not everything.
+      return { assignedToId: viewerId ?? "" };
+    case "receivedThisWeek":
+      return { leadDate: { gte: new Date(today.getTime() - 6 * DAY_MS) } };
+    default:
+      return undefined; // an unknown card filters nothing away
+  }
+}
+
 function buildWhere(q: LeadFilters): Prisma.LeadWhereInput {
   const and: Prisma.LeadWhereInput[] = [];
   if (q.search) {
@@ -478,6 +527,10 @@ function buildWhere(q: LeadFilters): Prisma.LeadWhereInput {
         { courseInterest: { contains: q.search } },
       ],
     });
+  }
+  if (q.card) {
+    const card = cardWhere(q.card, q.viewerId);
+    if (card) and.push(card);
   }
   if (q.stage) and.push({ stage: q.stage as LeadStage });
   if (q.subStatus) and.push({ subStatus: q.subStatus });

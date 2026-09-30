@@ -7,7 +7,12 @@ import {
   nearMisses,
   type MatchableIntent,
 } from "@/lib/chatbot/match";
-import type { ChatIntentInput } from "@/lib/validations/chatbot";
+import {
+  CHAT_INTENT_CSV_COLUMNS,
+  PATTERN_SEPARATOR,
+  type ChatIntentInput,
+  type ImportIntentsInput,
+} from "@/lib/validations/chatbot";
 import { createLead } from "./lead-service";
 
 /**
@@ -371,6 +376,159 @@ export async function getChatbotBoard(): Promise<ChatbotBoard> {
       answered,
       unanswered: unansweredCount,
     },
+  };
+}
+
+// ── Training sheet ──────────────────────────────────────────────────────
+
+/** Every answer Ami knows, in the columns the importer reads back. */
+export async function intentsForExport(): Promise<{
+  headers: string[];
+  data: (string | number)[][];
+}> {
+  const rows = await prisma.chatIntent.findMany({
+    orderBy: [{ category: "asc" }, { question: "asc" }],
+  });
+  return {
+    headers: [...CHAT_INTENT_CSV_COLUMNS],
+    data: rows.map((r) => [
+      r.question,
+      toPatterns(r.patterns).join(` ${PATTERN_SEPARATOR} `),
+      r.answer,
+      r.category ?? "",
+      r.actionLabel ?? "",
+      r.actionUrl ?? "",
+      r.isSuggested ? "Yes" : "No",
+      r.isActive ? "Yes" : "No",
+    ]),
+  };
+}
+
+export interface ImportIntentsResult {
+  imported: number;
+  updated: number;
+  skipped: number;
+  errors: { row: number; message: string }[];
+  message: string;
+}
+
+const YES = new Set(["yes", "y", "true", "1", "active", "on"]);
+const NO = new Set(["no", "n", "false", "0", "inactive", "off"]);
+
+/** A blank cell keeps whatever the column already meant. */
+function flag(value: string, fallback: boolean): boolean {
+  const v = value.trim().toLowerCase();
+  if (YES.has(v)) return true;
+  if (NO.has(v)) return false;
+  return fallback;
+}
+
+/**
+ * Teach Ami from a spreadsheet.
+ *
+ * Matching is on the question, case- and space-insensitively: re-importing an
+ * edited export updates those answers rather than doubling them, which is what
+ * makes export → edit → import a safe round trip. A bad row is reported and
+ * skipped so the rest of a mostly-good sheet still lands.
+ */
+export async function importIntents(
+  input: ImportIntentsInput,
+): Promise<ImportIntentsResult> {
+  const existing = await prisma.chatIntent.findMany({
+    select: { id: true, question: true, isSuggested: true, isActive: true },
+  });
+  const key = (v: string) => v.trim().toLowerCase().replace(/\s+/g, " ");
+  const byQuestion = new Map(existing.map((r) => [key(r.question), r]));
+
+  const errors: { row: number; message: string }[] = [];
+  let imported = 0;
+  let updated = 0;
+  let skipped = 0;
+
+  for (const [i, row] of input.rows.entries()) {
+    // Row 1 is the header in the file the person is looking at.
+    const lineNo = i + 2;
+    const question = row.question.trim();
+    const answer = row.answer.trim();
+
+    if (!question || !answer) {
+      skipped += 1;
+      errors.push({
+        row: lineNo,
+        message: !question
+          ? "No question in that row."
+          : `"${question}" has no answer.`,
+      });
+      continue;
+    }
+
+    const patterns = row.patterns
+      .split(/[|\n]/)
+      .map((p) => p.trim())
+      .filter(Boolean)
+      .slice(0, 25);
+
+    const data = {
+      question,
+      patterns,
+      answer,
+      category: row.category.trim() || null,
+      actionLabel: row.actionLabel.trim() || null,
+      actionUrl: row.actionUrl.trim() || null,
+    };
+
+    try {
+      const hit = byQuestion.get(key(question));
+      if (hit) {
+        await prisma.chatIntent.update({
+          where: { id: hit.id },
+          data: {
+            ...data,
+            isSuggested: flag(row.isSuggested, hit.isSuggested),
+            isActive: flag(row.isActive, hit.isActive),
+          },
+        });
+        updated += 1;
+      } else {
+        const created = await prisma.chatIntent.create({
+          data: {
+            ...data,
+            isSuggested: flag(row.isSuggested, false),
+            // A new answer goes live unless the sheet says otherwise.
+            isActive: flag(row.isActive, true),
+          },
+          select: {
+            id: true,
+            question: true,
+            isSuggested: true,
+            isActive: true,
+          },
+        });
+        // Guard against a sheet that lists the same question twice — the second
+        // one edits the first rather than creating a duplicate.
+        byQuestion.set(key(question), created);
+        imported += 1;
+      }
+    } catch {
+      skipped += 1;
+      errors.push({ row: lineNo, message: `Couldn't save "${question}".` });
+    }
+  }
+
+  if (imported + updated > 0) invalidateChatbot();
+
+  const parts = [];
+  if (imported) parts.push(`${imported} new`);
+  if (updated) parts.push(`${updated} updated`);
+  if (skipped) parts.push(`${skipped} skipped`);
+  return {
+    imported,
+    updated,
+    skipped,
+    errors: errors.slice(0, 50),
+    message: parts.length
+      ? `Ami has learnt: ${parts.join(", ")}.`
+      : "Nothing to import.",
   };
 }
 

@@ -10,7 +10,9 @@ import {
   MapPin,
   MoreHorizontal,
   Pencil,
+  Download,
   Plus,
+  Upload,
   Trash2,
   Users,
 } from "lucide-react";
@@ -26,6 +28,7 @@ import {
 } from "@/lib/validations/careers";
 import type { HiringPartnerRow, HiringPostRow } from "@/server/services/careers-service";
 import { Button } from "@/components/ui/button";
+import { CareersImportDialog } from "./careers-import-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -90,6 +93,7 @@ export function HiringPartnersPanel({
   onViewCandidates: (partnerId: string) => void;
 }) {
   const router = useRouter();
+  const [importOpen, setImportOpen] = useState(false);
   const [partnerDialog, setPartnerDialog] = useState<{ open: boolean; partner: HiringPartnerRow | null }>({
     open: false,
     partner: null,
@@ -149,9 +153,21 @@ export function HiringPartnersPanel({
             </>
           )}
         </p>
-        <Button onClick={() => setPartnerDialog({ open: true, partner: null })} className="shrink-0">
-          <Plus className="size-4" /> Add hiring partner
-        </Button>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <Button
+            variant="outline"
+            nativeButton={false}
+            render={<a href="/api/admin/careers/hiring-partners/export" download />}
+          >
+            <Download className="size-4" /> Export
+          </Button>
+          <Button variant="outline" onClick={() => setImportOpen(true)}>
+            <Upload className="size-4" /> Import
+          </Button>
+          <Button onClick={() => setPartnerDialog({ open: true, partner: null })}>
+            <Plus className="size-4" /> Add hiring partner
+          </Button>
+        </div>
       </div>
 
       {partners.length === 0 ? (
@@ -401,6 +417,8 @@ export function HiringPartnersPanel({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <CareersImportDialog kind="hiring" open={importOpen} onOpenChange={setImportOpen} />
     </div>
   );
 }

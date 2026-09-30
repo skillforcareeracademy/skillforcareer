@@ -22,6 +22,8 @@ interface RichTextEditorProps {
   onChange: (html: string) => void;
   placeholder?: string;
   className?: string;
+  /** How tall the writing area may grow before it scrolls. */
+  maxHeight?: string;
 }
 
 function ToolbarButton({
@@ -82,6 +84,10 @@ export function RichTextEditor({
   onChange,
   placeholder = "Write something…",
   className,
+  // A long reading — a whole anatomy chapter, say — used to stretch the box past
+  // the bottom of the screen, taking Save with it: "content editor me scroller
+  // lga do". The writing area now stops here and scrolls instead.
+  maxHeight = "60vh",
 }: RichTextEditorProps) {
   const editor = useEditor({
     immediatelyRender: false, // required for Next SSR
@@ -107,8 +113,12 @@ export function RichTextEditor({
     <div className={cn("border-input overflow-hidden rounded-lg border", className)}>
       {editor ? (
         <>
+          {/* The toolbar stays put; only the text below it scrolls, so Bold
+              and Undo are still reachable halfway down a long article. */}
           <Toolbar editor={editor} />
-          <EditorContent editor={editor} />
+          <div className="overflow-y-auto" style={{ maxHeight }}>
+            <EditorContent editor={editor} />
+          </div>
         </>
       ) : (
         <div className="text-muted-foreground min-h-[200px] px-4 py-3 text-sm">

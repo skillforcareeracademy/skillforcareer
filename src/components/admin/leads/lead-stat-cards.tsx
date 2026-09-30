@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
+import { usePathname, useSearchParams } from "next/navigation";
 import {
   CalendarClock,
   CalendarX,
@@ -27,6 +29,7 @@ import {
   DEFAULT_LEAD_STAT_CARDS,
   type LeadStatCard,
 } from "@/lib/validations/lead";
+import { cn } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
@@ -72,6 +75,26 @@ export function LeadStatCards({
 }) {
   const [cards, setCards] = useState<LeadStatCard[]>(initial);
   const [saved, setSaved] = useState<LeadStatCard[]>(initial);
+  const pathname = usePathname();
+  const params = useSearchParams();
+  const active = params.get("card");
+
+  /**
+   * Where a card points. Picking one narrows the list to the rows behind its
+   * number; picking the one already showing puts the whole list back, so the
+   * same tap is both the filter and the way out of it.
+   *
+   * Every other filter is dropped on purpose — a card counts across all leads,
+   * so leaving a stage or an owner in place would show fewer rows than the
+   * number just tapped.
+   */
+  function hrefFor(card: LeadStatCard) {
+    if (card === active) return pathname;
+    const next = new URLSearchParams({ card });
+    const sort = params.get("sort");
+    if (sort) next.set("sort", sort); // their chosen order is theirs to keep
+    return `${pathname}?${next}`;
+  }
 
   function toggle(card: LeadStatCard, on: boolean) {
     setCards((current) =>
@@ -97,8 +120,22 @@ export function LeadStatCards({
     <div className="grid grid-cols-[repeat(auto-fill,minmax(9.5rem,1fr))] gap-3 sm:gap-4">
       {cards.map((key) => {
         const { icon: Icon, tone } = CARD_LOOK[key];
+        const on = key === active;
         return (
-          <Card key={key} title={LEAD_STAT_CARD_HINTS[key]}>
+          <Card
+            key={key}
+            title={LEAD_STAT_CARD_HINTS[key]}
+            className={cn(
+              "hover:border-primary/40 transition-colors",
+              on && "border-primary ring-primary/25 ring-1",
+            )}
+          >
+            <Link
+              href={hrefFor(key)}
+              scroll={false}
+              aria-pressed={on}
+              className="focus-visible:ring-ring/50 block rounded-xl outline-none focus-visible:ring-2"
+            >
             <CardContent className="flex items-center gap-3 py-4">
               <div className="bg-muted grid size-10 shrink-0 place-items-center rounded-lg">
                 <Icon className={`size-5 ${tone}`} />
@@ -114,6 +151,7 @@ export function LeadStatCards({
                 </p>
               </div>
             </CardContent>
+            </Link>
           </Card>
         );
       })}

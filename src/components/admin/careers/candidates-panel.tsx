@@ -5,6 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { formatDistanceToNow } from "date-fns";
 import {
   Download,
+  Upload,
   Eye,
   FileText,
   MapPin,
@@ -38,6 +39,7 @@ import type {
 } from "@/server/services/careers-service";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { Button } from "@/components/ui/button";
+import { CareersImportDialog } from "./careers-import-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -109,6 +111,7 @@ export function CandidatesPanel({
 }) {
   const router = useRouter();
   const pathname = usePathname();
+  const [importOpen, setImportOpen] = useState(false);
   const [search, setSearch] = useState(query.search ?? "");
   const [showFilters, setShowFilters] = useState(
     Boolean(
@@ -452,6 +455,11 @@ export function CandidatesPanel({
               <Button variant="outline" nativeButton={false} render={<a href={exportHref} />}>
                 <Download className="size-4" /> Export
               </Button>
+              {/* The other half of the same ask: a drive's worth of CVs
+                  collected on paper goes back in as a sheet. */}
+              <Button variant="outline" onClick={() => setImportOpen(true)}>
+                <Upload className="size-4" /> Import
+              </Button>
               {hasFilters && (
                 <Button
                   variant="ghost"
@@ -574,6 +582,8 @@ export function CandidatesPanel({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <CareersImportDialog kind="candidate" open={importOpen} onOpenChange={setImportOpen} />
     </div>
   );
 }

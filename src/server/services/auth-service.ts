@@ -92,8 +92,37 @@ interface AuthUserRow {
   permissionKey: string | null;
 }
 
+/** A permission granted to, or taken from, one person directly. */
+interface OverrideRow {
+  permissionKey: string;
+  allow: boolean | number;
+}
+
+/**
+ * Role permissions, plus what this person alone was given, minus what was taken
+ * from them alone.
+ *
+ * A revoke beats a grant on purpose: it is the only way to hold something back
+ * from one person while their colleagues keep it — "sabhi sales agent ko lead
+ * upload karne ka nhi de skta, sirf shagun ko dena hai" read the other way
+ * round.
+ */
+function effectivePermissions(
+  fromRoles: string[],
+  overrides: OverrideRow[],
+): string[] {
+  const set = new Set(fromRoles);
+  // MySQL hands a boolean back as 0/1 through a raw query.
+  for (const o of overrides) if (Boolean(o.allow)) set.add(o.permissionKey);
+  for (const o of overrides) if (!Boolean(o.allow)) set.delete(o.permissionKey);
+  return [...set];
+}
+
 /** Fold the join's one-row-per-permission result into a single user. */
-function foldAuthUser(rows: AuthUserRow[]): AuthUser | null {
+function foldAuthUser(
+  rows: AuthUserRow[],
+  overrides: OverrideRow[] = [],
+): AuthUser | null {
   const first = rows[0];
   if (!first) return null;
   return {
@@ -107,13 +136,19 @@ function foldAuthUser(rows: AuthUserRow[]): AuthUser | null {
     role: first.roleSlug as Role,
     roles: [...new Set([first.roleSlug, ...rows.map((r) => r.extraRoleSlug).filter((k): k is string => k !== null)])] as Role[],
     // One row per (extra role × permission), so the same key can repeat.
-    permissions: [...new Set(rows.map((r) => r.permissionKey).filter((k): k is string => k !== null))],
+    permissions: effectivePermissions(
+      [...new Set(rows.map((r) => r.permissionKey).filter((k): k is string => k !== null))],
+      overrides,
+    ),
   };
 }
 
 async function loadAuthUserById(id: string): Promise<AuthUser | null> {
-  return foldAuthUser(
-    await prisma.$queryRaw<AuthUserRow[]>`
+  // Kept out of the join below on purpose: one row per override there would
+  // multiply against every role permission. The two sets are combined, not
+  // crossed, so they are fetched side by side.
+  const [rows, overrides] = await Promise.all([
+    prisma.$queryRaw<AuthUserRow[]>`
       SELECT u.id, u.name, u.email, u.emailVerified, u.passwordHash,
              u.avatarUrl, u.status, r.slug AS roleSlug, x.slug AS extraRoleSlug,
              p.\`key\` AS permissionKey
@@ -125,12 +160,19 @@ async function loadAuthUserById(id: string): Promise<AuthUser | null> {
       LEFT JOIN \`Permission\` p ON p.id = rp.permissionId
       WHERE u.id = ${id}
     `,
-  );
+    prisma.$queryRaw<OverrideRow[]>`
+      SELECT p.\`key\` AS permissionKey, up.allow AS allow
+      FROM \`UserPermission\` up
+      JOIN \`Permission\` p ON p.id = up.permissionId
+      WHERE up.userId = ${id}
+    `,
+  ]);
+  return foldAuthUser(rows, overrides);
 }
 
 async function loadAuthUserByEmail(email: string): Promise<AuthUser | null> {
-  return foldAuthUser(
-    await prisma.$queryRaw<AuthUserRow[]>`
+  const [rows, overrides] = await Promise.all([
+    prisma.$queryRaw<AuthUserRow[]>`
       SELECT u.id, u.name, u.email, u.emailVerified, u.passwordHash,
              u.avatarUrl, u.status, r.slug AS roleSlug, x.slug AS extraRoleSlug,
              p.\`key\` AS permissionKey
@@ -142,7 +184,15 @@ async function loadAuthUserByEmail(email: string): Promise<AuthUser | null> {
       LEFT JOIN \`Permission\` p ON p.id = rp.permissionId
       WHERE u.email = ${email}
     `,
-  );
+    prisma.$queryRaw<OverrideRow[]>`
+      SELECT p.\`key\` AS permissionKey, up.allow AS allow
+      FROM \`UserPermission\` up
+      JOIN \`User\` u ON u.id = up.userId
+      JOIN \`Permission\` p ON p.id = up.permissionId
+      WHERE u.email = ${email}
+    `,
+  ]);
+  return foldAuthUser(rows, overrides);
 }
 
 function toPublicUser(user: AuthUser): PublicUser {

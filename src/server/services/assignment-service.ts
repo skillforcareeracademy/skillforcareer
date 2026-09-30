@@ -174,6 +174,7 @@ export async function getAssignmentDetail(id: string) {
     description: a.description,
     instructions: a.instructions,
     maxScore: a.maxScore,
+    maxScoreManual: a.maxScoreManual,
     dueDate: a.dueDate ? a.dueDate.toISOString() : null,
     allowLate: a.allowLate,
     courseId: a.courseId,
@@ -272,6 +273,7 @@ function coreData(input: AssignmentInput) {
     // but be explicit here too so a direct service call can't slip past it.
     gradingMode: input.type === "QNA" ? ("MANUAL" as const) : input.gradingMode,
     maxScore: input.maxScore,
+    maxScoreManual: input.maxScoreManual,
     dueDate: toDate(input.dueDate),
     allowLate: input.allowLate,
     releaseAt: toDate(input.releaseAt),
@@ -442,6 +444,9 @@ export async function importAssignments(
           type,
           gradingMode,
           maxScore: row.maxScore,
+          // A spreadsheet total is a starting point, not a decision: a paper
+          // imported with questions still follows their points.
+          maxScoreManual: false,
           dueDate: normaliseDue(row.dueDate),
           allowLate: truthy(row.allowLate),
           // The CSV carries neither, so an imported assignment opens straight
@@ -722,6 +727,14 @@ export async function reorderAssignmentQuestions(
  * grade a learner sees is out of what the paper is actually worth.
  */
 async function syncMaxScore(assignmentId: string): Promise<void> {
+  // A total the admin typed is theirs to keep — adding a question must not
+  // quietly overwrite it. Only papers still on automatic follow the points.
+  const a = await prisma.assignment.findUnique({
+    where: { id: assignmentId },
+    select: { maxScoreManual: true },
+  });
+  if (!a || a.maxScoreManual) return;
+
   const agg = await prisma.assignmentQuestion.aggregate({
     where: { assignmentId },
     _sum: { points: true },

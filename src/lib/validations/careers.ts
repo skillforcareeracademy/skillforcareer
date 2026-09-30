@@ -234,6 +234,88 @@ export const partnerUpdateSchema = partnerSchema.partial();
 export type PartnerInput = z.infer<typeof partnerSchema>;
 export type PartnerUpdateInput = z.infer<typeof partnerUpdateSchema>;
 
+// ── Spreadsheets ───────────────────────────────────────────────────────
+
+/**
+ * "Career me import export ka option for all 3 tabs."
+ *
+ * Every cell arrives as a loose string: these sheets are written by people,
+ * against the partner list they already keep, not against database ids. The
+ * service decides what each value means and reports the rows it could not use.
+ */
+export const importPartnerRowSchema = z.object({
+  name: z.string().trim().max(160).default(""),
+  contactPerson: z.string().trim().max(120).default(""),
+  email: z.string().trim().max(120).default(""),
+  phone: z.string().trim().max(30).default(""),
+  website: z.string().trim().max(300).default(""),
+  city: z.string().trim().max(120).default(""),
+  notes: z.string().trim().max(5000).default(""),
+  isActive: z.string().trim().max(10).default(""),
+});
+
+export const importPartnersSchema = z.object({
+  rows: z.array(importPartnerRowSchema).min(1, "Nothing to import").max(500),
+});
+
+export const importCandidateRowSchema = z.object({
+  name: z.string().trim().max(160).default(""),
+  email: z.string().trim().max(160).default(""),
+  phone: z.string().trim().max(30).default(""),
+  course: z.string().trim().max(200).default(""),
+  batch: z.string().trim().max(60).default(""),
+  jobExpecting: z.string().trim().max(200).default(""),
+  experienceLevel: z.string().trim().max(30).default(""),
+  experienceDetails: z.string().trim().max(2000).default(""),
+  expectedLocation: z.string().trim().max(160).default(""),
+  expectedMode: z.string().trim().max(30).default(""),
+  joiningAvailability: z.string().trim().max(120).default(""),
+  status: z.string().trim().max(40).default(""),
+  placementPartner: z.string().trim().max(160).default(""),
+  hiringPartner: z.string().trim().max(160).default(""),
+  notes: z.string().trim().max(5000).default(""),
+});
+
+export const importCandidatesSchema = z.object({
+  rows: z.array(importCandidateRowSchema).min(1, "Nothing to import").max(1000),
+});
+
+export type ImportPartnerRow = z.infer<typeof importPartnerRowSchema>;
+export type ImportPartnersInput = z.infer<typeof importPartnersSchema>;
+export type ImportCandidateRow = z.infer<typeof importCandidateRowSchema>;
+export type ImportCandidatesInput = z.infer<typeof importCandidatesSchema>;
+
+/** Columns shared by the partner template, its parser and the dialog. */
+export const PARTNER_CSV_COLUMNS = [
+  "Name",
+  "Contact person",
+  "Email",
+  "Phone",
+  "Website",
+  "City",
+  "Active",
+  "Notes",
+] as const;
+
+/** Columns shared by the candidate template, its parser and the dialog. */
+export const CANDIDATE_CSV_COLUMNS = [
+  "Name",
+  "Email",
+  "Phone",
+  "Course",
+  "Batch",
+  "Job expecting",
+  "Fresher / Experienced",
+  "Experience details",
+  "Expected location",
+  "Mode",
+  "Joining availability",
+  "Status",
+  "Placement partner",
+  "Hiring partner",
+  "Notes",
+] as const;
+
 export const hiringPostSchema = z.object({
   title: z.string().trim().min(2, "Enter the job title").max(160),
   level: z.enum(EXPERIENCE_LEVELS),

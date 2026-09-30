@@ -39,11 +39,20 @@ export const EMI_PLAN_LABEL: Record<string, string> = {
   INTEREST: "Interest-based EMI",
 };
 
-export const PAYMENT_METHODS = ["UPI", "ONLINE", "CASH", "EMI"] as const;
+export const PAYMENT_METHODS = [
+  "CASH",
+  "ONLINE",
+  "UPI",
+  "CHEQUE",
+  "BANK_TRANSFER",
+  "EMI",
+] as const;
 export const PAYMENT_METHOD_LABEL: Record<string, string> = {
-  UPI: "UPI",
-  ONLINE: "Online (gateway)",
   CASH: "Cash",
+  ONLINE: "Online (Razorpay)",
+  UPI: "UPI",
+  CHEQUE: "Cheque",
+  BANK_TRANSFER: "Bank transfer",
   EMI: "EMI (installments)",
 };
 

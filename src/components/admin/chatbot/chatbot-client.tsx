@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import {
   Bot,
+  Download,
   GraduationCap,
   HelpCircle,
   Loader2,
@@ -14,11 +15,13 @@ import {
   Search,
   Sparkles,
   Trash2,
+  Upload,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
 import { PageHeader } from "@/components/shared/page-header";
+import { IntentImportDialog } from "./intent-import-dialog";
 import { EmptyState } from "@/components/shared/empty-state";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { Button } from "@/components/ui/button";
@@ -216,6 +219,7 @@ export function ChatbotClient({
     }
   }
 
+  const [importOpen, setImportOpen] = useState(false);
   const canSave = form.question.trim().length >= 3 && form.answer.trim().length >= 2;
 
   return (
@@ -224,9 +228,24 @@ export function ChatbotClient({
         title={`${assistantName} — the site assistant`}
         description="Everything Ami says is something you wrote here. Nothing is generated."
         actions={
-          <Button onClick={() => openNew()}>
-            <Plus className="size-4" /> New answer
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            {/* Export sits next to import on purpose: the sheet you download is
+                the sheet the importer reads, so editing the knowledge base in
+                Excel is a round trip rather than a one-way load. */}
+            <Button
+              variant="outline"
+              nativeButton={false}
+              render={<a href="/api/chatbot/intents/export" download />}
+            >
+              <Download className="size-4" /> Export
+            </Button>
+            <Button variant="outline" onClick={() => setImportOpen(true)}>
+              <Upload className="size-4" /> Import
+            </Button>
+            <Button onClick={() => openNew()}>
+              <Plus className="size-4" /> New answer
+            </Button>
+          </div>
         }
       />
 
@@ -573,6 +592,8 @@ export function ChatbotClient({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <IntentImportDialog open={importOpen} onOpenChange={setImportOpen} />
     </div>
   );
 }

@@ -121,6 +121,14 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
   );
   const submitRef = useRef<() => void>(() => {});
 
+  // The result screen replaces the paper in place, so a learner who submitted
+  // from the last question stayed parked at the bottom of a long page instead
+  // of seeing their score — "submit krne ke baad apne aap top me score board
+  // pr nhi le jaa rha". Take them to it.
+  useEffect(() => {
+    if (result) window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [result]);
+
   // Keep a stable pointer to the latest submit for the timer to call on timeout.
   useEffect(() => {
     submitRef.current = () => {

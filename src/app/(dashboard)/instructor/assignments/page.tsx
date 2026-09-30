@@ -53,6 +53,7 @@ export default async function InstructorAssignmentsPage({
       courses={courses}
       batches={batches}
       students={students}
+      basePath="/instructor/assignments"
       canExport={false}
     />
   );

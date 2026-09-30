@@ -9,7 +9,9 @@ import {
   MoreHorizontal,
   Pencil,
   Phone,
+  Download,
   Plus,
+  Upload,
   Trash2,
   Users,
 } from "lucide-react";
@@ -18,6 +20,7 @@ import { api } from "@/lib/api-client";
 import type { PartnerRow } from "@/server/services/careers-service";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { Button } from "@/components/ui/button";
+import { CareersImportDialog } from "./careers-import-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -86,6 +89,7 @@ export function PlacementPartnersPanel({
   onViewCandidates: (partnerId: string) => void;
 }) {
   const router = useRouter();
+  const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState<PartnerRow | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleting, setDeleting] = useState<PartnerRow | null>(null);
@@ -261,9 +265,21 @@ export function PlacementPartnersPanel({
           Companies that give our candidates placement support. Assign a candidate to one
           from their sheet in Candidates.
         </p>
-        <Button onClick={() => openDialog(null)} className="shrink-0">
-          <Plus className="size-4" /> Add placement partner
-        </Button>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <Button
+            variant="outline"
+            nativeButton={false}
+            render={<a href="/api/admin/careers/placement-partners/export" download />}
+          >
+            <Download className="size-4" /> Export
+          </Button>
+          <Button variant="outline" onClick={() => setImportOpen(true)}>
+            <Upload className="size-4" /> Import
+          </Button>
+          <Button onClick={() => openDialog(null)}>
+            <Plus className="size-4" /> Add placement partner
+          </Button>
+        </div>
       </div>
 
       <DataTable
@@ -302,6 +318,8 @@ export function PlacementPartnersPanel({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <CareersImportDialog kind="placement" open={importOpen} onOpenChange={setImportOpen} />
     </div>
   );
 }

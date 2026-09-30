@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import { requireRole } from "@/lib/auth/require";
-import { ROLES } from "@/config/roles";
+import { ROLES, PERMISSIONS } from "@/config/roles";
 import { prisma } from "@/lib/prisma";
 import { listUsersQuerySchema } from "@/lib/validations/user";
 import { listUsers } from "@/server/services/user-service";
+import { permissionCatalog } from "@/server/services/role-service";
 import { UsersClient } from "@/components/admin/users/users-client";
 
 export const metadata: Metadata = { title: "Users" };
@@ -14,11 +15,13 @@ export default async function UsersPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireRole([ROLES.SUPER_ADMIN, ROLES.ADMIN]);
+  const viewer = await requireRole([ROLES.SUPER_ADMIN, ROLES.ADMIN]);
   const sp = await searchParams;
   const query = listUsersQuerySchema.parse(sp);
 
-  const [{ users, total }, courses, batches] = await Promise.all([
+  // The catalog rides along with the list so the per-person dialog opens
+  // populated rather than fetching a second time on every open.
+  const [{ users, total }, courses, batches, catalog] = await Promise.all([
     listUsers(query),
     prisma.course.findMany({
       select: { id: true, title: true },
@@ -30,6 +33,7 @@ export default async function UsersPage({
       orderBy: { name: "asc" },
       take: 300,
     }),
+    permissionCatalog(),
   ]);
 
   return (
@@ -39,6 +43,8 @@ export default async function UsersPage({
       query={query}
       courses={courses}
       batches={batches}
+      permissionCatalog={catalog}
+      canManageRoles={viewer.permissions.includes(PERMISSIONS.MANAGE_ROLES)}
     />
   );
 }

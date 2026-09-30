@@ -12,6 +12,7 @@ import {
   Loader2,
   Send,
   Upload,
+  UserPlus,
   UserRound,
   X,
 } from "lucide-react";
@@ -29,6 +30,7 @@ import {
   type ExperienceLevel,
   type JobMode,
 } from "@/lib/validations/careers";
+import { ROUTES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -132,6 +134,9 @@ export function CareerApplicationForm({
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState<{ email: string } | null>(null);
   const [prefill, setPrefill] = useState<Prefill | null>(null);
+  // null while we are still asking: the form is held back rather than flashing
+  // a "register first" panel at a learner who is already signed in.
+  const [signedIn, setSignedIn] = useState<boolean | null>(null);
   // PhoneInput seeds itself from its first value only, so a prefilled number
   // arriving after mount needs a fresh instance to show up.
   const [phoneKey, setPhoneKey] = useState(0);
@@ -142,8 +147,14 @@ export function CareerApplicationForm({
     fetch("/api/careers/me")
       .then((res) => (res.ok ? res.json() : null))
       .then((json) => {
-        const data = json?.data as Prefill | null | undefined;
-        if (!alive || !data) return;
+        const envelope = json?.data as
+          | { signedIn: boolean; applicant: Prefill | null }
+          | null
+          | undefined;
+        if (!alive) return;
+        setSignedIn(envelope?.signedIn ?? false);
+        const data = envelope?.applicant;
+        if (!data) return;
         setPrefill(data);
         const first = data.enrolments[0];
         // Only fill what the visitor hasn't already started typing.
@@ -158,7 +169,10 @@ export function CareerApplicationForm({
         if (data.phone) setPhoneKey((k) => k + 1);
       })
       .catch(() => {
-        // Not signed in, or offline — a blank form is fine.
+        // Offline, or the session call failed. Treat it as signed out: the
+        // server checks again on submit, so the worst case is one extra
+        // sign-in, never a CV lost to a silent rejection.
+        if (alive) setSignedIn(false);
       });
     return () => {
       alive = false;
@@ -293,6 +307,40 @@ export function CareerApplicationForm({
         <Button className="mt-6" variant="outline" nativeButton={false} render={<Link href="/careers" />}>
           <ArrowLeft className="size-4" /> Back to careers
         </Button>
+      </div>
+    );
+  }
+
+  // Applying needs an account: "no one can apply for job from outside form
+  // without registration". Sending them back here afterwards matters — a
+  // visitor who registers should land on the form, not on a dashboard.
+  if (signedIn === false) {
+    const next = encodeURIComponent(
+      post ? `/careers/apply?post=${post.id}` : "/careers/apply",
+    );
+    return (
+      <div className="rounded-2xl border p-8 text-center">
+        <div className="bg-muted mx-auto grid size-12 place-items-center rounded-full">
+          <UserPlus className="text-muted-foreground size-6" />
+        </div>
+        <h3 className="mt-4 text-lg font-semibold">Register to apply</h3>
+        <p className="text-muted-foreground mx-auto mt-2 max-w-sm text-sm">
+          Applications come through a Skill For Career account, so you can track
+          where your CV has reached and we know who we are talking to. It takes
+          a minute.
+        </p>
+        <div className="mt-6 flex flex-wrap justify-center gap-2">
+          <Button nativeButton={false} render={<Link href={`${ROUTES.register}?next=${next}`} />}>
+            Create an account
+          </Button>
+          <Button
+            variant="outline"
+            nativeButton={false}
+            render={<Link href={`${ROUTES.login}?next=${next}`} />}
+          >
+            I already have one
+          </Button>
+        </div>
       </div>
     );
   }

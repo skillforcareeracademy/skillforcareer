@@ -18,8 +18,10 @@ import {
   Eye,
   Users,
   Award,
+  FolderTree,
   ListChecks,
 } from "lucide-react";
+import Link from "next/link";
 import { toast } from "sonner";
 import { GroupField } from "@/components/admin/groups/group-field";
 import { api, ApiError } from "@/lib/api-client";
@@ -85,6 +87,7 @@ interface AssignmentRow {
   batchNames: string[];
   createdByName: string;
   maxScore: number;
+  maxScoreManual?: boolean;
   dueDate: string | null;
   isOverdue: boolean;
   allowLate: boolean;
@@ -145,6 +148,7 @@ interface FormState {
   type: string;
   gradingMode: string;
   maxScore: string;
+  maxScoreManual: boolean;
   dueDate: string;
   allowLate: boolean;
   releaseAt: string;
@@ -160,6 +164,7 @@ const EMPTY: FormState = {
   type: "FILE",
   gradingMode: "MANUAL",
   maxScore: "100",
+  maxScoreManual: false,
   dueDate: "",
   allowLate: false,
   releaseAt: "",
@@ -181,6 +186,7 @@ function fromRow(a: AssignmentRow): FormState {
     type: a.type,
     gradingMode: a.gradingMode,
     maxScore: String(a.maxScore),
+    maxScoreManual: a.maxScoreManual ?? false,
     dueDate: a.dueDate ? toLocalInput(a.dueDate) : "",
     allowLate: a.allowLate,
     releaseAt: a.releaseAt ? toLocalInput(a.releaseAt) : "",
@@ -198,6 +204,7 @@ export function AssignmentsClient({
   courses,
   batches,
   students,
+  basePath = "/admin/assignments",
   canExport = true,
 }: {
   assignments: AssignmentRow[];
@@ -208,6 +215,8 @@ export function AssignmentsClient({
   batches: BatchOpt[];
   students: StudentOpt[];
   /** Instructors may import a question paper but not download the answer key. */
+  /** Where this copy lives, so its links stay inside admin or instructor. */
+  basePath?: string;
   canExport?: boolean;
 }) {
   const router = useRouter();
@@ -331,6 +340,7 @@ export function AssignmentsClient({
       type: form.type,
       gradingMode: form.gradingMode,
       maxScore: Number(form.maxScore) || 100,
+      maxScoreManual: form.maxScoreManual,
       dueDate: form.dueDate || undefined,
       allowLate: form.allowLate,
       releaseAt: form.releaseAt || undefined,
@@ -532,6 +542,16 @@ export function AssignmentsClient({
         description="Create assignments, track submissions and grade your learners."
         actions={
           <div className="flex flex-wrap gap-2">
+            {/* The folders existed and had no door: "assignment me grouping ka
+                option nhi hai". Quizzes and study material both carry this
+                button; assignments never did. */}
+            <Button
+              variant="outline"
+              nativeButton={false}
+              render={<Link href={`${basePath.replace("/assignments", "")}/groups/assignment`} />}
+            >
+              <FolderTree className="size-4" /> Groups
+            </Button>
             <Button variant="outline" onClick={() => setImportOpen(true)}>
               <Upload className="size-4" /> Bulk upload
             </Button>
@@ -829,8 +849,13 @@ export function AssignmentsClient({
               </p>
             )}
 
-            {/* Folders, so a whole set can be handed to a batch at once. */}
-            {editing && <GroupField kind="ASSIGNMENT" itemId={editing.id} />}
+            {/* Folders, so a whole set can be handed to a batch at once. On a
+                new assignment this says "save it first" rather than hiding,
+                which is what made grouping look missing. */}
+            <div className="space-y-1.5">
+              <Label>Groups</Label>
+              <GroupField kind="ASSIGNMENT" itemId={editing?.id ?? null} label="" />
+            </div>
 
             {/* Who it's set for. Nothing chosen = the whole course, which is how
                 assignments behaved before cohorts could be named. */}
@@ -860,29 +885,62 @@ export function AssignmentsClient({
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <Label htmlFor="a-max">Max score</Label>
+                <div className="flex items-center justify-between gap-2">
+                  <Label htmlFor="a-max">Max score</Label>
+                  {/* A question paper sets its own total, but the academy
+                      sometimes marks it out of something else — so the number
+                      can be taken over by hand, and handed back. */}
+                  {form.type !== "FILE" && (
+                    <button
+                      type="button"
+                      className="text-primary text-xs font-medium hover:underline"
+                      onClick={() => set("maxScoreManual", !form.maxScoreManual)}
+                    >
+                      {form.maxScoreManual ? "Use questions’ total" : "Edit"}
+                    </button>
+                  )}
+                </div>
                 <Input
                   id="a-max"
                   type="number"
                   min={1}
                   value={form.maxScore}
                   onChange={(e) => set("maxScore", e.target.value)}
-                  disabled={form.type !== "FILE"}
+                  disabled={form.type !== "FILE" && !form.maxScoreManual}
                 />
                 {form.type !== "FILE" && (
                   <p className="text-muted-foreground text-xs">
-                    Set from the questions&apos; total points.
+                    {form.maxScoreManual
+                      ? "Set by hand. Adding questions won’t change it."
+                      : "Set from the questions’ total points."}
                   </p>
                 )}
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="a-due">Due date</Label>
+                <div className="flex items-center justify-between gap-2">
+                  <Label htmlFor="a-due">Due date</Label>
+                  {/* iPadOS opens its own calendar here and never gives the date
+                      back — "select kr do phir hat ti nhi hai". This clears it
+                      on every device. */}
+                  {form.dueDate && (
+                    <button
+                      type="button"
+                      className="text-primary text-xs font-medium hover:underline"
+                      onClick={() => set("dueDate", "")}
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
                 <Input
                   id="a-due"
                   type="datetime-local"
                   value={form.dueDate}
                   onChange={(e) => set("dueDate", e.target.value)}
                 />
+                <p className="text-muted-foreground text-xs">
+                  Blank means no deadline.
+                </p>
               </div>
             </div>
 
@@ -890,7 +948,18 @@ export function AssignmentsClient({
                 assignment ek saath nhi denge". */}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label htmlFor="a-rel">Opens on</Label>
+                <div className="flex items-center justify-between gap-2">
+                  <Label htmlFor="a-rel">Opens on</Label>
+                  {form.releaseAt && (
+                    <button
+                      type="button"
+                      className="text-primary text-xs font-medium hover:underline"
+                      onClick={() => set("releaseAt", "")}
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
                 <Input
                   id="a-rel"
                   type="datetime-local"

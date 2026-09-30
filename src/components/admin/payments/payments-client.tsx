@@ -31,6 +31,7 @@ import { PaymentAccountsDialog } from "@/components/admin/payments/payment-accou
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
+import { SearchSelect } from "@/components/shared/search-select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -568,38 +569,31 @@ export function PaymentsClient({
           <form onSubmit={onRecord} className="space-y-4">
             <div className="space-y-1.5">
               <Label>Learner</Label>
-              <Select value={form.userId} onValueChange={(v) => set("userId", v ?? "")}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Choose a learner">
-                    {(v) => users.find((u) => u.id === v)?.name ?? "Choose a learner"}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {users.map((u) => (
-                    <SelectItem key={u.id} value={u.id}>
-                      {u.name} · {u.email}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {/* Searchable rather than a scroll: "leaner search krne ka option
+                  kyuki zyada learner honge to dikkat hogi". Finds by email too,
+                  since two learners often share a name. */}
+              <SearchSelect
+                ariaLabel="Learner"
+                options={users.map((u) => ({ id: u.id, label: u.name, hint: u.email }))}
+                value={form.userId || null}
+                onChange={(id) => set("userId", id ?? "")}
+                placeholder="Choose a learner"
+                searchPlaceholder="Search by name or email…"
+                emptyLabel="No learner matches that."
+              />
             </div>
             <div className="space-y-1.5">
               <Label>Course (optional)</Label>
-              <Select value={form.courseId || NONE} onValueChange={(v) => set("courseId", v === NONE ? "" : (v ?? ""))}>
-                <SelectTrigger className="w-full">
-                  <SelectValue>
-                    {(v) => (!v || v === NONE ? "None" : (courses.find((c) => c.id === v)?.title ?? "None"))}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NONE}>None</SelectItem>
-                  {courses.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.title}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchSelect
+                ariaLabel="Course"
+                options={courses.map((c) => ({ id: c.id, label: c.title }))}
+                value={form.courseId || null}
+                onChange={(id) => set("courseId", id ?? "")}
+                placeholder="None"
+                clearLabel="None"
+                searchPlaceholder="Search courses…"
+                emptyLabel="No course matches that."
+              />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">

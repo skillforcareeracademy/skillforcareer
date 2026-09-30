@@ -142,6 +142,10 @@ enum PaymentMethod {
   UPI
   ONLINE
   CASH
+  /// Asked for by name alongside the rest: "Payment Method: Cash,
+  /// Online(from Razorpay ), UPI, Cheque, Bank Transfer".
+  CHEQUE
+  BANK_TRANSFER
   EMI
 }
 
@@ -412,6 +416,7 @@ model User {
   recordingViews       RecordingView[]        @relation("RecordingViewUser")
   recordingDevices     RecordingDevice[]      @relation("RecordingDeviceUser")
   extraRoles           UserRole[]             @relation("UserExtraRoles")
+  extraPermissions     UserPermission[]
   batchesAssisted      BatchInstructor[]      @relation("BatchAssociate")
   batchNotes           BatchNote[]            @relation("BatchNoteAuthor")
   noteReads            NoteRead[]             @relation("NoteReader")
@@ -868,6 +873,34 @@ model Permission {
   createdAt DateTime @default(now())
 
   roles RolePermission[]
+  users UserPermission[]
+}
+
+/// One permission granted to, or taken from, a single person.
+///
+/// "Individual user based permissions bhi dene ka option hona chahiye. Jaise
+/// shagun sales agent hai to mai sabhi sales agent ko lead upload karne ka nhi
+/// de skta. Sirf shagun ko dena hai." Roles answer "what may a sales agent do";
+/// this answers "what may *this* sales agent do", without inventing a role for
+/// one person.
+///
+/// `allow = false` is a revoke, and it wins over the role: it is the only way
+/// to take something back from one person while their colleagues keep it.
+model UserPermission {
+  id           String  @id @default(cuid())
+  userId       String
+  permissionId String
+  allow        Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([userId, permissionId])
+  @@index([userId])
+  @@index([permissionId])
 }
 
 model RolePermission {
@@ -1347,6 +1380,11 @@ model Assignment {
   type         AssignmentType @default(FILE)
   gradingMode  GradingMode    @default(MANUAL)
   maxScore     Int            @default(100)
+  /// True once someone types the total themselves. A paper with questions
+  /// normally keeps `maxScore` equal to their points; this stops that sync so
+  /// an admin can mark a 50-question paper out of 100 ("score automatic le rha
+  /// hai, manual option hona chahiye edit krne ka").
+  maxScoreManual Boolean      @default(false)
   dueDate      DateTime?
   allowLate    Boolean        @default(false)
 

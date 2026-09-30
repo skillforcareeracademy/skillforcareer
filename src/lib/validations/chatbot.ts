@@ -33,5 +33,46 @@ export const askSchema = z.object({
   sessionId: z.string().trim().min(6).max(64),
 });
 
+/**
+ * A row of the training sheet.
+ *
+ * "AI train krne ke liye questions import export ka option de do" — teaching
+ * Ami one dialog at a time is the slow part, and an academy's FAQ already
+ * exists as a document. Everything is a loose string here: the sheet is written
+ * by a person, and the service is what makes sense of it.
+ */
+export const importIntentRowSchema = z.object({
+  question: z.string().trim().max(300).default(""),
+  patterns: z.string().trim().max(2000).default(""),
+  answer: z.string().trim().max(2000).default(""),
+  category: z.string().trim().max(40).default(""),
+  actionLabel: z.string().trim().max(40).default(""),
+  actionUrl: z.string().trim().max(500).default(""),
+  isSuggested: z.string().trim().max(10).default(""),
+  isActive: z.string().trim().max(10).default(""),
+});
+
+export const importIntentsSchema = z.object({
+  rows: z.array(importIntentRowSchema).min(1, "Nothing to import").max(500),
+});
+
+export type ImportIntentRow = z.infer<typeof importIntentRowSchema>;
+export type ImportIntentsInput = z.infer<typeof importIntentsSchema>;
+
+/** The sheet's columns, shared by the template, the parser and the dialog. */
+export const CHAT_INTENT_CSV_COLUMNS = [
+  "Question",
+  "Patterns",
+  "Answer",
+  "Category",
+  "Action label",
+  "Action URL",
+  "Suggested",
+  "Active",
+] as const;
+
+/** Patterns travel as one cell — a pipe keeps commas usable inside a phrase. */
+export const PATTERN_SEPARATOR = "|";
+
 export type ChatIntentInput = z.infer<typeof chatIntentSchema>;
 export type AskInput = z.infer<typeof askSchema>;

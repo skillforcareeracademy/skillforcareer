@@ -28,8 +28,13 @@ import {
   type HiringPostUpdateInput,
   type JobApplicationInput,
   type JobMode,
+  type ImportCandidatesInput,
+  type ImportPartnersInput,
   type PartnerInput,
   type PartnerUpdateInput,
+  CANDIDATE_CSV_COLUMNS,
+  EXPERIENCE_LEVELS,
+  PARTNER_CSV_COLUMNS,
 } from "@/lib/validations/careers";
 import { logActivity } from "./activity-service";
 import { notify, staffUserIds } from "./notification-service";
@@ -863,6 +868,321 @@ export async function candidatesForExport(q: CandidateFilters): Promise<{
 }
 
 /** Every course, for the admin course filter — CVs can name unpublished ones. */
+// ── Partner and candidate spreadsheets ───────────────────────────────────────
+
+export interface ImportResult {
+  imported: number;
+  updated: number;
+  skipped: number;
+  errors: { row: number; message: string }[];
+  message: string;
+}
+
+const YES = new Set(["yes", "y", "true", "1", "active", "on"]);
+const NO = new Set(["no", "n", "false", "0", "inactive", "off"]);
+
+/** A blank cell keeps whatever the column already meant. */
+function flag(value: string, fallback: boolean): boolean {
+  const v = value.trim().toLowerCase();
+  if (YES.has(v)) return true;
+  if (NO.has(v)) return false;
+  return fallback;
+}
+
+/** Loose match on a label or a code: "Not placed", "NOT_PLACED" and "not placed". */
+function matchEnum<T extends string>(
+  value: string,
+  values: readonly T[],
+  labels: Record<T, string>,
+): T | undefined {
+  const v = value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]+/g, " ");
+  if (!v) return undefined;
+  return values.find(
+    (candidate) =>
+      candidate.toLowerCase().replace(/[\s_-]+/g, " ") === v ||
+      labels[candidate].toLowerCase() === v,
+  );
+}
+
+function summarise(
+  imported: number,
+  updated: number,
+  skipped: number,
+  noun: string,
+) {
+  const parts = [];
+  if (imported) parts.push(`${imported} new`);
+  if (updated) parts.push(`${updated} updated`);
+  if (skipped) parts.push(`${skipped} skipped`);
+  return parts.length ? `${noun}: ${parts.join(", ")}.` : "Nothing to import.";
+}
+
+type PartnerKind = "placement" | "hiring";
+
+/** One partner list as a spreadsheet, in the columns the importer reads back. */
+export async function partnersForExport(kind: PartnerKind): Promise<{
+  headers: string[];
+  data: (string | number)[][];
+}> {
+  const rows =
+    kind === "placement"
+      ? await prisma.placementPartner.findMany({ orderBy: { name: "asc" } })
+      : await prisma.hiringPartner.findMany({ orderBy: { name: "asc" } });
+
+  return {
+    headers: [...PARTNER_CSV_COLUMNS],
+    data: rows.map((r) => [
+      r.name,
+      r.contactPerson ?? "",
+      r.email ?? "",
+      r.phone ?? "",
+      r.website ?? "",
+      r.city ?? "",
+      r.isActive ? "Yes" : "No",
+      r.notes ?? "",
+    ]),
+  };
+}
+
+/**
+ * Load a partner list from a spreadsheet.
+ *
+ * Matched on the name, case-insensitively, so re-importing an edited export
+ * updates those partners rather than doubling the list — an academy's partner
+ * list lives in a sheet long before it lives here.
+ */
+export async function importPartners(
+  kind: PartnerKind,
+  input: ImportPartnersInput,
+): Promise<ImportResult> {
+  // The two tables have the same shape but not the same type, so each call is
+  // made against one of them rather than through a shared handle.
+  const select = { id: true, name: true, isActive: true } as const;
+  const existing =
+    kind === "placement"
+      ? await prisma.placementPartner.findMany({ select })
+      : await prisma.hiringPartner.findMany({ select });
+  const key = (v: string) => v.trim().toLowerCase().replace(/\s+/g, " ");
+  const byName = new Map(existing.map((r) => [key(r.name), r]));
+
+  const errors: { row: number; message: string }[] = [];
+  let imported = 0;
+  let updated = 0;
+  let skipped = 0;
+
+  for (const [i, row] of input.rows.entries()) {
+    const lineNo = i + 2; // row 1 is the header in the file they are looking at
+    const name = row.name.trim();
+    if (!name) {
+      skipped += 1;
+      errors.push({ row: lineNo, message: "No name in that row." });
+      continue;
+    }
+
+    const data = {
+      name,
+      contactPerson: row.contactPerson.trim() || null,
+      email: row.email.trim() || null,
+      phone: row.phone.trim() || null,
+      website: row.website.trim() || null,
+      city: row.city.trim() || null,
+      notes: row.notes.trim() || null,
+    };
+
+    try {
+      const hit = byName.get(key(name));
+      if (hit) {
+        const next = { ...data, isActive: flag(row.isActive, hit.isActive) };
+        if (kind === "placement") {
+          await prisma.placementPartner.update({
+            where: { id: hit.id },
+            data: next,
+          });
+        } else {
+          await prisma.hiringPartner.update({
+            where: { id: hit.id },
+            data: next,
+          });
+        }
+        updated += 1;
+      } else {
+        const next = { ...data, isActive: flag(row.isActive, true) };
+        const created =
+          kind === "placement"
+            ? await prisma.placementPartner.create({ data: next, select })
+            : await prisma.hiringPartner.create({ data: next, select });
+        // A sheet that lists the same partner twice edits it, never doubles it.
+        byName.set(key(name), created);
+        imported += 1;
+      }
+    } catch {
+      skipped += 1;
+      errors.push({ row: lineNo, message: `Couldn't save "${name}".` });
+    }
+  }
+
+  // Hiring partners show on the public roles list, the one thing here that is
+  // cached — the same clear `updateHiringPartner` does.
+  if (kind === "hiring" && imported + updated > 0) clearMemo(OPEN_ROLES_MEMO);
+
+  return {
+    imported,
+    updated,
+    skipped,
+    errors: errors.slice(0, 50),
+    message: summarise(imported, updated, skipped, "Partners"),
+  };
+}
+
+/**
+ * Load candidates from a spreadsheet — the CVs an academy collected at a drive
+ * or over WhatsApp, which never went through the careers form.
+ *
+ * Matched on email so a re-import updates rather than duplicates. Courses and
+ * partners are matched by name: the sheet is written against what the academy
+ * calls them, not against ids. A row naming a partner nobody has added yet is
+ * still imported, with that cell reported — losing a CV over a spelling would
+ * be the worse failure.
+ */
+export async function importCandidates(
+  input: ImportCandidatesInput,
+): Promise<ImportResult> {
+  const [courses, placement, hiring, existing] = await Promise.all([
+    prisma.course.findMany({ select: { id: true, title: true } }),
+    prisma.placementPartner.findMany({ select: { id: true, name: true } }),
+    prisma.hiringPartner.findMany({ select: { id: true, name: true } }),
+    prisma.jobApplication.findMany({ select: { id: true, email: true } }),
+  ]);
+
+  const key = (v: string) => v.trim().toLowerCase().replace(/\s+/g, " ");
+  const courseByName = new Map(courses.map((c) => [key(c.title), c]));
+  const placementByName = new Map(placement.map((p) => [key(p.name), p.id]));
+  const hiringByName = new Map(hiring.map((p) => [key(p.name), p.id]));
+  const byEmail = new Map(existing.map((r) => [key(r.email), r.id]));
+
+  const errors: { row: number; message: string }[] = [];
+  let imported = 0;
+  let updated = 0;
+  let skipped = 0;
+
+  for (const [i, row] of input.rows.entries()) {
+    const lineNo = i + 2;
+    const name = row.name.trim();
+    const email = row.email.trim();
+    const phone = row.phone.trim();
+
+    // These three are what makes a candidate contactable; without them the row
+    // is a note, not a candidate.
+    if (!name || !email || !phone) {
+      skipped += 1;
+      errors.push({
+        row: lineNo,
+        message: `${name || "That row"} needs a name, an email and a phone number.`,
+      });
+      continue;
+    }
+
+    const course = row.course.trim()
+      ? courseByName.get(key(row.course))
+      : undefined;
+    if (row.course.trim() && !course) {
+      errors.push({
+        row: lineNo,
+        message: `No course called "${row.course.trim()}" — imported without one.`,
+      });
+    }
+
+    const placementPartnerId = row.placementPartner.trim()
+      ? placementByName.get(key(row.placementPartner))
+      : undefined;
+    if (row.placementPartner.trim() && !placementPartnerId) {
+      errors.push({
+        row: lineNo,
+        message: `No placement partner called "${row.placementPartner.trim()}".`,
+      });
+    }
+
+    const hiringPartnerId = row.hiringPartner.trim()
+      ? hiringByName.get(key(row.hiringPartner))
+      : undefined;
+    if (row.hiringPartner.trim() && !hiringPartnerId) {
+      errors.push({
+        row: lineNo,
+        message: `No hiring partner called "${row.hiringPartner.trim()}".`,
+      });
+    }
+
+    const status = matchEnum(
+      row.status,
+      CANDIDATE_STATUSES,
+      CANDIDATE_STATUS_LABELS,
+    );
+    const level = matchEnum(
+      row.experienceLevel,
+      EXPERIENCE_LEVELS,
+      EXPERIENCE_LEVEL_LABELS,
+    );
+    const mode = matchEnum(row.expectedMode, JOB_MODES, JOB_MODE_LABELS);
+
+    const data = {
+      name,
+      email,
+      phone,
+      courseId: course?.id ?? null,
+      courseName: course?.title ?? (row.course.trim() || null),
+      batchCode: row.batch.trim() || null,
+      jobExpecting: row.jobExpecting.trim() || null,
+      experienceLevel: level ?? ("FRESHER" as const),
+      experienceDetails: row.experienceDetails.trim() || null,
+      expectedLocation: row.expectedLocation.trim() || null,
+      expectedMode: mode ?? null,
+      joiningAvailability: row.joiningAvailability.trim() || null,
+      placementPartnerId: placementPartnerId ?? null,
+      hiringPartnerId: hiringPartnerId ?? null,
+      adminNotes: row.notes.trim() || null,
+    };
+
+    try {
+      const hit = byEmail.get(key(email));
+      if (hit) {
+        await prisma.jobApplication.update({
+          where: { id: hit },
+          // Status is only moved when the sheet says so: an import must not
+          // knock a placed candidate back to New.
+          data: status ? { ...data, status } : data,
+        });
+        updated += 1;
+      } else {
+        const created = await prisma.jobApplication.create({
+          data: { ...data, status: status ?? "NEW" },
+          select: { id: true, email: true },
+        });
+        byEmail.set(key(email), created.id);
+        imported += 1;
+      }
+    } catch {
+      skipped += 1;
+      errors.push({ row: lineNo, message: `Couldn't save "${name}".` });
+    }
+  }
+
+  return {
+    imported,
+    updated,
+    skipped,
+    errors: errors.slice(0, 50),
+    message: summarise(imported, updated, skipped, "Candidates"),
+  };
+}
+
+export const CAREERS_CSV = {
+  partner: PARTNER_CSV_COLUMNS,
+  candidate: CANDIDATE_CSV_COLUMNS,
+};
+
 export async function listCandidateCourses(): Promise<CourseOption[]> {
   return prisma.course.findMany({
     select: { id: true, title: true },

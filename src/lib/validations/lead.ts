@@ -491,6 +491,9 @@ export const removeDuplicatesSchema = z.object({
  */
 export const LEAD_FILTER_KEYS = [
   "search",
+  /** A stat card the counsellor clicked. Filters the list to exactly what that
+   *  card counted — "ye clickable hone chahiye data cards". */
+  "card",
   "stage",
   "subStatus",
   "source",
