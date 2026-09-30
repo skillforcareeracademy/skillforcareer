@@ -161,7 +161,13 @@ export function CategoryDialog({
                 onValueChange={(v) => setValue("parentId", !v || v === NONE ? "" : v)}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="None" />
+                  <SelectValue placeholder="None">
+                    {(v) =>
+                      !v || v === NONE
+                        ? "None"
+                        : (parentOptions.find((p) => p.id === v)?.name ?? "None")
+                    }
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={NONE}>None</SelectItem>

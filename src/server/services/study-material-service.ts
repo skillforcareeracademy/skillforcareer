@@ -3,6 +3,13 @@ import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
 import { toCsv, parseCsv } from "@/lib/csv";
 import type { StudyMaterialInput } from "@/lib/validations/study-material";
+import {
+  groupOptions,
+  groupsOfMany,
+  itemsInGroups,
+  setGroupsFor,
+  forgetItem,
+} from "./content-group-service";
 
 /**
  * Study material — the reading a course sets, and what a learner does with it.
@@ -25,13 +32,27 @@ export interface MaterialRow {
   description: string | null;
   courseId: string | null;
   courseTitle: string | null;
+  /** Every course it is set for, the primary one included. */
+  courseIds: string[];
+  courseTitles: string[];
   categoryId: string | null;
   categoryName: string | null;
   subCategoryId: string | null;
   subCategoryName: string | null;
+  /** The folders it is filed in, from the shared group system. */
+  groupIds: string[];
+  groupPaths: string[];
   fileUrl: string | null;
   fileName: string | null;
   mimeType: string | null;
+  /** Everything else attached: more files, images, videos, links. */
+  assets: {
+    id: string;
+    kind: string;
+    url: string;
+    name: string | null;
+    mimeType: string | null;
+  }[];
   hasBody: boolean;
   downloadsEnabled: boolean;
   isPublished: boolean;
@@ -68,13 +89,32 @@ const SELECT = {
   subCategory: { select: { name: true } },
   createdBy: { select: { name: true } },
   batches: { select: { batchId: true, batch: { select: { name: true } } } },
+  courses: { select: { courseId: true, course: { select: { title: true } } } },
   students: { select: { userId: true } },
+  assets: {
+    orderBy: { order: "asc" as const },
+    select: { id: true, kind: true, url: true, name: true, mimeType: true },
+  },
 };
 
 type Row = Prisma.StudyMaterialGetPayload<{ select: typeof SELECT }>;
 
-function toRow(m: Row, reads: Map<string, { readers: number; seconds: number }>): MaterialRow {
+function toRow(
+  m: Row,
+  reads: Map<string, { readers: number; seconds: number }>,
+  groups?: Map<string, { ids: string[]; paths: string[] }>,
+): MaterialRow {
   const r = reads.get(m.id);
+  const g = groups?.get(m.id);
+  // The primary course first, then the rest — the list reads better that way.
+  const courseIds = [
+    ...(m.courseId ? [m.courseId] : []),
+    ...m.courses.map((c) => c.courseId).filter((id) => id !== m.courseId),
+  ];
+  const courseTitles = [
+    ...(m.course?.title ? [m.course.title] : []),
+    ...m.courses.filter((c) => c.courseId !== m.courseId).map((c) => c.course.title),
+  ];
   return {
     id: m.id,
     number: m.number,
@@ -83,13 +123,24 @@ function toRow(m: Row, reads: Map<string, { readers: number; seconds: number }>)
     description: m.description,
     courseId: m.courseId,
     courseTitle: m.course?.title ?? null,
+    courseIds,
+    courseTitles,
     categoryId: m.categoryId,
     categoryName: m.category?.name ?? null,
     subCategoryId: m.subCategoryId,
     subCategoryName: m.subCategory?.name ?? null,
+    groupIds: g?.ids ?? [],
+    groupPaths: g?.paths ?? [],
     fileUrl: m.fileUrl,
     fileName: m.fileName,
     mimeType: m.mimeType,
+    assets: m.assets.map((a) => ({
+      id: a.id,
+      kind: a.kind,
+      url: a.url,
+      name: a.name,
+      mimeType: a.mimeType,
+    })),
     hasBody: Boolean(m.body && m.body.trim()),
     downloadsEnabled: m.downloadsEnabled,
     isPublished: m.isPublished,
@@ -138,7 +189,12 @@ export interface MaterialListQuery {
   search?: string;
   categoryId?: string;
   subCategoryId?: string;
+  /** Any of its courses, primary or otherwise. */
   courseId?: string;
+  /** Set for this cohort, by name or through a folder it has been given. */
+  batchId?: string;
+  /** Filed in this folder, or any folder beneath it. */
+  groupId?: string;
   published?: "yes" | "no";
   /** Newest first, or the academy's own order. */
   sort?: "sequence" | "newest" | "title" | "reads";
@@ -148,13 +204,26 @@ export async function listMaterials(
   q: MaterialListQuery = {},
   ownerId?: string,
 ): Promise<MaterialRow[]> {
+  // A folder filter reaches everything beneath it too.
+  const inGroup = q.groupId ? await itemsInGroups("MATERIAL", [q.groupId]) : null;
+
   const where: Prisma.StudyMaterialWhereInput = {
     AND: [
       ownerScope(ownerId),
       q.search ? { title: { contains: q.search } } : {},
       q.categoryId ? { categoryId: q.categoryId } : {},
       q.subCategoryId ? { subCategoryId: q.subCategoryId } : {},
-      q.courseId ? { courseId: q.courseId } : {},
+      // Either the primary course or one of the extra ones.
+      q.courseId
+        ? {
+            OR: [
+              { courseId: q.courseId },
+              { courses: { some: { courseId: q.courseId } } },
+            ],
+          }
+        : {},
+      q.batchId ? { batches: { some: { batchId: q.batchId } } } : {},
+      inGroup ? { id: { in: inGroup } } : {},
       q.published === "yes" ? { isPublished: true } : {},
       q.published === "no" ? { isPublished: false } : {},
     ],
@@ -170,8 +239,9 @@ export async function listMaterials(
     take: 500,
     select: SELECT,
   });
-  const reads = await readTotals(rows.map((r) => r.id));
-  const list = rows.map((m) => toRow(m, reads));
+  const ids = rows.map((r) => r.id);
+  const [reads, groups] = await Promise.all([readTotals(ids), groupPathsFor(ids)]);
+  const list = rows.map((m) => toRow(m, reads, groups));
   // Sorting by how much it has been read has to happen after the totals are in.
   return q.sort === "reads" ? list.sort((a, b) => b.readSeconds - a.readSeconds) : list;
 }
@@ -179,8 +249,26 @@ export async function listMaterials(
 export async function getMaterial(id: string): Promise<(MaterialRow & { body: string | null }) | null> {
   const m = await prisma.studyMaterial.findUnique({ where: { id }, select: SELECT });
   if (!m) return null;
-  const reads = await readTotals([m.id]);
-  return { ...toRow(m, reads), body: m.body };
+  const [reads, groups] = await Promise.all([readTotals([m.id]), groupPathsFor([m.id])]);
+  return { ...toRow(m, reads, groups), body: m.body };
+}
+
+/** Which folders each piece sits in, with their full paths, in one read. */
+async function groupPathsFor(ids: string[]) {
+  const out = new Map<string, { ids: string[]; paths: string[] }>();
+  if (ids.length === 0) return out;
+  const [membership, options] = await Promise.all([
+    groupsOfMany("MATERIAL", ids),
+    groupOptions("MATERIAL"),
+  ]);
+  const pathOf = new Map(options.map((o) => [o.id, o.path]));
+  for (const [itemId, groupIds] of membership) {
+    out.set(itemId, {
+      ids: groupIds,
+      paths: groupIds.map((g) => pathOf.get(g) ?? "").filter(Boolean),
+    });
+  }
+  return out;
 }
 
 export interface MaterialStats {
@@ -236,9 +324,24 @@ async function nextSequence(
 }
 
 function audienceData(input: StudyMaterialInput) {
+  const primary = blank(input.courseId);
+  // The primary course is stored on the row; the join carries every course it
+  // is set for, that one included, so a filter only has one place to look.
+  const courseIds = [...new Set([...(primary ? [primary] : []), ...(input.courseIds ?? [])])];
   return {
     batches: { create: (input.batchIds ?? []).map((batchId) => ({ batchId })) },
+    courses: { create: courseIds.map((courseId) => ({ courseId })) },
     students: { create: (input.studentIds ?? []).map((userId) => ({ userId })) },
+    assets: {
+      create: (input.assets ?? []).map((a, i) => ({
+        kind: a.kind,
+        url: a.url,
+        name: blank(a.name),
+        mimeType: blank(a.mimeType),
+        sizeBytes: a.sizeBytes ?? null,
+        order: i,
+      })),
+    },
   };
 }
 
@@ -246,8 +349,10 @@ export async function createMaterial(
   input: StudyMaterialInput,
   createdById: string,
 ): Promise<string> {
-  if (!blank(input.fileUrl) && !blank(input.body)) {
-    throw AppError.badRequest("Upload a file or write the material in the panel.");
+  const hasSomething =
+    blank(input.fileUrl) || blank(input.body) || (input.assets ?? []).length > 0;
+  if (!hasSomething) {
+    throw AppError.badRequest("Attach a file or a link, or write the reading in the panel.");
   }
   const categoryId = blank(input.categoryId);
   const subCategoryId = categoryId ? blank(input.subCategoryId) : null;
@@ -272,6 +377,8 @@ export async function createMaterial(
     },
     select: { id: true },
   });
+  // Its folders live in the shared group system, not on the row.
+  await setGroupsFor("MATERIAL", row.id, input.groupIds ?? []);
   return row.id;
 }
 
@@ -305,9 +412,13 @@ export async function updateMaterial(id: string, input: StudyMaterialInput): Pro
     },
   });
 
-  // The audience is replaced wholesale — the dialog's choices are the truth.
+  // The audience, the courses, the folders and the attachments are all
+  // replaced wholesale — the dialog's choices are the truth.
   await prisma.studyMaterialBatch.deleteMany({ where: { materialId: id } });
   await prisma.studyMaterialStudent.deleteMany({ where: { materialId: id } });
+  await prisma.studyMaterialCourse.deleteMany({ where: { materialId: id } });
+  await prisma.materialAsset.deleteMany({ where: { materialId: id } });
+
   if (input.batchIds?.length) {
     await prisma.studyMaterialBatch.createMany({
       data: input.batchIds.map((batchId) => ({ materialId: id, batchId })),
@@ -318,6 +429,29 @@ export async function updateMaterial(id: string, input: StudyMaterialInput): Pro
       data: input.studentIds.map((userId) => ({ materialId: id, userId })),
     });
   }
+  const primaryCourse = blank(input.courseId);
+  const courseIds = [
+    ...new Set([...(primaryCourse ? [primaryCourse] : []), ...(input.courseIds ?? [])]),
+  ];
+  if (courseIds.length) {
+    await prisma.studyMaterialCourse.createMany({
+      data: courseIds.map((courseId) => ({ materialId: id, courseId })),
+    });
+  }
+  if (input.assets?.length) {
+    await prisma.materialAsset.createMany({
+      data: input.assets.map((a, i) => ({
+        materialId: id,
+        kind: a.kind,
+        url: a.url,
+        name: blank(a.name),
+        mimeType: blank(a.mimeType),
+        sizeBytes: a.sizeBytes ?? null,
+        order: i,
+      })),
+    });
+  }
+  await setGroupsFor("MATERIAL", id, input.groupIds ?? []);
 }
 
 export async function setMaterialPublished(id: string, isPublished: boolean): Promise<void> {
@@ -325,6 +459,8 @@ export async function setMaterialPublished(id: string, isPublished: boolean): Pr
 }
 
 export async function deleteMaterial(id: string): Promise<void> {
+  // The group system holds a loose reference, so it has to be told.
+  await forgetItem("MATERIAL", id);
   await prisma.studyMaterial.delete({ where: { id } });
 }
 

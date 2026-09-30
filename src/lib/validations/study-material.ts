@@ -14,18 +14,36 @@ export const materialCategorySchema = z.object({
   parentId: z.string().trim().optional().or(z.literal("")),
 });
 
+/** One file, image, video or link attached to a piece of reading. */
+export const materialAssetSchema = z.object({
+  kind: z.enum(["FILE", "IMAGE", "VIDEO", "LINK"]).default("FILE"),
+  url: z.string().trim().min(1).max(2000),
+  name: z.string().trim().max(200).optional().or(z.literal("")),
+  mimeType: z.string().trim().max(120).optional().or(z.literal("")),
+  sizeBytes: z.number().int().min(0).optional(),
+});
+
 export const studyMaterialSchema = z.object({
   title: z.string().trim().min(2, "Give it a title").max(200),
   description: z.string().trim().max(2000).optional().or(z.literal("")),
+  /** The main course, kept for numbering; `courseIds` carries the rest. */
   courseId: z.string().trim().optional().or(z.literal("")),
+  courseIds: z.array(z.string().min(1)).max(200).optional(),
   categoryId: z.string().trim().optional().or(z.literal("")),
   subCategoryId: z.string().trim().optional().or(z.literal("")),
+  /** Every folder it is filed in — see the shared group system. */
+  groupIds: z.array(z.string().min(1)).max(100).optional(),
   /** An uploaded document, or nothing when the material is written in the panel. */
   fileUrl: z.string().trim().max(500).optional().or(z.literal("")),
   fileName: z.string().trim().max(200).optional().or(z.literal("")),
   mimeType: z.string().trim().max(120).optional().or(z.literal("")),
-  /** Text written in the panel — this is what a learner can highlight. */
-  body: z.string().max(200_000).optional().or(z.literal("")),
+  /** Everything else attached to it: more files, images, videos, links. */
+  assets: z.array(materialAssetSchema).max(50).optional(),
+  /**
+   * The reading itself. HTML from the editor — headings, lists, emphasis — or
+   * plain text typed before the editor existed.
+   */
+  body: z.string().max(400_000).optional().or(z.literal("")),
   downloadsEnabled: z.boolean().optional(),
   isPublished: z.boolean().optional(),
   /** Empty both = everyone on the course, as with quizzes. */

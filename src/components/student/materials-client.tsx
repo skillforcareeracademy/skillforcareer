@@ -373,7 +373,9 @@ export function StudentMaterialsClient({
         </div>
         <Select value={group} onValueChange={(v) => setGroup(String(v))}>
           <SelectTrigger className="w-full sm:w-56">
-            <SelectValue placeholder="Every group" />
+            <SelectValue placeholder="Every group">
+              {(v) => (!v || v === ALL ? "Every group" : String(v))}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={ALL}>Every group</SelectItem>
@@ -389,7 +391,16 @@ export function StudentMaterialsClient({
           onValueChange={(v) => setSort(String(v) as typeof sort)}
         >
           <SelectTrigger className="w-full sm:w-44">
-            <SelectValue placeholder="Sort" />
+            <SelectValue placeholder="Sort">
+              {(v) =>
+                ({
+                  sequence: "In order",
+                  newest: "Newest first",
+                  title: "Title",
+                  unread: "Not read yet",
+                })[String(v ?? "sequence")] ?? "In order"
+              }
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="sequence">In order</SelectItem>

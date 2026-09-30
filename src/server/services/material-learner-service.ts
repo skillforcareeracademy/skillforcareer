@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
 import type { MaterialHighlightInput } from "@/lib/validations/study-material";
+import { itemsForBatches } from "./content-group-service";
 
 /**
  * Study material as a learner meets it: what is set for them, how long they
@@ -46,9 +47,21 @@ async function audienceScope(userId: string): Promise<Prisma.StudyMaterialWhereI
 
   const or: Prisma.StudyMaterialWhereInput[] = [{ students: { some: { userId } } }];
   if (courseIds.length) {
-    or.push({ courseId: { in: courseIds }, batches: { none: {} }, students: { none: {} } });
+    // Either the primary course or one of the extra ones it was set for.
+    or.push({
+      OR: [{ courseId: { in: courseIds } }, { courses: { some: { courseId: { in: courseIds } } } }],
+      batches: { none: {} },
+      students: { none: {} },
+    });
   }
   if (batchIds.length) or.push({ batches: { some: { batchId: { in: batchIds } } } });
+
+  // Whole folders handed to their cohort — "pure group ka access batch me de du
+  // and wo saare group and uski quizzes usko assign ho jaayein". Anything added
+  // to the folder later is included without touching the batch again.
+  const viaGroups = await itemsForBatches(batchIds, "MATERIAL");
+  if (viaGroups.length) or.push({ id: { in: viaGroups } });
+
   return { isPublished: true, OR: or };
 }
 

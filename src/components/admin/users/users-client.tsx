@@ -562,7 +562,9 @@ export function UsersClient({
                 onValueChange={(v) => setParams({ role: !v || v === ALL ? undefined : v, page: 1 })}
               >
                 <SelectTrigger className="w-36">
-                  <SelectValue placeholder="Role" />
+                  <SelectValue placeholder="All roles">
+                    {(v) => (!v || v === ALL ? "All roles" : (ROLE_LABELS[String(v) as keyof typeof ROLE_LABELS] ?? "All roles"))}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={ALL}>All roles</SelectItem>
@@ -578,7 +580,13 @@ export function UsersClient({
                 onValueChange={(v) => setParams({ status: !v || v === ALL ? undefined : v, page: 1 })}
               >
                 <SelectTrigger className="w-36">
-                  <SelectValue placeholder="Status" />
+                  <SelectValue placeholder="All statuses">
+                    {(v) =>
+                      !v || v === ALL
+                        ? "All statuses"
+                        : String(v).charAt(0) + String(v).slice(1).toLowerCase()
+                    }
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={ALL}>All statuses</SelectItem>

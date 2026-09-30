@@ -5,6 +5,7 @@ import { notify } from "./notification-service";
 import type { CurriculumInput } from "@/lib/validations/curriculum-plan";
 import { parseCsv, toCsv } from "@/lib/csv";
 import { ensureCurriculumIdentity } from "./academy-ids-service";
+import { itemsForBatches } from "./content-group-service";
 
 /**
  * Curriculums: what a course covers, written by the academy and shown to the
@@ -488,12 +489,16 @@ export async function listCurriculumsForLearner(userId: string): Promise<Curricu
   const batchIds = enrolments.map((e) => e.batchId).filter((b): b is string => Boolean(b));
   if (courseIds.length === 0 && batchIds.length === 0) return [];
 
+  // Whole folders handed to their cohort, as with quizzes and study material.
+  const viaGroups = await itemsForBatches(batchIds, "CURRICULUM");
+
   const rows = await prisma.curriculum.findMany({
     where: {
       isPublished: true,
       OR: [
         ...(courseIds.length ? [{ courses: { some: { courseId: { in: courseIds } } } }] : []),
         ...(batchIds.length ? [{ batches: { some: { batchId: { in: batchIds } } } }] : []),
+        ...(viaGroups.length ? [{ id: { in: viaGroups } }] : []),
       ],
     },
     orderBy: [{ sequence: "asc" }, { number: "asc" }],

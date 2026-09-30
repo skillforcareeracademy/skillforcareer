@@ -570,7 +570,9 @@ model StudyMaterial {
   course      Course?                  @relation(fields: [courseId], references: [id], onUpdate: NoAction)
   createdBy   User                     @relation("MaterialAuthor", fields: [createdById], references: [id], onUpdate: NoAction)
   batches     StudyMaterialBatch[]
+  courses     StudyMaterialCourse[]
   students    StudyMaterialStudent[]
+  assets      MaterialAsset[]
   reads       MaterialRead[]
   highlights  MaterialHighlight[]
 
@@ -579,6 +581,53 @@ model StudyMaterial {
   @@index([subCategoryId])
   @@index([createdById])
   @@index([isPublished])
+}
+
+/// One of the courses this material is set for.
+///
+/// "Multiple courses, batches can be assigned in study material also like
+/// quiz." The single `courseId` column stays as the primary course — it is what
+/// the numbering and the old rows are filed under — and this carries the rest.
+model StudyMaterialCourse {
+  id         String @id @default(cuid())
+  materialId String
+  courseId   String
+
+  createdAt DateTime @default(now())
+
+  material StudyMaterial @relation(fields: [materialId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  course   Course        @relation(fields: [courseId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([materialId, courseId])
+  @@index([courseId])
+}
+
+/// What a learner is given a piece of reading. More than one file, images, a
+/// video, or a link out — "multiple files, images and all can be uploaded here.
+/// videos here. also provide an option to add link".
+enum MaterialAssetKind {
+  FILE
+  IMAGE
+  VIDEO
+  LINK
+}
+
+model MaterialAsset {
+  id         String            @id @default(cuid())
+  materialId String
+  kind       MaterialAssetKind @default(FILE)
+  url        String            @db.Text
+  name       String?
+  mimeType   String?
+  /// Bytes, when it was uploaded rather than linked.
+  sizeBytes  Int?
+  order      Int               @default(0)
+
+  createdAt DateTime @default(now())
+
+  material StudyMaterial @relation(fields: [materialId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([materialId])
 }
 
 /// Set for a cohort. No batch and no named learner means everyone on the
@@ -654,6 +703,99 @@ model MaterialHighlight {
 
   @@index([materialId, userId])
   @@index([userId])
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// GROUPS — one filing system for every library the academy keeps
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// Which library a group belongs to. Each keeps its own tree, so "Anatomy"
+/// under quizzes is not the same folder as "Anatomy" under study material.
+enum GroupKind {
+  QUIZ
+  MATERIAL
+  CURRICULUM
+  ASSIGNMENT
+  BATCH
+  CERTIFICATE
+  DISCUSSION
+}
+
+/// A folder, nested as deep as the academy wants.
+///
+/// "Can you provide option to create grouping & multiple sub grouping as per my
+/// need — in Quiz, study material, curriculum, assignments, batches,
+/// certificates, discussion." One tree serves all seven: the alternative was
+/// seven near-identical category tables, each with its own two-level limit.
+///
+/// Depth is not capped. A cycle is prevented in the service, which walks the
+/// ancestors before it reparents anything.
+model ContentGroup {
+  id       String    @id @default(cuid())
+  kind     GroupKind
+  name     String
+  parentId String?
+  /// Where it sits among its siblings.
+  order    Int       @default(0)
+  /// Free text the academy can put on a folder.
+  description String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// NoAction, not Cascade: Prisma forbids a cascading self-relation. The
+  /// service deletes a subtree from the leaves up.
+  parent      ContentGroup?      @relation("ContentGroupTree", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  children    ContentGroup[]     @relation("ContentGroupTree")
+  items       ContentGroupItem[]
+  batchAccess BatchGroupAccess[]
+
+  @@index([kind])
+  @@index([parentId])
+}
+
+/// One row filed in one folder. An item may sit in as many folders as suits —
+/// "multiple groups can be selected in quiz, curriculum, study material,
+/// assignment".
+///
+/// `itemId` is deliberately not a foreign key: this one table holds quizzes,
+/// material, assignments, curriculums, batches, certificates and discussions,
+/// and no column can point at seven tables. Orphans are swept when the owning
+/// row is deleted, by the service that deletes it.
+model ContentGroupItem {
+  id      String    @id @default(cuid())
+  groupId String
+  itemId  String
+  kind    GroupKind
+
+  createdAt DateTime @default(now())
+
+  group ContentGroup @relation(fields: [groupId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([groupId, itemId])
+  @@index([itemId])
+  @@index([kind])
+}
+
+/// A whole folder handed to a cohort.
+///
+/// "Ek group me 5 quiz hain to mai pure group ka access batch me de du and wo
+/// saare group and uski quizzes usko assign ho jaayein." Given a folder, the
+/// batch gets everything in it — and everything in the folders beneath it —
+/// including anything added later, which is the point of assigning the folder
+/// rather than its contents.
+model BatchGroupAccess {
+  id      String @id @default(cuid())
+  batchId String
+  groupId String
+
+  createdAt DateTime @default(now())
+
+  batch Batch        @relation(fields: [batchId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  group ContentGroup @relation(fields: [groupId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([batchId, groupId])
+  @@index([groupId])
 }
 
 model Role {
@@ -813,6 +955,7 @@ model Course {
   assignments       Assignment[]
   quizzes           Quiz[]
   studyMaterials    StudyMaterial[]
+  materialCourses   StudyMaterialCourse[]
   attachments       Attachment[]
   certificates      Certificate[]
   meetings          Meeting[]
@@ -868,6 +1011,7 @@ model Batch {
   associates        BatchInstructor[]
   notes             BatchNote[]
   curriculumBatches CurriculumBatch[]
+  groupAccess       BatchGroupAccess[]
 
   @@index([courseId])
   @@index([instructorId])

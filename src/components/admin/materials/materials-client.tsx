@@ -158,6 +158,23 @@ export function MaterialsClient({
 
   const parents = categories.filter((c) => !c.parentId);
   const childrenOf = (id: string) => categories.filter((c) => c.parentId === id);
+  /**
+   * "Anatomy → Upper limb" for any group id.
+   *
+   * Base UI renders whatever the trigger is given, and given nothing it prints
+   * the stored value — which is how a cuid ended up on screen where a group's
+   * name belongs ("group ka name is trha se code me dikh rha hai").
+   */
+  const groupLabel = (id: string | undefined | null): string => {
+    const found = categories.find((c) => c.id === id);
+    if (!found) return "";
+    const parent = found.parentId ? categories.find((c) => c.id === found.parentId) : null;
+    return parent ? `${parent.name} → ${found.name}` : found.name;
+  };
+  const courseLabel = (id: string | undefined | null) =>
+    courses.find((c) => c.id === id)?.title ?? "";
+  const batchLabel = (id: string | undefined | null) =>
+    batches.find((b) => b.id === id)?.name ?? "";
 
   // Filtering and sorting happen here so the table reacts as you type; the
   // server does the same for the export and for a deep link.
@@ -570,8 +587,10 @@ export function MaterialsClient({
               className="w-full sm:w-56"
             />
             <Select value={category} onValueChange={(v) => setCategory(String(v))}>
-              <SelectTrigger className="w-full sm:w-48">
-                <SelectValue placeholder="Group" />
+              <SelectTrigger className="w-full sm:w-56">
+                <SelectValue placeholder="Every group">
+                  {(v) => (!v || v === ALL ? "Every group" : groupLabel(String(v)))}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={ALL}>Every group</SelectItem>
@@ -591,7 +610,11 @@ export function MaterialsClient({
             </Select>
             <Select value={published} onValueChange={(v) => setPublished(String(v))}>
               <SelectTrigger className="w-full sm:w-36">
-                <SelectValue placeholder="Status" />
+                <SelectValue placeholder="Any status">
+                  {(v) =>
+                    !v || v === ALL ? "Any status" : v === "yes" ? "Published" : "Draft"
+                  }
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={ALL}>Any status</SelectItem>
@@ -601,7 +624,16 @@ export function MaterialsClient({
             </Select>
             <Select value={sort} onValueChange={(v) => setSort(String(v) as typeof sort)}>
               <SelectTrigger className="w-full sm:w-44">
-                <SelectValue placeholder="Sort" />
+                <SelectValue placeholder="Sort">
+                  {(v) =>
+                    ({
+                      sequence: "Academy order",
+                      newest: "Newest first",
+                      title: "Title",
+                      reads: "Most read",
+                    })[String(v ?? "sequence")] ?? "Academy order"
+                  }
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="sequence">Academy order</SelectItem>
@@ -659,7 +691,9 @@ export function MaterialsClient({
                     }
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Ungrouped" />
+                      <SelectValue placeholder="Ungrouped">
+                        {(v) => (!v || v === ALL ? "Ungrouped" : groupLabel(String(v)))}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value={ALL}>Ungrouped</SelectItem>
@@ -681,7 +715,13 @@ export function MaterialsClient({
                     disabled={!form.categoryId || childrenOf(form.categoryId).length === 0}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="None" />
+                      <SelectValue placeholder="None">
+                        {(v) =>
+                          !v || v === ALL
+                            ? "None"
+                            : (categories.find((c) => c.id === v)?.name ?? "None")
+                        }
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value={ALL}>None</SelectItem>
@@ -702,7 +742,9 @@ export function MaterialsClient({
                     }
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Any course" />
+                      <SelectValue placeholder="Any course">
+                        {(v) => (!v || v === ALL ? "Any course" : courseLabel(String(v)))}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value={ALL}>Any course</SelectItem>
@@ -723,7 +765,11 @@ export function MaterialsClient({
                     }
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Everyone on the course" />
+                      <SelectValue placeholder="Everyone on the course">
+                        {(v) =>
+                          !v || v === ALL ? "Everyone on the course" : batchLabel(String(v))
+                        }
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value={ALL}>Everyone on the course</SelectItem>

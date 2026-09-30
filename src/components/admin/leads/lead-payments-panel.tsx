@@ -255,7 +255,13 @@ export function LeadPaymentsPanel({
             <Label>Course</Label>
             <Select value={courseId} onValueChange={(v) => setCourseId(v ?? NO_COURSE)}>
               <SelectTrigger className="w-full">
-                <SelectValue placeholder="No course" />
+                <SelectValue placeholder="No course">
+                  {(v) =>
+                    !v || v === NO_COURSE
+                      ? "No course (fees only)"
+                      : (courses.find((c) => c.id === v)?.title ?? "No course (fees only)")
+                  }
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={NO_COURSE}>No course (fees only)</SelectItem>

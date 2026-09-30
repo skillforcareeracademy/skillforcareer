@@ -4,6 +4,7 @@ import { AppError } from "@/lib/api/errors";
 import type { CheckAnswerInput, SubmitQuizInput } from "@/lib/validations/quiz-attempt";
 import { getSettings } from "./settings-service";
 import { ACTIVITY_ACTIONS, logActivity } from "./activity-service";
+import { itemsForBatches } from "./content-group-service";
 
 // ── Reads ────────────────────────────────────────────────────────────────────
 
@@ -42,6 +43,10 @@ export async function listStudentQuizzes(userId: string): Promise<StudentQuiz[]>
     .map((e) => e.batchId)
     .filter((id): id is string => Boolean(id));
 
+  // Whole folders handed to their cohort — a quiz added to the folder later is
+  // already theirs, which is the point of assigning the folder.
+  const viaGroups = await itemsForBatches(batchIds, "QUIZ");
+
   const quizzes = await prisma.quiz.findMany({
     // A quiz set for particular cohorts or named learners reaches only those;
     // one with neither reaches everyone on its course, as it always has. On top
@@ -56,6 +61,7 @@ export async function listStudentQuizzes(userId: string): Promise<StudentQuiz[]>
           students: { none: {} },
         },
         ...(batchIds.length ? [{ batches: { some: { batchId: { in: batchIds } } } }] : []),
+        ...(viaGroups.length ? [{ id: { in: viaGroups } }] : []),
         { students: { some: { userId } } },
       ],
       AND: [{ OR: [{ releaseAt: null }, { releaseAt: { lte: new Date() } }] }],

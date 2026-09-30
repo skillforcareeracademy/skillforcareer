@@ -5,6 +5,7 @@ import type { SubmitAssignmentInput } from "@/lib/validations/submission";
 import type { AssignmentAnswersInput } from "@/lib/validations/assignment";
 import { getSettings } from "./settings-service";
 import { ACTIVITY_ACTIONS, logActivity } from "./activity-service";
+import { itemsForBatches } from "./content-group-service";
 
 export interface AssignmentQuestionForStudent {
   id: string;
@@ -58,6 +59,9 @@ export async function listStudentAssignments(userId: string): Promise<StudentAss
     .map((e) => e.batchId)
     .filter((id): id is string => Boolean(id));
 
+  // The same folder rule quizzes and study material follow.
+  const viaGroups = await itemsForBatches(batchIds, "ASSIGNMENT");
+
   const assignments = await prisma.assignment.findMany({
     where: {
       OR: [
@@ -68,6 +72,7 @@ export async function listStudentAssignments(userId: string): Promise<StudentAss
           students: { none: {} },
         },
         ...(batchIds.length ? [{ batches: { some: { batchId: { in: batchIds } } } }] : []),
+        ...(viaGroups.length ? [{ id: { in: viaGroups } }] : []),
         { students: { some: { userId } } },
       ],
       // Held back until its release moment, if one was set.
