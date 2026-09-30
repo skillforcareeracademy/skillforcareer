@@ -2,6 +2,11 @@ import type { Metadata, Viewport } from "next";
 import { Inter, Geist_Mono } from "next/font/google";
 import { AppProviders } from "@/components/providers";
 import { getBranding } from "@/server/services/branding-service";
+import { getTracking } from "@/server/services/tracking-service";
+import {
+  SiteTracking,
+  SiteTrackingNoScript,
+} from "@/components/shared/site-tracking";
 import { siteConfig } from "@/config/site";
 import "./globals.css";
 
@@ -18,8 +23,19 @@ const geistMono = Geist_Mono({
 });
 
 export async function generateMetadata(): Promise<Metadata> {
-  const { faviconUrl } = await getBranding();
-  return { ...baseMetadata, icons: { icon: faviconUrl, apple: faviconUrl } };
+  const [{ faviconUrl }, { googleSiteVerification }] = await Promise.all([
+    getBranding(),
+    getTracking(),
+  ]);
+  return {
+    ...baseMetadata,
+    icons: { icon: faviconUrl, apple: faviconUrl },
+    // Search Console proves ownership by reading this tag off the site. Only
+    // emitted once a code is saved, so an unconnected site stays clean.
+    ...(googleSiteVerification
+      ? { verification: { google: googleSiteVerification } }
+      : {}),
+  };
 }
 
 const baseMetadata: Metadata = {
@@ -62,7 +78,7 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const branding = await getBranding();
+  const [branding, tracking] = await Promise.all([getBranding(), getTracking()]);
 
   return (
     <html
@@ -72,7 +88,9 @@ export default async function RootLayout({
       className={`${inter.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="bg-background text-foreground flex min-h-full flex-col">
+        <SiteTrackingNoScript tracking={tracking} />
         <AppProviders branding={branding}>{children}</AppProviders>
+        <SiteTracking tracking={tracking} />
       </body>
     </html>
   );

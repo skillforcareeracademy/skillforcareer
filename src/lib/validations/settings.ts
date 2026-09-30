@@ -20,6 +20,61 @@ const optionalEmail = z
   .refine((v) => v === "" || z.string().email().safeParse(v).success, "Enter a valid email")
   .or(z.literal(""));
 
+/**
+ * Google's three site-wide identifiers, typed in by the academy itself.
+ *
+ * Nobody pastes the bare id. Search Console hands out a whole
+ * `<meta name="google-site-verification" content="…">` tag, Tag Manager a whole
+ * `<script>` block, and Analytics shows the id inside a snippet. Rather than
+ * asking an admin to edit what Google gave them, each field digs its own id out
+ * of whatever was pasted and stores just that. Blank is how a tag is turned off.
+ *
+ * The patterns are exported because the values end up inside an inline
+ * `<script>` on the public site: `tracking-service.ts` re-checks them on the way
+ * out, so nothing but an id Google could have issued can ever reach the page.
+ */
+export const GTM_PATTERN = /^GTM-[A-Z0-9]{4,12}$/;
+export const GA_PATTERN = /^(?:G-[A-Z0-9]{6,14}|UA-\d{4,10}-\d{1,4})$/;
+/** Google's token is URL-safe base64; the length has drifted over the years. */
+export const SITE_VERIFICATION_PATTERN = /^[A-Za-z0-9_-]{20,100}$/;
+
+/** Takes the first thing in `raw` that looks like an id, else `raw` itself. */
+function extract(raw: string, find: RegExp): string {
+  return (raw.match(find)?.[0] ?? raw).trim().toUpperCase();
+}
+
+const gtmContainer = z
+  .string()
+  .trim()
+  .max(400)
+  .transform((v) => extract(v, /GTM-[A-Z0-9]+/i))
+  .refine(
+    (v) => v === "" || GTM_PATTERN.test(v),
+    "Enter a container ID like GTM-ABC1234, or paste the snippet Tag Manager gave you",
+  );
+
+const gaMeasurement = z
+  .string()
+  .trim()
+  .max(400)
+  .transform((v) => extract(v, /\b(?:G-[A-Z0-9]+|UA-\d+-\d+)\b/i))
+  .refine(
+    (v) => v === "" || GA_PATTERN.test(v),
+    "Enter a measurement ID like G-ABCD123456, or paste the snippet Analytics gave you",
+  );
+
+const siteVerification = z
+  .string()
+  .trim()
+  .max(400)
+  // A pasted meta tag carries the token in `content="…"`; anything else is
+  // already the token. Case is preserved here — unlike an id, it matters.
+  .transform((v) => (v.match(/content=["']([^"']+)["']/i)?.[1] ?? v).trim())
+  .refine(
+    (v) => v === "" || SITE_VERIFICATION_PATTERN.test(v),
+    "Paste the verification code, or the whole meta tag Search Console gave you",
+  );
+
 export const settingsSchema = z.object({
   // ── General ──────────────────────────────────────────────────────────────
   siteName: z.string().trim().min(1, "Site name is required").max(80),
@@ -121,6 +176,16 @@ export const settingsSchema = z.object({
   /// active or completed enrolment (staff always count).
   codingPracticeAudience: z.enum(["everyone", "staff", "enrolled"]),
 
+  // ── Google integrations ──────────────────────────────────────────────────
+  // Filled in from Admin > Settings > Integrations, and rendered on every page
+  // of the public site. Each is independent and blank means "not connected".
+  /** The code Search Console asks you to put on the site to prove it's yours. */
+  googleSiteVerification: siteVerification,
+  /** GA4 measurement ID. Loads gtag.js directly, no Tag Manager needed. */
+  gaMeasurementId: gaMeasurement,
+  /** Tag Manager container. Anything set up inside GTM then runs on the site. */
+  gtmContainerId: gtmContainer,
+
   // ── Social links ─────────────────────────────────────────────────────────
   socialWebsite: optionalUrl,
   socialLinkedin: optionalUrl,
@@ -201,6 +266,10 @@ export const DEFAULT_SETTINGS: Settings = {
   codingPracticeEnabled: false,
   codingPracticeUrl: "",
   codingPracticeAudience: "enrolled",
+
+  googleSiteVerification: "",
+  gaMeasurementId: "",
+  gtmContainerId: "",
 
   socialWebsite: "",
   socialLinkedin: "",

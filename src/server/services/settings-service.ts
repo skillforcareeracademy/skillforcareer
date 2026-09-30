@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { invalidateBranding } from "./branding-service";
+import { invalidateTracking } from "./tracking-service";
 import {
   DEFAULT_SETTINGS,
   settingsSchema,
@@ -44,9 +45,11 @@ export async function updateSettings(
     update: { data: merged, updatedById },
   });
 
-  // Branding lives in this same row and is memoised for reads — drop it so a
-  // logo or site-name change is visible on the very next request.
+  // Branding and the Google tags live in this same row and are memoised for
+  // reads — drop both so a logo, site name or newly pasted tracking ID is
+  // visible on the very next request.
   invalidateBranding();
+  invalidateTracking();
 
   return { settings: merged, updatedAt: row.updatedAt.toISOString() };
 }

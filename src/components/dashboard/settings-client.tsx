@@ -11,6 +11,7 @@ import {
   Camera,
   Globe,
   Hash,
+  LineChart,
   Loader2,
   Palette,
   RotateCcw,
@@ -234,6 +235,9 @@ export function SettingsClient({
           </TabsTrigger>
           <TabsTrigger value="social" className={TAB_TRIGGER}>
             <Share2 /> Social
+          </TabsTrigger>
+          <TabsTrigger value="integrations" className={TAB_TRIGGER}>
+            <LineChart /> Integrations
           </TabsTrigger>
         </TabsList>
 
@@ -925,6 +929,54 @@ export function SettingsClient({
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* ── Integrations ────────────────────────────────────────────────── */}
+        <TabsContent value="integrations" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Google</CardTitle>
+              <CardDescription>
+                Connect the academy&rsquo;s own Google accounts. Each code is
+                added to every page of the website as soon as it is saved. Leave
+                a box empty to disconnect that one &mdash; nothing else changes.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <TrackingField
+                id="tracking-search-console"
+                label="Search Console"
+                hint="Search Console > Settings > Ownership verification > HTML tag. Paste the code, or the whole <meta> tag — either works."
+                placeholder="Paste the verification code or meta tag"
+                value={form.googleSiteVerification}
+                onChange={(v) => set("googleSiteVerification", v)}
+                connected={Boolean(data.settings.googleSiteVerification)}
+                connectedNote="Verified code saved. Press Verify in Search Console to finish."
+              />
+              <Separator />
+              <TrackingField
+                id="tracking-analytics"
+                label="Analytics"
+                hint="Analytics > Admin > Data streams > your website. The measurement ID looks like G-ABCD123456."
+                placeholder="G-ABCD123456"
+                value={form.gaMeasurementId}
+                onChange={(v) => set("gaMeasurementId", v)}
+                connected={Boolean(data.settings.gaMeasurementId)}
+                connectedNote="Visits are being recorded. Reports appear in Analytics within a day."
+              />
+              <Separator />
+              <TrackingField
+                id="tracking-tag-manager"
+                label="Tag Manager"
+                hint="Tag Manager > Workspace, at the top beside the container name. It looks like GTM-ABC1234."
+                placeholder="GTM-ABC1234"
+                value={form.gtmContainerId}
+                onChange={(v) => set("gtmContainerId", v)}
+                connected={Boolean(data.settings.gtmContainerId)}
+                connectedNote="The container is live — tags added inside Tag Manager run on the site."
+              />
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
 
       <p className="text-muted-foreground text-center text-xs">
@@ -932,6 +984,52 @@ export function SettingsClient({
           ? `Last updated ${formatDistanceToNow(new Date(data.updatedAt), { addSuffix: true })}`
           : "No changes saved yet — showing platform defaults."}
       </p>
+    </div>
+  );
+}
+
+/**
+ * One Google connection: a paste box, where to find the code, and whether the
+ * site is currently using one. The value is tidied up on save — a pasted meta
+ * tag or snippet is reduced to the ID inside it — so the admin never has to.
+ */
+function TrackingField({
+  id,
+  label,
+  hint,
+  placeholder,
+  value,
+  onChange,
+  connected,
+  connectedNote,
+}: {
+  id: string;
+  label: string;
+  hint: string;
+  placeholder: string;
+  value: string;
+  onChange: (v: string) => void;
+  connected: boolean;
+  connectedNote: string;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <div className="flex flex-wrap items-center gap-2">
+        <Label htmlFor={id}>{label}</Label>
+        <Badge variant={connected ? "default" : "secondary"}>
+          {connected ? "Connected" : "Not connected"}
+        </Badge>
+      </div>
+      <Input
+        id={id}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        spellCheck={false}
+        autoComplete="off"
+      />
+      <p className="text-muted-foreground text-xs">{hint}</p>
+      {connected && <p className="text-muted-foreground text-xs">{connectedNote}</p>}
     </div>
   );
 }
