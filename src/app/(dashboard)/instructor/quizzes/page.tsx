@@ -28,7 +28,7 @@ export default async function InstructorQuizzesPage({
   const sp = await searchParams;
   const query = {
     page: Math.max(1, Number(sp.page) || 1),
-    pageSize: 10,
+    pageSize: str(sp.view) === "folders" ? 500 : 10,
     search: str(sp.search),
     courseId: str(sp.course),
     batchId: str(sp.batch),
@@ -37,6 +37,7 @@ export default async function InstructorQuizzesPage({
     subCategoryId: str(sp.sub),
     difficulty: str(sp.difficulty),
     sort: str(sp.sort),
+    view: str(sp.view),
     ownerId: user.id,
   };
 

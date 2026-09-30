@@ -27,7 +27,9 @@ export default async function QuizzesPage({
   const sp = await searchParams;
   const query = {
     page: Math.max(1, Number(sp.page) || 1),
-    pageSize: 10,
+    // Folder view shows the whole tree, so it is not paged — a folder holding
+    // page two of its own contents would be worse than no folder at all.
+    pageSize: str(sp.view) === "folders" ? 500 : 10,
     search: str(sp.search),
     courseId: str(sp.course),
     batchId: str(sp.batch),
@@ -36,6 +38,7 @@ export default async function QuizzesPage({
     subCategoryId: str(sp.sub),
     difficulty: str(sp.difficulty),
     sort: str(sp.sort),
+    view: str(sp.view),
   };
 
   // Anything still unnumbered gets its numbers here — the permanent quiz

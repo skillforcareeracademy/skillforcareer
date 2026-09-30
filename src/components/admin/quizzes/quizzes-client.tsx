@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState, type FormEvent } from "react";
+import { useCallback, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import {
@@ -17,10 +17,13 @@ import {
   X,
   ArrowUp,
   ArrowDown,
+  ChevronRight,
   FolderTree,
+  Rows3,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
+import { cn } from "@/lib/utils";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
@@ -74,6 +77,9 @@ interface QuizRow {
   categoryName: string | null;
   subCategoryId: string | null;
   subCategoryName: string | null;
+  /** The folders it is filed in, from the shared group system. */
+  groupIds: string[];
+  groupPaths: string[];
   batchIds: string[];
   batchNames: string[];
   createdByName: string;
@@ -100,6 +106,8 @@ interface Query {
   subCategoryId?: string;
   difficulty?: string;
   sort?: string;
+  /** "folders" or the table. Kept in the URL so the page can load them all. */
+  view?: string;
 }
 interface CategoryOpt {
   id: string;
@@ -148,6 +156,21 @@ export function QuizzesClient({
   const router = useRouter();
   const pathname = usePathname();
   const [search, setSearch] = useState(query.search ?? "");
+  /** Folders, as the learner sees them, or the flat table. */
+  const view: "folders" | "table" = query.view === "table" ? "table" : "folders";
+  const [openFolders, setOpenFolders] = useState<Set<string>>(new Set());
+
+  /** This page's quizzes, gathered under the folders they are filed in. */
+  const folders = useMemo(() => {
+    const map = new Map<string, QuizRow[]>();
+    for (const z of quizzes) {
+      const paths = z.groupPaths.length ? z.groupPaths : ["Ungrouped"];
+      for (const path of paths) map.set(path, [...(map.get(path) ?? []), z]);
+    }
+    return [...map.entries()].sort(([a], [b]) =>
+      a === "Ungrouped" ? 1 : b === "Ungrouped" ? -1 : a.localeCompare(b),
+    );
+  }, [quizzes]);
   const [createOpen, setCreateOpen] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newCourse, setNewCourse] = useState("");
@@ -190,6 +213,7 @@ export function QuizzesClient({
         sub: query.subCategoryId,
         difficulty: query.difficulty,
         sort: query.sort,
+        view: query.view,
         page: query.page,
         ...next,
       };
@@ -202,6 +226,7 @@ export function QuizzesClient({
       if (merged.sub) p.set("sub", String(merged.sub));
       if (merged.difficulty) p.set("difficulty", String(merged.difficulty));
       if (merged.sort) p.set("sort", String(merged.sort));
+      if (merged.view) p.set("view", String(merged.view));
       if (merged.page && Number(merged.page) > 1) p.set("page", String(merged.page));
       const qs = p.toString();
       router.push(qs ? `${pathname}?${qs}` : pathname);
@@ -597,9 +622,89 @@ export function QuizzesClient({
         ))}
       </div>
 
+      {/* Folder view, the same as the learner sees — "admin me bhi quiz folder
+          wise dikhni chahiye jaise student panel me dikh rhi hai". */}
+      {view === "folders" && (
+        <div className="space-y-2">
+          {folders.length === 0 ? (
+            <p className="text-muted-foreground rounded-xl border p-6 text-center text-sm">
+              {hasFilters ? "No matching quizzes." : "No quizzes yet."}
+            </p>
+          ) : (
+            folders.map(([path, list]) => {
+              const open = openFolders.has(path);
+              return (
+                <div key={path} className="overflow-hidden rounded-xl border">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setOpenFolders((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(path)) next.delete(path);
+                        else next.add(path);
+                        return next;
+                      })
+                    }
+                    className="hover:bg-accent/40 flex w-full items-center gap-2 px-4 py-3 text-left"
+                  >
+                    <ChevronRight
+                      className={cn(
+                        "text-muted-foreground size-4 shrink-0 transition-transform",
+                        open && "rotate-90",
+                      )}
+                    />
+                    <FolderTree className="text-muted-foreground size-4 shrink-0" />
+                    <span className="min-w-0 flex-1 truncate font-medium">{path}</span>
+                    <Badge variant="secondary" className="shrink-0 text-[10px]">
+                      {list.length} {list.length === 1 ? "quiz" : "quizzes"}
+                    </Badge>
+                  </button>
+                  {open && (
+                    <ul className="divide-y border-t">
+                      {list.map((z) => (
+                        <li key={z.id} className="flex items-center gap-3 px-4 py-2.5">
+                          <span className="text-muted-foreground w-10 shrink-0 text-xs tabular-nums">
+                            Q{z.quizNo}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <Link
+                              href={`${basePath}/${z.id}`}
+                              className="hover:text-primary block truncate text-sm font-medium"
+                            >
+                              {z.title}
+                            </Link>
+                            <p className="text-muted-foreground truncate text-xs">
+                              {z.courseTitle ?? "Any course"}
+                              {z.batchNames.length ? ` · ${z.batchNames.join(", ")}` : ""}
+                            </p>
+                          </div>
+                          <Badge variant="secondary" className="shrink-0 text-[10px]">
+                            {z.questions} Qs
+                          </Badge>
+                          <Badge
+                            variant="secondary"
+                            className={cn(
+                              "shrink-0 text-[10px]",
+                              z.isPublished &&
+                                "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
+                            )}
+                          >
+                            {z.isPublished ? "Published" : "Draft"}
+                          </Badge>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+
       <DataTable
         columns={columns}
-        data={quizzes}
+        data={view === "folders" ? [] : quizzes}
         rowKey={(z) => z.id}
         renderCard={renderCard}
         emptyIcon={FileQuestion}
@@ -788,6 +893,24 @@ export function QuizzesClient({
                   <SelectItem value="recent">Recently edited</SelectItem>
                 </SelectContent>
               </Select>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  setParams({ view: view === "folders" ? "table" : "folders", page: 1 })
+                }
+              >
+                {view === "folders" ? (
+                  <>
+                    <Rows3 className="size-4" /> Table
+                  </>
+                ) : (
+                  <>
+                    <FolderTree className="size-4" /> Folders
+                  </>
+                )}
+              </Button>
               {hasFilters && (
                 <Button variant="ghost" size="sm" onClick={clearFilters} className="text-muted-foreground">
                   <X className="size-4" /> Clear

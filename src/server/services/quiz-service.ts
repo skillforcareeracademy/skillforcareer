@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
+import { groupOptions, groupsOfMany } from "./content-group-service";
 import type {
   CreateQuizInput,
   UpdateQuizInput,
@@ -73,6 +74,14 @@ export async function listQuizzesAdmin(q: QuizListQuery) {
     }),
   ]);
 
+  // The folders each paper is filed in, from the shared group system — one read
+  // for the page, then the paths the folder view groups on.
+  const [membership, options] = await Promise.all([
+    groupsOfMany("QUIZ", rows.map((r) => r.id)),
+    groupOptions("QUIZ"),
+  ]);
+  const pathOf = new Map(options.map((o) => [o.id, o.path]));
+
   return {
     total,
     quizzes: rows.map((z) => ({
@@ -87,6 +96,10 @@ export async function listQuizzesAdmin(q: QuizListQuery) {
       categoryName: z.category?.name ?? null,
       subCategoryId: z.subCategoryId,
       subCategoryName: z.subCategory?.name ?? null,
+      groupIds: membership.get(z.id) ?? [],
+      groupPaths: (membership.get(z.id) ?? [])
+        .map((g) => pathOf.get(g) ?? "")
+        .filter(Boolean),
       batchIds: z.batches.map((b) => b.batch.id),
       batchNames: z.batches.map((b) => b.batch.name),
       createdByName: z.createdBy.name,

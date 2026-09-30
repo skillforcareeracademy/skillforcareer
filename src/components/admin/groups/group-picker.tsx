@@ -75,7 +75,7 @@ export function GroupPicker({
         <p className="text-muted-foreground text-xs">{emptyHint}</p>
       ) : (
         <>
-          {options.length > 8 && (
+          {options.length > 5 && (
             <div className="relative">
               <Search className="text-muted-foreground absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2" />
               <Input

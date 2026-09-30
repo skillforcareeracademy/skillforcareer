@@ -33,6 +33,7 @@ import type { MaterialRow, MaterialStats } from "@/server/services/study-materia
 import type { GroupOption } from "@/server/services/content-group-service";
 import { GroupPicker } from "@/components/admin/groups/group-picker";
 import { MultiPicker } from "@/components/admin/groups/multi-picker";
+import { FolderSelect } from "@/components/admin/groups/folder-select";
 import { PageHeader } from "@/components/shared/page-header";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { StatCard } from "@/components/dashboard/stat-card";
@@ -179,14 +180,6 @@ export function MaterialsClient({
     (id: string | undefined | null) => groups.find((g) => g.id === id)?.path ?? "",
     [groups],
   );
-  /**
-   * "Anatomy → Upper limb" for any group id.
-   *
-   * Base UI renders whatever the trigger is given, and given nothing it prints
-   * the stored value — which is how a cuid ended up on screen where a group's
-   * name belongs ("group ka name is trha se code me dikh rha hai").
-   */
-  const groupLabel = groupPath;
   const courseLabel = (id: string | undefined | null) =>
     courses.find((c) => c.id === id)?.title ?? "";
   const batchLabel = (id: string | undefined | null) =>
@@ -764,21 +757,15 @@ export function MaterialsClient({
               onChange={(e) => setSearch(e.target.value)}
               className="w-full sm:w-56"
             />
-            <Select value={category} onValueChange={(v) => setCategory(String(v))}>
-              <SelectTrigger className="w-full sm:w-56">
-                <SelectValue placeholder="Every group">
-                  {(v) => (!v || v === ALL ? "Every group" : groupLabel(String(v)))}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>Every group</SelectItem>
-                {groups.map((g) => (
-                  <SelectItem key={g.id} value={g.id}>
-                    {g.path}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {/* Searchable, because a deep tree is no use as a scroll list. */}
+            <FolderSelect
+              className="w-full sm:w-56"
+              ariaLabel="Filter by group"
+              topLabel="Every group"
+              options={groups}
+              value={category === ALL ? null : category}
+              onChange={(next) => setCategory(next ?? ALL)}
+            />
             {/* The two filters the academy said were missing here. */}
             <Select value={course} onValueChange={(v) => setCourse(String(v))}>
               <SelectTrigger className="w-full sm:w-56">

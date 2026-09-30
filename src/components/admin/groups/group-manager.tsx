@@ -25,13 +25,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { FolderSelect } from "./folder-select";
 import { cn } from "@/lib/utils";
 
 /**
@@ -220,30 +214,17 @@ export function GroupManager({
                 {node.totalCount} {node.totalCount === 1 ? copy.noun.one : copy.noun.many}
               </Badge>
               {/* Where it sits. Moving a folder takes everything under it. */}
-              <Select
-                value={node.parentId ?? TOP}
-                onValueChange={(v) => void move(node, String(v || TOP))}
-              >
-                <SelectTrigger className="h-8 w-36 shrink-0" aria-label={`Move ${node.name}`}>
-                  <SelectValue placeholder="Top level">
-                    {(v) =>
-                      !v || v === TOP
-                        ? "Top level"
-                        : (flat.find((g) => g.id === v)?.name ?? "Top level")
-                    }
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={TOP}>Top level</SelectItem>
-                  {flat
-                    .filter((g) => g.id !== node.id && !g.path.startsWith(`${node.path} → `))
-                    .map((g) => (
-                      <SelectItem key={g.id} value={g.id}>
-                        {g.path}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+              {/* Where it sits. Moving a folder takes everything under it,
+                  so it cannot be offered a home inside itself. */}
+              <FolderSelect
+                className="h-8 w-40 shrink-0"
+                ariaLabel={`Move ${node.name}`}
+                options={flat.filter(
+                  (g) => g.id !== node.id && !g.path.startsWith(`${node.path} → `),
+                )}
+                value={node.parentId}
+                onChange={(next) => void move(node, next ?? TOP)}
+              />
               <Button
                 size="icon-sm"
                 variant="ghost"
@@ -316,25 +297,14 @@ export function GroupManager({
             </div>
             <div className="space-y-1.5">
               <Label>Inside</Label>
-              <Select value={parentId} onValueChange={(v) => setParentId(String(v || TOP))}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Top level">
-                    {(v) =>
-                      !v || v === TOP
-                        ? "Top level"
-                        : (flat.find((g) => g.id === v)?.path ?? "Top level")
-                    }
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={TOP}>Top level</SelectItem>
-                  {flat.map((g) => (
-                    <SelectItem key={g.id} value={g.id}>
-                      {g.path}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {/* Searchable: a deep tree is impossible to scan by eye. */}
+              <FolderSelect
+                className="w-full"
+                ariaLabel="Which group to nest it inside"
+                options={flat}
+                value={parentId === TOP ? null : parentId}
+                onChange={(next) => setParentId(next ?? TOP)}
+              />
             </div>
             <Button type="submit" disabled={saving || name.trim().length < 1}>
               {saving ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}

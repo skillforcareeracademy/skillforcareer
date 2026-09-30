@@ -4,7 +4,7 @@ import { AppError } from "@/lib/api/errors";
 import type { CheckAnswerInput, SubmitQuizInput } from "@/lib/validations/quiz-attempt";
 import { getSettings } from "./settings-service";
 import { ACTIVITY_ACTIONS, logActivity } from "./activity-service";
-import { itemsForBatches } from "./content-group-service";
+import { groupOptions, groupsOfMany, itemsForBatches } from "./content-group-service";
 
 // ── Reads ────────────────────────────────────────────────────────────────────
 
@@ -94,7 +94,27 @@ export async function listStudentQuizzes(userId: string): Promise<StudentQuiz[]>
     ).map((b) => b.quizId),
   );
 
+  // The folders each paper is filed in. The learner's browser groups on a
+  // category and a sub-category, so the first folder's path fills both: three
+  // levels deep reads as "Medical Coding" then "ICD-10 → Guidelines". Falls
+  // back to the old category when a paper has not been filed anywhere yet.
+  const [membership, options] = await Promise.all([
+    groupsOfMany("QUIZ", quizzes.map((z) => z.id)),
+    groupOptions("QUIZ"),
+  ]);
+  const pathOf = new Map(options.map((o) => [o.id, o.path]));
+  const folderFor = (quizId: string) => {
+    const first = (membership.get(quizId) ?? [])
+      .map((g) => pathOf.get(g))
+      .filter((path): path is string => Boolean(path))
+      .sort()[0];
+    if (!first) return { category: null as string | null, sub: null as string | null };
+    const [head, ...rest] = first.split(" → ");
+    return { category: head, sub: rest.length ? rest.join(" → ") : null };
+  };
+
   return quizzes.map((z) => {
+    const folder = folderFor(z.id);
     const totalPoints = z.questions.reduce((s, q) => s + q.points, 0);
     const percents = z.attempts
       .filter((a) => a.score != null && a.maxScore > 0)
@@ -116,8 +136,8 @@ export async function listStudentQuizzes(userId: string): Promise<StudentQuiz[]>
       bookmarked: saved.has(z.id),
       sequence: z.sequence,
       difficulty: z.difficulty,
-      categoryName: z.category?.name ?? null,
-      subCategoryName: z.subCategory?.name ?? null,
+      categoryName: folder.category ?? z.category?.name ?? null,
+      subCategoryName: folder.sub ?? z.subCategory?.name ?? null,
     };
   });
 }
