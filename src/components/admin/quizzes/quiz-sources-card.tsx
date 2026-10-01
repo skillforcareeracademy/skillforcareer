@@ -18,7 +18,7 @@ import {
 export interface QuizSourceRow {
   id: string;
   title: string;
-  kind: "BATCH_NOTE" | "LESSON" | "TEXT";
+  kind: "BATCH_NOTE" | "LESSON" | "STUDY_MATERIAL" | "TEXT";
   /** The batch the notes belong to, when they are batch notes. */
   where: string | null;
   hasText: boolean;
@@ -27,6 +27,7 @@ export interface QuizSourceRow {
 const KIND_LABEL: Record<QuizSourceRow["kind"], string> = {
   BATCH_NOTE: "Batch notes",
   LESSON: "Lesson",
+  STUDY_MATERIAL: "Study material",
   TEXT: "Pasted notes",
 };
 

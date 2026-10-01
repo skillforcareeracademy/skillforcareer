@@ -27,7 +27,9 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -35,7 +37,7 @@ import { cn } from "@/lib/utils";
 
 interface NoteSource {
   id: string;
-  kind: "BATCH_NOTE" | "LESSON";
+  kind: "BATCH_NOTE" | "LESSON" | "STUDY_MATERIAL";
   title: string;
   where: string;
   readable: boolean;
@@ -54,6 +56,13 @@ interface Draft {
   sourceTitle: string;
   notice: string | null;
 }
+
+/** Shown in this order: the material a paper is most often set from first. */
+const SOURCE_GROUPS: { kind: NoteSource["kind"]; label: string }[] = [
+  { kind: "STUDY_MATERIAL", label: "Study material" },
+  { kind: "BATCH_NOTE", label: "Batch notes" },
+  { kind: "LESSON", label: "Lessons" },
+];
 
 const PASTE = "paste";
 
@@ -126,6 +135,7 @@ export function QuizGenerateDialog({
       const res = await api.post<Draft>(`/api/quizzes/${quizId}/generate`, {
         batchNoteId: kind === "BATCH_NOTE" ? id : undefined,
         lessonId: kind === "LESSON" ? id : undefined,
+        studyMaterialId: kind === "STUDY_MATERIAL" ? id : undefined,
         text: choice === PASTE ? pasted : undefined,
         count: Number(count) || 5,
         style,
@@ -182,16 +192,17 @@ export function QuizGenerateDialog({
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Sparkles className="size-4" /> Generate questions from notes
+            <Sparkles className="size-4" /> Generate questions
           </DialogTitle>
           <DialogDescription>
-            Pick the notes this paper is being set from. Nothing is added until you say so.
+            Pick the study material or notes this paper is being set from. Nothing is added
+            until you say so.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <Label>Notes</Label>
+            <Label>Source</Label>
             <Select value={choice} onValueChange={(v) => setChoice(v ?? PASTE)}>
               <SelectTrigger className="w-full">
                 <SelectValue>
@@ -204,20 +215,33 @@ export function QuizGenerateDialog({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={PASTE}>Paste the notes</SelectItem>
-                {sources.map((s) => (
-                  <SelectItem key={`${s.kind}:${s.id}`} value={`${s.kind}:${s.id}`} disabled={!s.readable}>
-                    {s.title} — {s.where}
-                    {s.readable ? "" : " (no readable text)"}
-                  </SelectItem>
-                ))}
+                {SOURCE_GROUPS.map(({ kind, label }) => {
+                  const inGroup = sources.filter((s) => s.kind === kind);
+                  if (inGroup.length === 0) return null;
+                  return (
+                    <SelectGroup key={kind}>
+                      <SelectLabel>{label}</SelectLabel>
+                      {inGroup.map((s) => (
+                        <SelectItem
+                          key={`${s.kind}:${s.id}`}
+                          value={`${s.kind}:${s.id}`}
+                          disabled={!s.readable}
+                        >
+                          {s.title} — {s.where}
+                          {s.readable ? "" : " (no readable text)"}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  );
+                })}
               </SelectContent>
             </Select>
             {loadingSources ? (
               <p className="text-muted-foreground text-xs">Looking for notes…</p>
             ) : (
               <p className="text-muted-foreground text-xs">
-                Batch notes and written lessons both work. A PDF or image attachment can&apos;t be
-                read — paste its text instead.
+                Batch notes, written lessons and study material all work. A PDF or image
+                attachment can&apos;t be read — paste its text instead.
               </p>
             )}
           </div>

@@ -17,7 +17,7 @@ import { questionSchema, type GenerateQuestionsInput, type QuestionInput, type Q
 
 export interface NoteSourceOption {
   id: string;
-  kind: "BATCH_NOTE" | "LESSON";
+  kind: "BATCH_NOTE" | "LESSON" | "STUDY_MATERIAL";
   title: string;
   /** The batch or course the notes sit in, for telling two "Unit 3" apart. */
   where: string;
@@ -27,7 +27,7 @@ export interface NoteSourceOption {
 
 /** Everything a quiz could have been prepared from, newest notes first. */
 export async function listNoteSources(instructorId?: string): Promise<NoteSourceOption[]> {
-  const [notes, lessons] = await Promise.all([
+  const [notes, lessons, materials] = await Promise.all([
     prisma.batchNote.findMany({
       where: instructorId
         ? {
@@ -64,6 +64,23 @@ export async function listNoteSources(instructorId?: string): Promise<NoteSource
         chapter: { select: { title: true, course: { select: { title: true } } } },
       },
     }),
+    // Study material the academy has written up in the panel. The typed body is
+    // what can be read; a material that is only an uploaded file cannot be.
+    prisma.studyMaterial.findMany({
+      where: {
+        body: { not: null },
+        ...(instructorId ? { createdById: instructorId } : {}),
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 200,
+      select: {
+        id: true,
+        title: true,
+        body: true,
+        course: { select: { title: true } },
+        category: { select: { name: true } },
+      },
+    }),
   ]);
 
   return [
@@ -80,6 +97,13 @@ export async function listNoteSources(instructorId?: string): Promise<NoteSource
       title: l.title,
       where: `${l.chapter.course.title} · ${l.chapter.title}`,
       readable: plainText(l.content ?? "").length > 120,
+    })),
+    ...materials.map((m) => ({
+      id: m.id,
+      kind: "STUDY_MATERIAL" as const,
+      title: m.title,
+      where: m.course?.title ?? m.category?.name ?? "Study material",
+      readable: plainText(m.body ?? "").length > 120,
     })),
   ];
 }
@@ -103,6 +127,17 @@ async function titleFor(input: QuizSourceInput): Promise<{ title: string; text: 
     if (!lesson) throw AppError.notFound("That lesson no longer exists.");
     return { title: lesson.title, text: null };
   }
+  if (input.studyMaterialId) {
+    const material = await prisma.studyMaterial.findUnique({
+      where: { id: input.studyMaterialId },
+      select: { title: true, course: { select: { title: true } } },
+    });
+    if (!material) throw AppError.notFound("That study material no longer exists.");
+    return {
+      title: material.course ? `${material.title} · ${material.course.title}` : material.title,
+      text: null,
+    };
+  }
   return { title: input.title?.trim() || "Pasted notes", text: input.text ?? null };
 }
 
@@ -111,11 +146,15 @@ export async function linkQuizSource(quizId: string, input: QuizSourceInput): Pr
   if (!quiz) throw AppError.notFound("Quiz not found.");
 
   // The same notes twice on one quiz says nothing the first row didn't.
-  if (input.batchNoteId || input.lessonId) {
+  if (input.batchNoteId || input.lessonId || input.studyMaterialId) {
     const already = await prisma.quizSource.findFirst({
       where: {
         quizId,
-        ...(input.batchNoteId ? { batchNoteId: input.batchNoteId } : { lessonId: input.lessonId }),
+        ...(input.batchNoteId
+          ? { batchNoteId: input.batchNoteId }
+          : input.lessonId
+            ? { lessonId: input.lessonId }
+            : { studyMaterialId: input.studyMaterialId }),
       },
       select: { id: true },
     });
@@ -128,6 +167,7 @@ export async function linkQuizSource(quizId: string, input: QuizSourceInput): Pr
       quizId,
       batchNoteId: input.batchNoteId || null,
       lessonId: input.lessonId || null,
+      studyMaterialId: input.studyMaterialId || null,
       title: title.slice(0, 150),
       text,
     },
@@ -155,17 +195,25 @@ async function readSource(quizId: string, input: GenerateQuestionsInput): Promis
   if (input.sourceId) {
     const src = await prisma.quizSource.findFirst({
       where: { id: input.sourceId, quizId },
-      select: { title: true, text: true, batchNoteId: true, lessonId: true },
+      select: {
+        title: true,
+        text: true,
+        batchNoteId: true,
+        lessonId: true,
+        studyMaterialId: true,
+      },
     });
     if (!src) throw AppError.notFound("Those notes aren't on this quiz.");
     if (src.batchNoteId) return readBatchNote(src.batchNoteId);
     if (src.lessonId) return readLesson(src.lessonId);
+    if (src.studyMaterialId) return readStudyMaterial(src.studyMaterialId);
     const text = plainText(src.text ?? "");
     if (text.length < 200) throw AppError.badRequest(TOO_THIN);
     return { title: src.title, text };
   }
   if (input.batchNoteId) return readBatchNote(input.batchNoteId);
   if (input.lessonId) return readLesson(input.lessonId);
+  if (input.studyMaterialId) return readStudyMaterial(input.studyMaterialId);
 
   const pasted = plainText(input.text ?? "");
   if (pasted.length < 200) throw AppError.badRequest(TOO_THIN);
@@ -192,6 +240,40 @@ async function readLesson(id: string): Promise<SourceText> {
   const text = plainText(`${lesson.title}\n${lesson.content ?? ""}`);
   if (text.length < 200) throw AppError.badRequest(TOO_THIN);
   return { title: lesson.title, text };
+}
+
+/**
+ * Study material reads like a lesson, with one difference worth stating: a
+ * material may be a file with no typed body at all, and a PDF's bytes are not
+ * text. That case gets the same "nothing to read" answer as a note attachment.
+ */
+async function readStudyMaterial(id: string): Promise<SourceText> {
+  const material = await prisma.studyMaterial.findUnique({
+    where: { id },
+    select: {
+      title: true,
+      description: true,
+      body: true,
+      fileName: true,
+      course: { select: { title: true } },
+    },
+  });
+  if (!material) throw AppError.notFound("That study material no longer exists.");
+
+  const text = plainText(
+    [material.title, material.description ?? "", material.body ?? ""].join("\n"),
+  );
+  if (text.length < 200) {
+    throw AppError.badRequest(
+      material.fileName
+        ? `"${material.title}" is an attached file, and a file's contents can't be read. Paste the text into the material's body, or pick material that was typed in.`
+        : TOO_THIN,
+    );
+  }
+  return {
+    title: material.course ? `${material.title} · ${material.course.title}` : material.title,
+    text,
+  };
 }
 
 // ── Drafting ─────────────────────────────────────────────────────────────────
@@ -283,11 +365,14 @@ export async function generateQuizQuestions(
   }
 
   if (input.linkSource) {
+    const fromExisting =
+      input.batchNoteId || input.lessonId || input.studyMaterialId || input.sourceId;
     await linkQuizSource(quizId, {
       batchNoteId: input.batchNoteId || "",
       lessonId: input.lessonId || "",
+      studyMaterialId: input.studyMaterialId || "",
       title: source.title,
-      text: input.batchNoteId || input.lessonId || input.sourceId ? "" : source.text,
+      text: fromExisting ? "" : source.text,
     }).catch(() => undefined); // a failed bookkeeping row must not lose the draft
   }
 

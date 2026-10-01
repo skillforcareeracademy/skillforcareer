@@ -86,22 +86,32 @@ export const reorderQuizzesSchema = z.object({
   ids: z.array(z.string().min(1)).min(1).max(500),
 });
 
-/** Notes a quiz was prepared from: a batch note, a lesson, or pasted text. */
+/**
+ * What a quiz was prepared from: batch notes, a lesson, study material, or
+ * pasted text. Exactly one of them — naming two sources on one row would make
+ * "which notes did this come from" unanswerable.
+ */
 export const quizSourceSchema = z
   .object({
     batchNoteId: z.string().optional().or(z.literal("")),
     lessonId: z.string().optional().or(z.literal("")),
+    studyMaterialId: z.string().optional().or(z.literal("")),
     title: z.string().trim().max(150).optional().or(z.literal("")),
     text: z.string().trim().max(200_000).optional().or(z.literal("")),
   })
   .superRefine((v, ctx) => {
-    if (!v.batchNoteId && !v.lessonId && !v.text) {
-      ctx.addIssue({ code: "custom", message: "Choose notes or paste the text.", path: ["batchNoteId"] });
+    const picked = [v.batchNoteId, v.lessonId, v.studyMaterialId].filter(Boolean);
+    if (picked.length === 0 && !v.text) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Choose notes or study material, or paste the text.",
+        path: ["batchNoteId"],
+      });
     }
-    if (v.batchNoteId && v.lessonId) {
-      ctx.addIssue({ code: "custom", message: "Pick one set of notes at a time.", path: ["lessonId"] });
+    if (picked.length > 1) {
+      ctx.addIssue({ code: "custom", message: "Pick one source at a time.", path: ["lessonId"] });
     }
-    if (!v.batchNoteId && !v.lessonId && v.text && v.text.length < 200) {
+    if (picked.length === 0 && v.text && v.text.length < 200) {
       ctx.addIssue({
         code: "custom",
         message: "Paste at least a couple of paragraphs of notes.",
@@ -123,6 +133,7 @@ export const generateQuestionsSchema = z.object({
   sourceId: z.string().optional().or(z.literal("")),
   batchNoteId: z.string().optional().or(z.literal("")),
   lessonId: z.string().optional().or(z.literal("")),
+  studyMaterialId: z.string().optional().or(z.literal("")),
   text: z.string().trim().max(200_000).optional().or(z.literal("")),
   count: z.coerce.number().int().min(1).max(25).default(5),
   style: z.enum(GENERATE_STYLES).default("MIXED"),

@@ -671,7 +671,7 @@ export function QuizEditor({
                 </Button>
               )}
               <Button variant="outline" onClick={() => setGenerating(true)}>
-                <Sparkles className="size-4" /> Generate from notes
+                <Sparkles className="size-4" /> Generate questions
               </Button>
               <Button onClick={openAdd}>
                 <Plus className="size-4" /> Add question

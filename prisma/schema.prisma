@@ -307,6 +307,24 @@ enum NotificationChannel {
   WHATSAPP
 }
 
+/// Who a broadcast goes to. `ROLES`, `BATCHES`, `COURSES` and `USERS` read the
+/// chosen ids out of `Broadcast.targetIds`; the rest need no ids.
+///
+/// Roles are the catch-all the academy asked for ("and more scenarios"): roles
+/// live in the database and admins can invent new ones, so "all students",
+/// "instructors only", "both", "sales agents" and anything created later are
+/// all the same audience with a different pick — no new code each time.
+enum BroadcastAudience {
+  ROLES
+  BATCHES
+  COURSES
+  USERS
+  ALL_USERS
+  PLACEMENT_PARTNERS
+  HIRING_PARTNERS
+  PLACEMENT_CANDIDATES
+}
+
 enum OtpPurpose {
   VERIFY_EMAIL
   RESET_PASSWORD
@@ -429,6 +447,7 @@ model User {
   curriculums          Curriculum[]           @relation("CurriculumAuthor")
   curriculumChanges    CurriculumChange[]     @relation("CurriculumChangeAuthor")
   withdrawalsHandled   WalletWithdrawal[]     @relation("WalletWithdrawalAdmin")
+  broadcastsSent       Broadcast[]            @relation("BroadcastSender")
 
   @@index([roleId])
   @@index([status])
@@ -580,6 +599,7 @@ model StudyMaterial {
   assets      MaterialAsset[]
   reads       MaterialRead[]
   highlights  MaterialHighlight[]
+  quizSources QuizSource[]
 
   @@index([courseId])
   @@index([categoryId])
@@ -1645,22 +1665,27 @@ model QuizCategory {
 /// holds what they pasted. Learners see the source as revision material, and
 /// the question generator reads it.
 model QuizSource {
-  id          String  @id @default(cuid())
-  quizId      String
-  batchNoteId String?
-  lessonId    String?
-  title       String
-  text        String? @db.Text
+  id              String  @id @default(cuid())
+  quizId          String
+  batchNoteId     String?
+  lessonId        String?
+  /// Study material the paper was prepared from — the academy sets quizzes
+  /// straight from what the batch was given to read.
+  studyMaterialId String?
+  title           String
+  text            String? @db.Text
 
   createdAt DateTime @default(now())
 
-  quiz      Quiz       @relation(fields: [quizId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  batchNote BatchNote? @relation(fields: [batchNoteId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  lesson    Lesson?    @relation(fields: [lessonId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  quiz          Quiz           @relation(fields: [quizId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  batchNote     BatchNote?     @relation(fields: [batchNoteId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  lesson        Lesson?        @relation(fields: [lessonId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  studyMaterial StudyMaterial? @relation(fields: [studyMaterialId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([quizId])
   @@index([batchNoteId])
   @@index([lessonId])
+  @@index([studyMaterialId])
 }
 
 /// Which cohorts a quiz is set for. No rows = everyone on the course.
@@ -2374,6 +2399,43 @@ model Notification {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([userId, isRead])
+  @@index([createdAt])
+}
+
+/// An announcement sent from the admin or instructor panel: "message broadcast
+/// system … for some urgent changes and schedule change or any change".
+///
+/// Kept after sending so the academy can see what went out, to whom and when.
+/// The bell notifications it produced are ordinary `Notification` rows; this is
+/// the record of the send itself.
+model Broadcast {
+  id      String @id @default(cuid())
+  title   String
+  message String @db.Text
+  /// Where the "Open" button in the notification and email points, if anywhere.
+  actionUrl String?
+
+  audience BroadcastAudience
+  /// The ids the audience needs — role, batch, course or user ids. For
+  /// placement candidates it holds the statuses picked instead. Empty = all.
+  targetIds Json?
+
+  /// The academy picked these per send: "Notification option for dashboard and
+  /// email". At least one is always true.
+  toDashboard Boolean @default(true)
+  toEmail     Boolean @default(false)
+
+  /// What actually happened, filled in once the send finishes.
+  recipientCount Int @default(0)
+  notifiedCount  Int @default(0)
+  emailedCount   Int @default(0)
+
+  sentById String
+  createdAt DateTime @default(now())
+
+  sentBy User @relation("BroadcastSender", fields: [sentById], references: [id], onUpdate: NoAction)
+
+  @@index([sentById])
   @@index([createdAt])
 }
 

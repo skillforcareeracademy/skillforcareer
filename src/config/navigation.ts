@@ -38,6 +38,7 @@ import {
   ClipboardCheck,
   IdCard,
   Library,
+  Megaphone,
 } from "lucide-react";
 import { ROLES, type Role } from "./roles";
 
@@ -193,6 +194,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { title: "Wallets", href: "/wallets", icon: Wallet, roles: STAFF },
       { title: "Payments", href: "/payments", icon: CreditCard, roles: STAFF },
       { title: "Fees", href: "/payments", icon: CreditCard, roles: [ROLES.STUDENT] },
+      { title: "Broadcast", href: "/broadcasts", icon: Megaphone, roles: TEACHING },
       { title: "Activity", href: "/activity", icon: Activity, roles: STAFF },
       { title: "Assistant", href: "/chatbot", icon: Bot, roles: STAFF },
       { title: "Coupons", href: "/coupons", icon: Ticket, roles: STAFF },

@@ -48,6 +48,12 @@ export const PERMISSIONS = {
    */
   MANAGE_CURRICULUM: "curriculum:manage",
   MANAGE_PLACEMENTS: "placements:manage",
+  /**
+   * Sending an announcement to a chosen audience. Instructors hold it too — the
+   * academy asked for it "from admin panel and instructor panel" — but the
+   * service narrows an instructor to their own batches, courses and learners.
+   */
+  SEND_BROADCAST: "broadcasts:send",
 
   // Catalog
   MANAGE_CATEGORIES: "categories:manage",
@@ -94,6 +100,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     P.VIEW_REPORTS,
     P.MANAGE_LEADS,
     P.MANAGE_PLACEMENTS,
+    P.SEND_BROADCAST,
     P.MANAGE_CURRICULUM,
     P.MANAGE_CATEGORIES,
     P.CREATE_COURSE,
@@ -120,6 +127,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     P.GRADE_ASSIGNMENT,
     P.ISSUE_CERTIFICATE,
     P.VIEW_ANALYTICS,
+    P.SEND_BROADCAST,
   ],
   STUDENT: [
     P.VIEW_COURSE,

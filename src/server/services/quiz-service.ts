@@ -150,6 +150,7 @@ export async function getQuizEdit(id: string) {
         include: {
           batchNote: { select: { title: true, batch: { select: { name: true } } } },
           lesson: { select: { title: true } },
+          studyMaterial: { select: { title: true, course: { select: { title: true } } } },
         },
       },
     },
@@ -183,8 +184,14 @@ export async function getQuizEdit(id: string) {
     sources: z.sources.map((src) => ({
       id: src.id,
       title: src.title,
-      kind: src.batchNoteId ? ("BATCH_NOTE" as const) : src.lessonId ? ("LESSON" as const) : ("TEXT" as const),
-      where: src.batchNote?.batch.name ?? null,
+      kind: src.batchNoteId
+        ? ("BATCH_NOTE" as const)
+        : src.lessonId
+          ? ("LESSON" as const)
+          : src.studyMaterialId
+            ? ("STUDY_MATERIAL" as const)
+            : ("TEXT" as const),
+      where: src.batchNote?.batch.name ?? src.studyMaterial?.course?.title ?? null,
       hasText: Boolean(src.text?.trim()),
     })),
     questions: z.questions.map((q) => ({
