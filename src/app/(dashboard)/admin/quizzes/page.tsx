@@ -10,6 +10,7 @@ import {
   backfillQuizNumbers,
 } from "@/server/services/quiz-service";
 import { listQuizCategoryOptions } from "@/server/services/quiz-category-service";
+import { groupOptions } from "@/server/services/content-group-service";
 import { QuizzesClient } from "@/components/admin/quizzes/quizzes-client";
 
 export const metadata: Metadata = { title: "Quizzes" };
@@ -46,12 +47,14 @@ export default async function QuizzesPage({
   // order the learners get are never out of step.
   await Promise.all([backfillQuizSequences(), backfillQuizNumbers()]);
 
-  const [{ quizzes, total }, stats, courses, batches, categories] = await Promise.all([
+  const [{ quizzes, total }, stats, courses, batches, categories, groups] =
+    await Promise.all([
     listQuizzesAdmin(query),
     quizStats(),
     listCoursesForSelect(),
     listBatchesForSelect(),
     listQuizCategoryOptions(),
+    groupOptions("QUIZ"),
   ]);
 
   return (
@@ -63,6 +66,7 @@ export default async function QuizzesPage({
       courses={courses}
       batches={batches}
       categories={categories}
+      groups={groups}
     />
   );
 }

@@ -3,7 +3,12 @@ import { moveToTrash } from "./trash-service";
 import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
 import { toCsv, parseCsv } from "@/lib/csv";
-import type { StudyMaterialInput } from "@/lib/validations/study-material";
+import {
+  MATERIAL_EXPORT_COLUMNS,
+  DEFAULT_MATERIAL_COLUMNS,
+  type MaterialExportColumn,
+  type StudyMaterialInput,
+} from "@/lib/validations/study-material";
 import {
   groupOptions,
   groupsOfMany,
@@ -197,6 +202,11 @@ export interface MaterialListQuery {
   /** Filed in this folder, or any folder beneath it. */
   groupId?: string;
   published?: "yes" | "no";
+  /** Added on or after / before this date — the export's "date wise". */
+  createdFrom?: string;
+  createdTo?: string;
+  /** Just these pieces, for exporting one file on its own. */
+  ids?: string[];
   /** Newest first, or the academy's own order. */
   sort?: "sequence" | "newest" | "title" | "reads";
 }
@@ -227,6 +237,16 @@ export async function listMaterials(
       inGroup ? { id: { in: inGroup } } : {},
       q.published === "yes" ? { isPublished: true } : {},
       q.published === "no" ? { isPublished: false } : {},
+      q.ids && q.ids.length > 0 ? { id: { in: q.ids } } : {},
+      // `createdTo` is a calendar day, so it covers the whole of that day.
+      q.createdFrom || q.createdTo
+        ? {
+            createdAt: {
+              ...(q.createdFrom ? { gte: new Date(`${q.createdFrom}T00:00:00.000Z`) } : {}),
+              ...(q.createdTo ? { lte: new Date(`${q.createdTo}T23:59:59.999Z`) } : {}),
+            },
+          }
+        : {},
     ],
   };
   const rows = await prisma.studyMaterial.findMany({
@@ -507,47 +527,115 @@ export async function backfillMaterialNumbers(): Promise<number> {
 
 // ── Import / export ─────────────────────────────────────────────────────────
 
-const CSV_HEADERS = [
-  "number",
-  "title",
-  "description",
-  "category",
-  "subCategory",
-  "course",
-  "fileUrl",
-  "fileName",
-  "body",
-  "downloadsEnabled",
-  "isPublished",
-  "readers",
-  "readMinutes",
-];
+const yesNo = (v: boolean) => (v ? "yes" : "no");
+/** A date the way a spreadsheet reads it, not an ISO timestamp. */
+const day = (iso: string) => iso.slice(0, 10);
 
-export async function exportMaterials(ownerId?: string): Promise<string> {
-  const rows = await listMaterials({ sort: "sequence" }, ownerId);
-  const bodies = await prisma.studyMaterial.findMany({
-    where: { id: { in: rows.map((r) => r.id) } },
-    select: { id: true, body: true },
-  });
-  const bodyOf = new Map(bodies.map((b) => [b.id, b.body ?? ""]));
-  return toCsv(
-    CSV_HEADERS,
-    rows.map((m) => [
-      m.number,
-      m.title,
-      m.description ?? "",
-      m.categoryName ?? "",
-      m.subCategoryName ?? "",
-      m.courseTitle ?? "",
-      m.fileUrl ?? "",
-      m.fileName ?? "",
-      bodyOf.get(m.id) ?? "",
-      m.downloadsEnabled ? "yes" : "no",
-      m.isPublished ? "yes" : "no",
-      m.readers,
-      Math.round(m.readSeconds / 60),
-    ]),
+function columnValue(
+  key: MaterialExportColumn,
+  m: MaterialRow,
+  body: string,
+): string | number {
+  switch (key) {
+    case "number": return m.number;
+    case "title": return m.title;
+    case "description": return m.description ?? "";
+    case "folder": return m.groupPaths.join(" | ");
+    case "category": return m.categoryName ?? "";
+    case "subCategory": return m.subCategoryName ?? "";
+    case "course": return m.courseTitle ?? "";
+    case "courses": return m.courseTitles.join(" | ");
+    case "batches": return m.batchNames.join(" | ");
+    case "fileUrl": return m.fileUrl ?? "";
+    case "fileName": return m.fileName ?? "";
+    case "body": return body;
+    case "downloadsEnabled": return yesNo(m.downloadsEnabled);
+    case "isPublished": return yesNo(m.isPublished);
+    case "readers": return m.readers;
+    case "readMinutes": return Math.round(m.readSeconds / 60);
+    case "createdBy": return m.createdByName;
+    case "createdAt": return day(m.createdAt);
+    case "updatedAt": return day(m.updatedAt);
+  }
+}
+
+function headersFor(columns: MaterialExportColumn[]): string[] {
+  return columns.map(
+    (key) => MATERIAL_EXPORT_COLUMNS.find((c) => c.key === key)?.label ?? key,
   );
+}
+
+/** Only the columns asked for, and only ones we know about. */
+function wanted(columns?: string[]): MaterialExportColumn[] {
+  const known = new Set(MATERIAL_EXPORT_COLUMNS.map((c) => c.key as string));
+  const picked = (columns ?? []).filter((c) => known.has(c)) as MaterialExportColumn[];
+  return picked.length > 0 ? picked : DEFAULT_MATERIAL_COLUMNS;
+}
+
+export interface MaterialExportOptions extends MaterialListQuery {
+  columns?: string[];
+}
+
+/**
+ * The library as a spreadsheet, narrowed to whatever the academy picked —
+ * a folder and everything beneath it, a course, a cohort, a span of dates, a
+ * single piece, or the lot.
+ */
+export async function exportMaterials(
+  opts: MaterialExportOptions = {},
+  ownerId?: string,
+): Promise<string> {
+  const { columns, ...query } = opts;
+  const picked = wanted(columns);
+  const rows = await listMaterials({ ...query, sort: query.sort ?? "sequence" }, ownerId);
+
+  // The written text is the one field the list doesn't carry, and it is only
+  // read when the sheet actually asks for it.
+  const bodyOf = new Map<string, string>();
+  if (picked.includes("body") && rows.length > 0) {
+    const bodies = await prisma.studyMaterial.findMany({
+      where: { id: { in: rows.map((r) => r.id) } },
+      select: { id: true, body: true },
+    });
+    bodies.forEach((b) => bodyOf.set(b.id, b.body ?? ""));
+  }
+
+  return toCsv(
+    headersFor(picked),
+    rows.map((m) => picked.map((key) => columnValue(key, m, bodyOf.get(m.id) ?? ""))),
+  );
+}
+
+/**
+ * A blank sheet with the chosen columns and one filled-in row to copy —
+ * "allow me to download sample sheet as per my requirement to upload". The
+ * example is what makes it usable: a header on its own doesn't say whether
+ * Published wants a tick, a yes, or a 1.
+ */
+export function materialSampleSheet(columns?: string[]): string {
+  const picked = wanted(columns);
+  const example: Record<MaterialExportColumn, string> = {
+    number: "1",
+    title: "Chapter 1 — Introduction",
+    description: "What this chapter covers",
+    folder: "Medical Coding → Medical Anatomy",
+    category: "Medical Coding",
+    subCategory: "Medical Anatomy",
+    course: "Medical Coding Course, 2026",
+    courses: "Medical Coding Course, 2026 | Advanced Coding",
+    batches: "Batch 001 | Batch 002",
+    fileUrl: "https://example.com/chapter-1.pdf",
+    fileName: "chapter-1.pdf",
+    body: "Type the reading here, or leave it blank when a file is attached.",
+    downloadsEnabled: "yes",
+    isPublished: "no",
+    readers: "0",
+    readMinutes: "0",
+    createdBy: "",
+    createdAt: "",
+    updatedAt: "",
+  };
+  return toCsv(headersFor(picked), [picked.map((key) => example[key])]);
 }
 
 export interface MaterialImportResult {
@@ -651,5 +739,3 @@ export async function importMaterials(
   }
   return result;
 }
-
-export const MATERIAL_IMPORT_HEADERS = CSV_HEADERS;

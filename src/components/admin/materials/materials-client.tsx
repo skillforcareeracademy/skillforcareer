@@ -35,6 +35,11 @@ import { GroupPicker } from "@/components/admin/groups/group-picker";
 import { MultiPicker } from "@/components/admin/groups/multi-picker";
 import { FolderSelect } from "@/components/admin/groups/folder-select";
 import { PageHeader } from "@/components/shared/page-header";
+import { ExportDialog } from "@/components/shared/export-dialog";
+import {
+  MATERIAL_EXPORT_COLUMNS,
+  DEFAULT_MATERIAL_COLUMNS,
+} from "@/lib/validations/study-material";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { Badge } from "@/components/ui/badge";
@@ -165,6 +170,7 @@ export function MaterialsClient({
   /** "Content should be visible in folder format", beside the plain table. */
   const [view, setView] = useState<"folders" | "table">("folders");
   const [openFolders, setOpenFolders] = useState<Set<string>>(new Set());
+  const [exporting, setExporting] = useState(false);
   const [form, setForm] = useState<FormState | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -633,11 +639,7 @@ export function MaterialsClient({
             >
               <FolderTree className="size-4" /> Groups
             </Button>
-            <Button
-              variant="outline"
-              nativeButton={false}
-              render={<Link href="/api/materials/export" prefetch={false} />}
-            >
+            <Button variant="outline" onClick={() => setExporting(true)}>
               <Download className="size-4" /> Export
             </Button>
             <Button variant="outline" render={<label />} nativeButton={false}>
@@ -655,6 +657,52 @@ export function MaterialsClient({
             </Button>
           </div>
         }
+      />
+
+      <ExportDialog
+        open={exporting}
+        onOpenChange={setExporting}
+        title="Export study material"
+        description="Pick what goes in the sheet and which columns it carries. The blank sample sheet comes out with the same columns, ready to fill in and import."
+        endpoint="/api/materials/export"
+        columns={[...MATERIAL_EXPORT_COLUMNS]}
+        defaultColumns={[...DEFAULT_MATERIAL_COLUMNS]}
+        scopes={[
+          {
+            key: "group",
+            label: "Folder",
+            anyLabel: "Every folder",
+            // A folder takes everything beneath it as well.
+            options: groups.map((g) => ({ value: g.id, label: g.path })),
+          },
+          {
+            key: "course",
+            label: "Course",
+            anyLabel: "Every course",
+            options: courses.map((c) => ({ value: c.id, label: c.title })),
+          },
+          {
+            key: "batch",
+            label: "Batch",
+            anyLabel: "Every batch",
+            options: batches.map((b) => ({ value: b.id, label: b.name })),
+          },
+          {
+            key: "ids",
+            label: "A single piece",
+            anyLabel: "Everything that matches",
+            options: materials.map((m) => ({ value: m.id, label: m.title })),
+          },
+          {
+            key: "status",
+            label: "Status",
+            anyLabel: "Published and draft",
+            options: [
+              { value: "yes", label: "Published only" },
+              { value: "no", label: "Drafts only" },
+            ],
+          },
+        ]}
       />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

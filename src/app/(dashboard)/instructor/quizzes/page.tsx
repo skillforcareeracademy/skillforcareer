@@ -10,6 +10,7 @@ import {
   backfillQuizNumbers,
 } from "@/server/services/quiz-service";
 import { listQuizCategoryOptions } from "@/server/services/quiz-category-service";
+import { groupOptions } from "@/server/services/content-group-service";
 import { QuizzesClient } from "@/components/admin/quizzes/quizzes-client";
 
 export const metadata: Metadata = { title: "Quizzes" };
@@ -43,12 +44,14 @@ export default async function InstructorQuizzesPage({
 
   await Promise.all([backfillQuizSequences(), backfillQuizNumbers()]);
 
-  const [{ quizzes, total }, stats, courses, batches, categories] = await Promise.all([
+  const [{ quizzes, total }, stats, courses, batches, categories, groups] =
+    await Promise.all([
     listQuizzesAdmin(query),
     quizStats(user.id),
     listCoursesForSelect(user.id),
     listBatchesForSelect(undefined, user.id),
     listQuizCategoryOptions(),
+    groupOptions("QUIZ"),
   ]);
 
   return (
@@ -60,6 +63,7 @@ export default async function InstructorQuizzesPage({
       courses={courses}
       batches={batches}
       categories={categories}
+      groups={groups}
       basePath="/instructor/quizzes"
     />
   );

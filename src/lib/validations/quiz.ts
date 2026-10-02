@@ -190,3 +190,44 @@ export type GenerateQuestionsInput = z.infer<typeof generateQuestionsSchema>;
 export type UpdateQuizInput = z.infer<typeof updateQuizSchema>;
 export type QuestionInput = z.infer<typeof questionSchema>;
 export type ImportQuestionsInput = z.infer<typeof importQuestionsSchema>;
+
+/**
+ * Every column a quiz sheet can carry — "import export option should also be
+ * given outside here in quiz", the same picker the study material export has.
+ *
+ * One row per quiz. Questions keep their own import and export inside a quiz,
+ * where a row is a question and the columns are different entirely.
+ */
+export const QUIZ_EXPORT_COLUMNS = [
+  { key: "quizNo", label: "No." },
+  { key: "title", label: "Title" },
+  { key: "description", label: "Description" },
+  { key: "folder", label: "Folder" },
+  { key: "category", label: "Category" },
+  { key: "subCategory", label: "Sub-category" },
+  { key: "course", label: "Course" },
+  { key: "batches", label: "Batches" },
+  { key: "difficulty", label: "Difficulty" },
+  { key: "passingScore", label: "Pass mark %" },
+  { key: "timeLimitMinutes", label: "Time limit (min)" },
+  { key: "perQuestionSeconds", label: "Per-question (sec)" },
+  { key: "isPublished", label: "Published" },
+  { key: "questions", label: "Questions" },
+  { key: "attempts", label: "Attempts" },
+  { key: "createdBy", label: "Created by" },
+] as const;
+
+export type QuizExportColumn = (typeof QUIZ_EXPORT_COLUMNS)[number]["key"];
+
+export const DEFAULT_QUIZ_COLUMNS: QuizExportColumn[] = [
+  "quizNo",
+  "title",
+  "description",
+  "folder",
+  "course",
+  "difficulty",
+  "passingScore",
+  "timeLimitMinutes",
+  "isPublished",
+  "questions",
+];

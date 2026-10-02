@@ -2,12 +2,22 @@ import { prisma } from "@/lib/prisma";
 import { moveToTrash } from "./trash-service";
 import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
-import { groupOptions, groupsOfMany } from "./content-group-service";
-import type {
-  CreateQuizInput,
-  UpdateQuizInput,
-  QuestionInput,
-  ImportQuestionsInput,
+import { toCsv, parseCsv } from "@/lib/csv";
+import {
+  groupOptions,
+  groupsOfMany,
+  itemsInGroups,
+  setGroupsFor,
+} from "./content-group-service";
+import {
+  QUIZ_EXPORT_COLUMNS,
+  DEFAULT_QUIZ_COLUMNS,
+  QUIZ_DIFFICULTIES,
+  type QuizExportColumn,
+  type CreateQuizInput,
+  type UpdateQuizInput,
+  type QuestionInput,
+  type ImportQuestionsInput,
 } from "@/lib/validations/quiz";
 
 /** Filter value for "quizzes nobody has grouped yet". */
@@ -603,4 +613,308 @@ export async function importQuestions(
     });
   }
   return input.questions.length;
+}
+
+// ── List-level import / export ──────────────────────────────────────────────
+
+/**
+ * The quiz list as a spreadsheet, and the same sheet read back in.
+ *
+ * The academy already had this inside a quiz for its questions; this is the
+ * level above — the papers themselves, narrowed the same way the study
+ * material export narrows, with the columns they tick.
+ */
+
+export interface QuizExportOptions {
+  columns?: string[];
+  search?: string;
+  groupId?: string;
+  courseId?: string;
+  batchId?: string;
+  status?: string;
+  difficulty?: string;
+  ids?: string[];
+  createdFrom?: string;
+  createdTo?: string;
+}
+
+interface QuizExportRow {
+  id: string;
+  quizNo: number;
+  title: string;
+  description: string | null;
+  groupPaths: string[];
+  categoryName: string | null;
+  subCategoryName: string | null;
+  courseTitle: string | null;
+  batchNames: string[];
+  difficulty: string;
+  passingScore: number;
+  timeLimitMinutes: number | null;
+  perQuestionSeconds: number | null;
+  isPublished: boolean;
+  questions: number;
+  attempts: number;
+  createdByName: string;
+}
+
+function quizColumnValue(key: QuizExportColumn, z: QuizExportRow): string | number {
+  switch (key) {
+    case "quizNo": return z.quizNo;
+    case "title": return z.title;
+    case "description": return z.description ?? "";
+    case "folder": return z.groupPaths.join(" | ");
+    case "category": return z.categoryName ?? "";
+    case "subCategory": return z.subCategoryName ?? "";
+    case "course": return z.courseTitle ?? "";
+    case "batches": return z.batchNames.join(" | ");
+    case "difficulty": return z.difficulty;
+    case "passingScore": return z.passingScore;
+    case "timeLimitMinutes": return z.timeLimitMinutes ?? "";
+    case "perQuestionSeconds": return z.perQuestionSeconds ?? "";
+    case "isPublished": return z.isPublished ? "yes" : "no";
+    case "questions": return z.questions;
+    case "attempts": return z.attempts;
+    case "createdBy": return z.createdByName;
+  }
+}
+
+function wantedQuizColumns(columns?: string[]): QuizExportColumn[] {
+  const known = new Set(QUIZ_EXPORT_COLUMNS.map((c) => c.key as string));
+  const picked = (columns ?? []).filter((c) => known.has(c)) as QuizExportColumn[];
+  return picked.length > 0 ? picked : DEFAULT_QUIZ_COLUMNS;
+}
+
+const quizHeaders = (columns: QuizExportColumn[]) =>
+  columns.map((key) => QUIZ_EXPORT_COLUMNS.find((c) => c.key === key)?.label ?? key);
+
+export async function exportQuizzes(
+  opts: QuizExportOptions = {},
+  ownerId?: string,
+): Promise<string> {
+  const picked = wantedQuizColumns(opts.columns);
+  // A folder filter reaches everything beneath it, as it does everywhere else.
+  const inGroup = opts.groupId ? await itemsInGroups("QUIZ", [opts.groupId]) : null;
+
+  const and: Prisma.QuizWhereInput[] = [];
+  if (opts.search) and.push({ title: { contains: opts.search } });
+  if (opts.courseId) and.push({ courseId: opts.courseId });
+  if (opts.batchId) and.push({ batches: { some: { batchId: opts.batchId } } });
+  if (opts.status === "yes") and.push({ isPublished: true });
+  if (opts.status === "no") and.push({ isPublished: false });
+  // Only a difficulty the schema knows — anything else would be rejected by the
+  // database rather than simply matching nothing.
+  if (opts.difficulty && DIFFICULTIES.has(opts.difficulty)) {
+    and.push({ difficulty: opts.difficulty as Prisma.QuizWhereInput["difficulty"] });
+  }
+  if (opts.ids && opts.ids.length > 0) and.push({ id: { in: opts.ids } });
+  if (inGroup) and.push({ id: { in: inGroup } });
+  if (opts.createdFrom || opts.createdTo) {
+    and.push({
+      createdAt: {
+        ...(opts.createdFrom ? { gte: new Date(`${opts.createdFrom}T00:00:00.000Z`) } : {}),
+        ...(opts.createdTo ? { lte: new Date(`${opts.createdTo}T23:59:59.999Z`) } : {}),
+      },
+    });
+  }
+  if (ownerId) {
+    and.push({ OR: [{ createdById: ownerId }, { course: { instructorId: ownerId } }] });
+  }
+
+  const rows = await prisma.quiz.findMany({
+    where: and.length > 0 ? { AND: and } : {},
+    orderBy: [{ sequence: "asc" }, { createdAt: "asc" }],
+    select: {
+      id: true,
+      quizNo: true,
+      title: true,
+      description: true,
+      difficulty: true,
+      passingScore: true,
+      timeLimitMinutes: true,
+      perQuestionSeconds: true,
+      isPublished: true,
+      course: { select: { title: true } },
+      category: { select: { name: true } },
+      subCategory: { select: { name: true } },
+      batches: { select: { batch: { select: { name: true } } } },
+      createdBy: { select: { name: true } },
+      _count: { select: { questions: true, attempts: true } },
+    },
+  });
+
+  const [membership, options] = await Promise.all([
+    groupsOfMany("QUIZ", rows.map((r) => r.id)),
+    groupOptions("QUIZ"),
+  ]);
+  const pathOf = new Map(options.map((o) => [o.id, o.path]));
+
+  return toCsv(
+    quizHeaders(picked),
+    rows.map((z) => {
+      const row: QuizExportRow = {
+        id: z.id,
+        quizNo: z.quizNo,
+        title: z.title,
+        description: z.description,
+        groupPaths: (membership.get(z.id) ?? [])
+          .map((g) => pathOf.get(g) ?? "")
+          .filter(Boolean),
+        categoryName: z.category?.name ?? null,
+        subCategoryName: z.subCategory?.name ?? null,
+        courseTitle: z.course?.title ?? null,
+        batchNames: z.batches.map((b) => b.batch.name),
+        difficulty: z.difficulty,
+        passingScore: z.passingScore,
+        timeLimitMinutes: z.timeLimitMinutes,
+        perQuestionSeconds: z.perQuestionSeconds,
+        isPublished: z.isPublished,
+        questions: z._count.questions,
+        attempts: z._count.attempts,
+        createdByName: z.createdBy.name,
+      };
+      return picked.map((key) => quizColumnValue(key, row));
+    }),
+  );
+}
+
+/** A blank sheet with the chosen columns and one row to copy. */
+export function quizSampleSheet(columns?: string[]): string {
+  const picked = wantedQuizColumns(columns);
+  const example: Record<QuizExportColumn, string> = {
+    quizNo: "1",
+    title: "ICD Coding — Chapter 1",
+    description: "Covers the first chapter's code ranges",
+    folder: "Medical Coding → ICD Coding Quiz",
+    category: "Medical Coding",
+    subCategory: "ICD Coding Quiz",
+    course: "Medical Coding Course, 2026",
+    batches: "Batch 001 | Batch 002",
+    difficulty: "INTERMEDIATE",
+    passingScore: "40",
+    timeLimitMinutes: "30",
+    perQuestionSeconds: "60",
+    isPublished: "no",
+    questions: "",
+    attempts: "",
+    createdBy: "",
+  };
+  return toCsv(quizHeaders(picked), [picked.map((key) => example[key])]);
+}
+
+export interface QuizImportResult {
+  created: number;
+  updated: number;
+  skipped: { row: number; reason: string }[];
+}
+
+/** The real difficulty values — an unknown one in a sheet falls back to EASY. */
+const DIFFICULTIES = new Set<string>(QUIZ_DIFFICULTIES);
+
+/**
+ * Bring quizzes in from a spreadsheet. A title that already exists is updated
+ * rather than duplicated — the same rule the study material importer follows,
+ * so an export can be edited and sent straight back.
+ *
+ * Questions are not touched here: a quiz's paper has its own importer, where a
+ * row is a question. This sheet is the papers themselves.
+ */
+export async function importQuizzes(
+  csv: string,
+  createdById: string,
+): Promise<QuizImportResult> {
+  const { rows } = parseCsv(csv);
+  const result: QuizImportResult = { created: 0, updated: 0, skipped: [] };
+  if (rows.length === 0) return result;
+
+  const [courses, existing, folders] = await Promise.all([
+    prisma.course.findMany({ select: { id: true, title: true } }),
+    prisma.quiz.findMany({ select: { id: true, title: true } }),
+    groupOptions("QUIZ"),
+  ]);
+  const courseByName = new Map(courses.map((c) => [c.title.trim().toLowerCase(), c.id]));
+  const quizByTitle = new Map(existing.map((q) => [q.title.trim().toLowerCase(), q.id]));
+  const folderByPath = new Map(folders.map((f) => [f.path.trim().toLowerCase(), f.id]));
+
+  const pick = (row: Record<string, string>, ...names: string[]): string => {
+    for (const name of names) {
+      const hit = Object.keys(row).find(
+        (k) => k.trim().toLowerCase() === name.toLowerCase(),
+      );
+      if (hit && row[hit]?.trim()) return row[hit].trim();
+    }
+    return "";
+  };
+  const yes = (v: string) => ["yes", "y", "true", "1"].includes(v.trim().toLowerCase());
+  // An empty cell means "not set", not zero — a blank time limit is no limit,
+  // and a blank pass mark takes the default rather than letting everyone pass.
+  const num = (v: string) => {
+    if (!v.trim()) return null;
+    const n = Number(v);
+    return Number.isFinite(n) && n >= 0 ? Math.round(n) : null;
+  };
+
+  for (const [i, row] of rows.entries()) {
+    const line = i + 2; // the header is row 1
+    const title = pick(row, "title", "quiz", "name");
+    if (!title) {
+      result.skipped.push({ row: line, reason: "No title" });
+      continue;
+    }
+
+    const courseName = pick(row, "course");
+    const courseId = courseName
+      ? (courseByName.get(courseName.toLowerCase()) ?? null)
+      : null;
+    if (courseName && !courseId) {
+      result.skipped.push({ row: line, reason: `No course called "${courseName}"` });
+      continue;
+    }
+
+    // Sheets are typed by hand: "Very difficult" has to reach VERY_DIFFICULT.
+    const difficultyRaw = pick(row, "difficulty").trim().toUpperCase().replace(/[\s-]+/g, "_");
+    const difficulty = DIFFICULTIES.has(difficultyRaw) ? difficultyRaw : "EASY";
+    const data = {
+      title,
+      description: pick(row, "description") || null,
+      courseId,
+      difficulty: difficulty as Prisma.QuizCreateInput["difficulty"],
+      passingScore: num(pick(row, "pass mark %", "passingScore", "pass mark")) ?? 40,
+      timeLimitMinutes: num(pick(row, "time limit (min)", "timeLimitMinutes", "time limit")),
+      perQuestionSeconds: num(
+        pick(row, "per-question (sec)", "perQuestionSeconds", "per question"),
+      ),
+      isPublished: yes(pick(row, "published", "isPublished")),
+    };
+
+    const found = quizByTitle.get(title.trim().toLowerCase());
+    let quizId: string;
+    if (found) {
+      await prisma.quiz.update({ where: { id: found }, data });
+      quizId = found;
+      result.updated += 1;
+    } else {
+      const made = await prisma.quiz.create({
+        data: {
+          ...data,
+          quizNo: await nextQuizNo(),
+          sequence: await nextSequence(null, null),
+          createdById,
+        },
+        select: { id: true },
+      });
+      quizId = made.id;
+      quizByTitle.set(title.trim().toLowerCase(), quizId);
+      result.created += 1;
+    }
+
+    // A folder named in the sheet files it there, when that folder exists.
+    const folderPath = pick(row, "folder");
+    if (folderPath) {
+      const groupId = folderByPath.get(folderPath.trim().toLowerCase());
+      if (groupId) await setGroupsFor("QUIZ", quizId, [groupId]);
+    }
+  }
+
+  return result;
 }

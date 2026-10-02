@@ -8,7 +8,9 @@ import {
   MoreHorizontal,
   Pencil,
   Trash2,
+  Download,
   Loader2,
+  Upload,
   FileQuestion,
   Send,
   Undo2,
@@ -26,6 +28,12 @@ import { api, ApiError } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
+import { ExportDialog } from "@/components/shared/export-dialog";
+import {
+  QUIZ_EXPORT_COLUMNS,
+  DEFAULT_QUIZ_COLUMNS,
+} from "@/lib/validations/quiz";
+import type { GroupOption } from "@/server/services/content-group-service";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -141,6 +149,7 @@ export function QuizzesClient({
   courses,
   batches,
   categories = [],
+  groups = [],
   basePath = "/admin/quizzes",
 }: {
   quizzes: QuizRow[];
@@ -151,11 +160,15 @@ export function QuizzesClient({
   batches: BatchOpt[];
   /** Quiz groups: parents, and sub-categories carrying their `parentId`. */
   categories?: CategoryOpt[];
+  /** The shared folder tree, for narrowing an export to one shelf. */
+  groups?: GroupOption[];
   basePath?: string;
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const [search, setSearch] = useState(query.search ?? "");
+  const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
   /** Folders, as the learner sees them, or the flat table. */
   const view: "folders" | "table" = query.view === "table" ? "table" : "folders";
   const [openFolders, setOpenFolders] = useState<Set<string>>(new Set());
@@ -582,6 +595,28 @@ export function QuizzesClient({
     );
   }
 
+  /** Read a sheet of quizzes in. Matching is by title, so an export can be
+   *  edited and sent straight back. */
+  async function onImport(file?: File) {
+    if (!file) return;
+    setImporting(true);
+    try {
+      const text = await file.text();
+      const res = await api.post<{ message: string; skipped: { row: number; reason: string }[] }>(
+        "/api/quizzes/import",
+        text,
+        { "Content-Type": "text/csv" },
+      );
+      toast.success(res.message);
+      res.skipped.slice(0, 3).forEach((s) => toast.warning(`Row ${s.row}: ${s.reason}`));
+      router.refresh();
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : "Couldn't read that sheet.");
+    } finally {
+      setImporting(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -595,6 +630,77 @@ export function QuizzesClient({
               render={<Link href={`${basePath.replace("/quizzes", "")}/groups/quiz`} />}
             >
               <FolderTree className="size-4" /> Groups
+            </Button>
+            <Button variant="outline" onClick={() => setExporting(true)}>
+              <Download className="size-4" /> Export
+            </Button>
+            <Button variant="outline" render={<label />} nativeButton={false}>
+              {importing ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Upload className="size-4" />
+              )}
+              Import
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                className="hidden"
+                onChange={(e) => void onImport(e.target.files?.[0])}
+              />
+
+      <ExportDialog
+        open={exporting}
+        onOpenChange={setExporting}
+        title="Export quizzes"
+        description="Pick which papers go in the sheet and which columns it carries. The blank sample sheet comes out with the same columns, ready to fill in and import. Questions have their own import and export inside each quiz."
+        endpoint="/api/quizzes/export"
+        columns={[...QUIZ_EXPORT_COLUMNS]}
+        defaultColumns={[...DEFAULT_QUIZ_COLUMNS]}
+        scopes={[
+          {
+            key: "group",
+            label: "Folder",
+            anyLabel: "Every folder",
+            options: groups.map((g) => ({ value: g.id, label: g.path })),
+          },
+          {
+            key: "course",
+            label: "Course",
+            anyLabel: "Every course",
+            options: courses.map((c) => ({ value: c.id, label: c.title })),
+          },
+          {
+            key: "batch",
+            label: "Batch",
+            anyLabel: "Every batch",
+            options: batches.map((b) => ({ value: b.id, label: b.name })),
+          },
+          {
+            key: "ids",
+            label: "A single quiz",
+            anyLabel: "Everything that matches",
+            options: quizzes.map((z) => ({ value: z.id, label: z.title })),
+          },
+          {
+            key: "status",
+            label: "Status",
+            anyLabel: "Published and draft",
+            options: [
+              { value: "yes", label: "Published only" },
+              { value: "no", label: "Drafts only" },
+            ],
+          },
+          {
+            key: "difficulty",
+            label: "Difficulty",
+            anyLabel: "Any difficulty",
+            options: QUIZ_DIFFICULTIES.map((d) => ({
+              value: d,
+              label: QUIZ_DIFFICULTY_LABEL[d] ?? d,
+            })),
+          },
+        ]}
+      />
             </Button>
             <Button onClick={() => setCreateOpen(true)}>
               <Plus className="size-4" /> New quiz

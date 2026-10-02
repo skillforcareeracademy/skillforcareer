@@ -73,3 +73,49 @@ export const HIGHLIGHT_COLORS = [
 export type MaterialCategoryInput = z.infer<typeof materialCategorySchema>;
 export type StudyMaterialInput = z.infer<typeof studyMaterialSchema>;
 export type MaterialHighlightInput = z.infer<typeof materialHighlightSchema>;
+
+/**
+ * Every column the library can be exported with, in the order they appear.
+ *
+ * The academy picks which of these they want rather than always taking all
+ * thirteen — "create a separate option for export where i can select what to
+ * download and what not". The same list fills a blank sample sheet, so a sheet
+ * written for importing has exactly the columns they chose.
+ */
+export const MATERIAL_EXPORT_COLUMNS = [
+  { key: "number", label: "No." },
+  { key: "title", label: "Title" },
+  { key: "description", label: "Description" },
+  { key: "folder", label: "Folder" },
+  { key: "category", label: "Category" },
+  { key: "subCategory", label: "Sub-category" },
+  { key: "course", label: "Course" },
+  { key: "courses", label: "All courses" },
+  { key: "batches", label: "Batches" },
+  { key: "fileUrl", label: "File URL" },
+  { key: "fileName", label: "File name" },
+  { key: "body", label: "Written text" },
+  { key: "downloadsEnabled", label: "Downloads allowed" },
+  { key: "isPublished", label: "Published" },
+  { key: "readers", label: "Readers" },
+  { key: "readMinutes", label: "Minutes read" },
+  { key: "createdBy", label: "Added by" },
+  { key: "createdAt", label: "Added on" },
+  { key: "updatedAt", label: "Last changed" },
+] as const;
+
+export type MaterialExportColumn = (typeof MATERIAL_EXPORT_COLUMNS)[number]["key"];
+
+/** What a sheet carries unless the academy says otherwise. */
+export const DEFAULT_MATERIAL_COLUMNS: MaterialExportColumn[] = [
+  "number",
+  "title",
+  "description",
+  "folder",
+  "course",
+  "fileUrl",
+  "fileName",
+  "body",
+  "downloadsEnabled",
+  "isPublished",
+];
