@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { moveToTrash } from "./trash-service";
 import { notify } from "./notification-service";
 import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
@@ -82,6 +83,8 @@ export async function listAssignmentsAdmin(q: AssignmentListQuery) {
     total,
     assignments: rows.map((a) => ({
       id: a.id,
+      assignmentNo: a.assignmentNo,
+      sequence: a.sequence,
       title: a.title,
       type: a.type,
       gradingMode: a.gradingMode,
@@ -269,9 +272,10 @@ function coreData(input: AssignmentInput) {
     instructions: input.instructions || null,
     courseId: input.courseId || null,
     type: input.type,
-    // Written answers always need a human — the schema refuses AUTO for them,
-    // but be explicit here too so a direct service call can't slip past it.
-    gradingMode: input.type === "QNA" ? ("MANUAL" as const) : input.gradingMode,
+    // Written answers can be marked automatically now: the learner's text is
+    // compared with the model answer, so a paper of short codes marks itself.
+    // See `matchesModelAnswer` in `student-assignment-service.ts` for the rule.
+    gradingMode: input.gradingMode,
     maxScore: input.maxScore,
     maxScoreManual: input.maxScoreManual,
     dueDate: toDate(input.dueDate),
@@ -316,12 +320,87 @@ async function setAudience(
 
 export async function createAssignment(input: AssignmentInput, createdById: string): Promise<string> {
   const a = await prisma.assignment.create({
-    data: { ...coreData(input), createdById },
+    data: {
+      ...coreData(input),
+      assignmentNo: await nextAssignmentNo(),
+      // Numbered as it is created, so a new paper lands at the end of its
+      // course rather than at "0" among everything else.
+      sequence: await nextAssignmentSequence(input.courseId || null),
+      createdById,
+    },
     select: { id: true },
   });
   await setAudience(a.id, input.batchIds, input.studentIds);
   await announceAssignment(a.id);
   return a.id;
+}
+
+/**
+ * The next permanent assignment number — one run across the whole academy,
+ * never reused or renumbered. (`sequence`, below, is the order within a course
+ * and can be rearranged; this cannot.)
+ */
+async function nextAssignmentNo(): Promise<number> {
+  const top = await prisma.assignment.findFirst({
+    orderBy: { assignmentNo: "desc" },
+    select: { assignmentNo: true },
+  });
+  return (top?.assignmentNo ?? 0) + 1;
+}
+
+/**
+ * The next number within a course, which is what makes them read as
+ * "Medical Coding assignment 1, 2, 3" rather than as one list across the
+ * academy. Assignments with no course are numbered among themselves.
+ */
+async function nextAssignmentSequence(courseId: string | null): Promise<number> {
+  const last = await prisma.assignment.findFirst({
+    where: { courseId },
+    orderBy: { sequence: "desc" },
+    select: { sequence: true },
+  });
+  return (last?.sequence ?? 0) + 1;
+}
+
+/**
+ * Number anything still sitting at 0 — assignments made before numbering
+ * existed. Runs on the assignments page, so the numbers an admin sees are
+ * always the numbers in the table.
+ */
+export async function backfillAssignmentNumbers(): Promise<number> {
+  const rows = await prisma.assignment.findMany({
+    where: { assignmentNo: { lte: 0 } },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, courseId: true },
+  });
+  if (rows.length === 0) return 0;
+
+  let nextNo = await nextAssignmentNo();
+  // Where each course has got to, so a backfill lands after the numbered ones.
+  const seqByCourse = new Map<string, number>();
+  const noCases: Prisma.Sql[] = [];
+  const seqCases: Prisma.Sql[] = [];
+
+  for (const row of rows) {
+    const key = row.courseId ?? "";
+    if (!seqByCourse.has(key)) {
+      seqByCourse.set(key, await nextAssignmentSequence(row.courseId));
+    }
+    const seq = seqByCourse.get(key)!;
+    seqByCourse.set(key, seq + 1);
+    noCases.push(Prisma.sql`WHEN ${row.id} THEN ${nextNo++}`);
+    seqCases.push(Prisma.sql`WHEN ${row.id} THEN ${seq}`);
+  }
+
+  // One statement: a row-at-a-time update is one round-trip each to a database
+  // a region away, and this runs on every page load.
+  await prisma.$executeRaw`
+    UPDATE \`Assignment\`
+    SET assignmentNo = CASE id ${Prisma.join(noCases, " ")} END,
+        sequence = CASE id ${Prisma.join(seqCases, " ")} END
+    WHERE id IN (${Prisma.join(rows.map((r) => Prisma.sql`${r.id}`))})
+  `;
+  return rows.length;
 }
 
 /** Blank, "no", "false" and "0" are all false; anything else is true. */
@@ -432,7 +511,7 @@ export async function importAssignments(
 
     const type = matchType(row.type);
     // Written answers need a person to read them — the same rule the form has.
-    const gradingMode = type === "QNA" ? "MANUAL" : matchGrading(row.gradingMode);
+    const gradingMode = matchGrading(row.gradingMode);
 
     try {
       await createAssignment(
@@ -550,9 +629,10 @@ async function announceAssignment(assignmentId: string): Promise<void> {
   });
 }
 
-export async function deleteAssignment(id: string): Promise<void> {
+export async function deleteAssignment(id: string, deletedById: string): Promise<void> {
   const existing = await prisma.assignment.findUnique({ where: { id }, select: { id: true } });
   if (!existing) throw AppError.notFound("Assignment not found.");
+  await moveToTrash("ASSIGNMENT", id, deletedById);
   await prisma.assignment.delete({ where: { id } });
 }
 
@@ -709,6 +789,28 @@ export async function deleteAssignmentQuestion(questionId: string): Promise<void
   if (!existing) return;
   await prisma.assignmentQuestion.delete({ where: { id: questionId } });
   await syncMaxScore(existing.assignmentId);
+}
+
+/**
+ * Clear the whole paper — "provide me an option to delete all questions at
+ * once". Options go first: with `relationMode = "prisma"` the cascade is
+ * emulated by Prisma one parent at a time, and on a hundred-question paper
+ * that is a hundred round-trips where this is two.
+ *
+ * Returns how many questions went, so the panel can say so.
+ */
+export async function deleteAllAssignmentQuestions(assignmentId: string): Promise<number> {
+  const questions = await prisma.assignmentQuestion.findMany({
+    where: { assignmentId },
+    select: { id: true },
+  });
+  if (questions.length === 0) return 0;
+
+  const ids = questions.map((q) => q.id);
+  await prisma.assignmentQuestionOption.deleteMany({ where: { questionId: { in: ids } } });
+  await prisma.assignmentQuestion.deleteMany({ where: { assignmentId } });
+  await syncMaxScore(assignmentId);
+  return questions.length;
 }
 
 export async function reorderAssignmentQuestions(

@@ -10,6 +10,7 @@ import {
   listAssignmentQuestions,
   addAssignmentQuestion,
   reorderAssignmentQuestions,
+  deleteAllAssignmentQuestions,
 } from "@/server/services/assignment-service";
 
 export const runtime = "nodejs";
@@ -36,4 +37,18 @@ export const PATCH = withRoute(async (req, { params }) => {
   const { ids } = reorderAssignmentQuestionsSchema.parse(await req.json().catch(() => ({})));
   await reorderAssignmentQuestions(id, ids);
   return ok({ message: "Order saved." });
+});
+
+/** DELETE — clear the whole paper in one go. */
+export const DELETE = withRoute(async (_req, { params }) => {
+  await requireApiPermission(PERMISSIONS.GRADE_ASSIGNMENT);
+  const id = String((await params).id);
+  const removed = await deleteAllAssignmentQuestions(id);
+  return ok({
+    removed,
+    message:
+      removed === 0
+        ? "There were no questions to delete."
+        : `Deleted ${removed} question${removed === 1 ? "" : "s"}.`,
+  });
 });

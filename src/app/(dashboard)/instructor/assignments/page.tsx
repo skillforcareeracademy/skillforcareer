@@ -3,6 +3,7 @@ import { requireRole } from "@/lib/auth/require";
 import { ROLES } from "@/config/roles";
 import {
   listAssignmentsAdmin,
+  backfillAssignmentNumbers,
   assignmentStats,
   listCoursesForSelect,
   listBatchesForSelect,
@@ -35,6 +36,8 @@ export default async function InstructorAssignmentsPage({
     dueTo: str(sp.to),
     instructorId: user.id,
   };
+
+  await backfillAssignmentNumbers();
 
   const [{ assignments, total }, stats, courses, batches, students] = await Promise.all([
     listAssignmentsAdmin(query),

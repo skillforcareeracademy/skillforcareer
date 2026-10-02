@@ -27,7 +27,7 @@ export const PATCH = withRoute(async (req, { params }) => {
 
 export const DELETE = withRoute(async (_req, { params }) => {
   const id = String((await params).id);
-  await requireAssignmentWrite(id);
-  await deleteAssignment(id);
+  const user = await requireAssignmentWrite(id);
+  await deleteAssignment(id, user.id);
   return ok({ message: "Assignment deleted." });
 });

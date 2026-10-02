@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { moveToTrash } from "./trash-service";
 import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
 import {
@@ -203,9 +204,11 @@ export async function updateBlogPost(id: string, input: BlogPostInput): Promise<
   });
 }
 
-export async function deleteBlogPost(id: string): Promise<void> {
-  const deleted = await prisma.blogPost.deleteMany({ where: { id } });
-  if (deleted.count === 0) throw AppError.notFound("That post no longer exists.");
+export async function deleteBlogPost(id: string, deletedById: string): Promise<void> {
+  const existing = await prisma.blogPost.findUnique({ where: { id }, select: { id: true } });
+  if (!existing) throw AppError.notFound("That post no longer exists.");
+  await moveToTrash("BLOG_POST", id, deletedById);
+  await prisma.blogPost.delete({ where: { id } });
 }
 
 // ── Public ───────────────────────────────────────────────────────────────────

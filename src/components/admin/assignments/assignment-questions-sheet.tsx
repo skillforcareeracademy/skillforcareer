@@ -25,6 +25,16 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -152,6 +162,8 @@ function Body({
   const [draft, setDraft] = useState<Draft | null>(null);
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -279,6 +291,25 @@ function Body({
    * JSON older exports did. Parsed here so a bad row can be named; the API
    * still validates every question it is handed.
    */
+  /** Empty the whole paper — asked for because clearing 100 rows one at a time
+   *  is not a reasonable thing to ask of anybody. */
+  async function clearAll() {
+    setClearing(true);
+    try {
+      const res = await api.del<{ removed: number; message: string }>(
+        `/api/assignments/${assignment.id}/questions`,
+      );
+      toast.success(res.message);
+      await load();
+      router.refresh();
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : "Couldn't delete the questions.");
+    } finally {
+      setClearing(false);
+      setConfirmClear(false);
+    }
+  }
+
   async function onImport(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
@@ -364,6 +395,18 @@ function Body({
             <Download className="size-4" /> Export
           </Button>
         )}
+        {(questions?.length ?? 0) > 0 && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-destructive hover:text-destructive ms-auto"
+            onClick={() => setConfirmClear(true)}
+            disabled={clearing}
+          >
+            {clearing ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+            Delete all
+          </Button>
+        )}
         <input
           ref={fileRef}
           type="file"
@@ -372,6 +415,28 @@ function Body({
           onChange={onImport}
         />
       </div>
+
+      <AlertDialog open={confirmClear} onOpenChange={setConfirmClear}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Delete all {questions?.length ?? 0} question
+              {questions?.length === 1 ? "" : "s"}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              The whole paper is cleared. Export it first if you want a copy —
+              anything already submitted keeps the answers it was given.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={clearing}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void clearAll()} disabled={clearing}>
+              {clearing ? <Loader2 className="size-4 animate-spin" /> : null}
+              Delete all
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <div className="p-4">
         {!questions ? (

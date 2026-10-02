@@ -25,7 +25,7 @@ export const PATCH = withRoute(async (req, { params }) => {
 });
 
 export const DELETE = withRoute(async (_req, { params }) => {
-  await requireApiPermission(PERMISSIONS.MANAGE_HOMEPAGE);
-  await deleteBlogPost(String((await params).id));
+  const user = await requireApiPermission(PERMISSIONS.MANAGE_HOMEPAGE);
+  await deleteBlogPost(String((await params).id), user.id);
   return ok({ message: "Post deleted." });
 });

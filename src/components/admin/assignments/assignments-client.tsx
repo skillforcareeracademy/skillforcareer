@@ -78,6 +78,9 @@ import {
 
 interface AssignmentRow {
   id: string;
+  /** Permanent academy-wide number, and the order within the course. */
+  assignmentNo: number;
+  sequence: number;
   title: string;
   type: string;
   gradingMode: string;
@@ -438,6 +441,11 @@ export function AssignmentsClient({
       cell: (a) => (
         <div className="min-w-0">
           <p className="flex items-center gap-2 truncate font-medium">
+            {a.assignmentNo > 0 && (
+              <span className="text-muted-foreground shrink-0 font-mono text-xs">
+                #{a.assignmentNo}
+              </span>
+            )}
             <span className="truncate">{a.title}</span>
             {a.type !== "FILE" && (
               <Badge variant="secondary" className="shrink-0 text-[10px]">
@@ -446,7 +454,8 @@ export function AssignmentsClient({
             )}
           </p>
           <p className="text-muted-foreground truncate text-xs">
-            {a.courseTitle ?? "No course"} · {a.createdByName}
+            {a.courseTitle ?? "No course"}
+            {a.sequence > 0 && ` · no. ${a.sequence} on the course`} · {a.createdByName}
           </p>
         </div>
       ),
@@ -798,12 +807,7 @@ export function AssignmentsClient({
                 <Label>Assignment type</Label>
                 <Select
                   value={form.type}
-                  onValueChange={(v) => {
-                    if (!v) return;
-                    // Written answers can only be marked by a person.
-                    set("type", v);
-                    if (v === "QNA") set("gradingMode", "MANUAL");
-                  }}
+                  onValueChange={(v) => v && set("type", v)}
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue>{(v) => ASSIGNMENT_TYPE_LABEL[String(v)]}</SelectValue>
@@ -822,7 +826,6 @@ export function AssignmentsClient({
                 <Select
                   value={form.gradingMode}
                   onValueChange={(v) => v && set("gradingMode", v)}
-                  disabled={form.type === "QNA"}
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue>{(v) => ASSIGNMENT_GRADING_MODE_LABEL[String(v)]}</SelectValue>
@@ -845,7 +848,9 @@ export function AssignmentsClient({
                   : "Create the assignment first, then add its questions from the row menu."}
                 {form.type === "MCQ"
                   ? " Multiple-choice answers are marked automatically."
-                  : " Written answers are marked by hand against the model answer you set."}
+                  : form.gradingMode === "AUTO"
+                    ? " Written answers are checked against the model answer you set — spacing, capitals and punctuation are ignored, and you can accept more than one wording by separating them with a | bar."
+                    : " Written answers are marked by hand against the model answer you set."}
               </p>
             )}
 

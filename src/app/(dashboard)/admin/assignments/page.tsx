@@ -4,6 +4,7 @@ import { ROLES } from "@/config/roles";
 import {
   listAssignmentsAdmin,
   assignmentStats,
+  backfillAssignmentNumbers,
   listCoursesForSelect,
   listBatchesForSelect,
   listStudentsForSelect,
@@ -33,6 +34,10 @@ export default async function AssignmentsPage({
     dueFrom: str(sp.from),
     dueTo: str(sp.to),
   };
+
+  // Number anything made before numbering existed, so what an admin sees in the
+  // table is what the assignment actually carries.
+  await backfillAssignmentNumbers();
 
   const [{ assignments, total }, stats, courses, batches, students] = await Promise.all([
     listAssignmentsAdmin(query),

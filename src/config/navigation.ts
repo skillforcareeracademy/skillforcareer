@@ -39,6 +39,7 @@ import {
   IdCard,
   Library,
   Megaphone,
+  Trash2,
 } from "lucide-react";
 import { ROLES, type Role } from "./roles";
 
@@ -199,6 +200,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { title: "Assistant", href: "/chatbot", icon: Bot, roles: STAFF },
       { title: "Coupons", href: "/coupons", icon: Ticket, roles: STAFF },
       { title: "Roles", href: "/permissions", icon: KeyRound, roles: [ROLES.SUPER_ADMIN] },
+      { title: "Recycle bin", href: "/recycle-bin", icon: Trash2, roles: ALL },
       { title: "Settings", href: "/settings", icon: Settings, roles: ALL },
     ],
   },

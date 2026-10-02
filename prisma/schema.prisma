@@ -314,6 +314,18 @@ enum NotificationChannel {
 /// live in the database and admins can invent new ones, so "all students",
 /// "instructors only", "both", "sales agents" and anything created later are
 /// all the same audience with a different pick — no new code each time.
+/// What a thrown-away item used to be. Only things that can be put back
+/// whole are listed here — a course or a batch drags half the database behind
+/// it and is not something a bin can honestly promise to restore.
+enum TrashKind {
+  QUIZ
+  ASSIGNMENT
+  STUDY_MATERIAL
+  BATCH_NOTE
+  NOTE
+  BLOG_POST
+}
+
 enum BroadcastAudience {
   ROLES
   BATCHES
@@ -448,6 +460,7 @@ model User {
   curriculumChanges    CurriculumChange[]     @relation("CurriculumChangeAuthor")
   withdrawalsHandled   WalletWithdrawal[]     @relation("WalletWithdrawalAdmin")
   broadcastsSent       Broadcast[]            @relation("BroadcastSender")
+  trashed              TrashItem[]            @relation("TrashOwner")
 
   @@index([roleId])
   @@index([status])
@@ -1399,6 +1412,10 @@ model Assignment {
   instructions String?        @db.Text
   type         AssignmentType @default(FILE)
   gradingMode  GradingMode    @default(MANUAL)
+  /// Permanent number, one run across the academy, never reused — and the
+  /// rearrangeable order within the course. Same pair the quizzes carry.
+  assignmentNo Int            @default(0)
+  sequence     Int            @default(0)
   maxScore     Int            @default(100)
   /// True once someone types the total themselves. A paper with questions
   /// normally keeps `maxScore` equal to their points; this stops that sync so
@@ -2437,6 +2454,36 @@ model Broadcast {
 
   @@index([sentById])
   @@index([createdAt])
+}
+
+/// The recycle bin: "Need a recycle bin for admin, student and instructor."
+///
+/// Deleting now takes a copy of the record and everything hanging off it before
+/// the row goes, and `snapshot` is that copy. Restoring writes it back under its
+/// original id, so anything that pointed at it still does.
+///
+/// A snapshot rather than a `deletedAt` flag on every table: a flag would mean
+/// every query in the application has to remember to exclude the deleted, and
+/// the one that forgets shows a learner something that was thrown away.
+model TrashItem {
+  id         String    @id @default(cuid())
+  kind       TrashKind
+  /// The id the record had. A restore puts it back under exactly this id.
+  originalId String
+  /// What it was called, and a line of context so two "Chapter 1" rows differ.
+  title      String
+  subtitle   String?
+  /// The record and its children, as they were the moment before deletion.
+  snapshot   Json
+
+  deletedById String
+  deletedAt   DateTime @default(now())
+
+  deletedBy User @relation("TrashOwner", fields: [deletedById], references: [id], onUpdate: NoAction)
+
+  @@index([kind])
+  @@index([deletedById])
+  @@index([deletedAt])
 }
 
 model ActivityLog {

@@ -32,7 +32,7 @@ export const PATCH = withRoute(async (req, { params }) => {
 });
 
 export const DELETE = withRoute(async (_req, { params }) => {
-  await requireApiPermission(PERMISSIONS.MANAGE_MATERIAL);
-  await deleteMaterial(String((await params).id));
+  const user = await requireApiPermission(PERMISSIONS.MANAGE_MATERIAL);
+  await deleteMaterial(String((await params).id), user.id);
   return ok({ message: "Material deleted." });
 });

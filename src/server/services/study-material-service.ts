@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { moveToTrash } from "./trash-service";
 import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
 import { toCsv, parseCsv } from "@/lib/csv";
@@ -458,8 +459,10 @@ export async function setMaterialPublished(id: string, isPublished: boolean): Pr
   await prisma.studyMaterial.update({ where: { id }, data: { isPublished } });
 }
 
-export async function deleteMaterial(id: string): Promise<void> {
-  // The group system holds a loose reference, so it has to be told.
+export async function deleteMaterial(id: string, deletedById: string): Promise<void> {
+  await moveToTrash("STUDY_MATERIAL", id, deletedById);
+  // The group system holds a loose reference, so it has to be told. The copy
+  // above was taken first, so a restore knows which folders it was in.
   await forgetItem("MATERIAL", id);
   await prisma.studyMaterial.delete({ where: { id } });
 }

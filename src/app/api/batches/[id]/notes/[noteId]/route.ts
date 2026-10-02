@@ -22,7 +22,7 @@ export const PATCH = withRoute(async (req, { params }) => {
 export const DELETE = withRoute(async (_req, { params }) => {
   const p = await params;
   const id = String(p.id);
-  await requireBatchAccess(id);
-  await deleteBatchNote(id, String(p.noteId));
+  const user = await requireBatchAccess(id);
+  await deleteBatchNote(id, String(p.noteId), user.id);
   return ok({ message: "Note deleted." });
 });

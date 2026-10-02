@@ -23,7 +23,7 @@ export const PATCH = withRoute(async (req, { params }) => {
 
 export const DELETE = withRoute(async (_req, { params }) => {
   const id = String((await params).id);
-  await requireQuizWrite(id);
-  await deleteQuiz(id);
+  const user = await requireQuizWrite(id);
+  await deleteQuiz(id, user.id);
   return ok({ message: "Quiz deleted." });
 });

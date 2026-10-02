@@ -59,17 +59,6 @@ export const assignmentSchema = z
     batchIds: z.array(z.string().min(1)).max(200).optional(),
     /** Extra individuals, on top of whatever the batches cover. */
     studentIds: z.array(z.string().min(1)).max(2000).optional(),
-  })
-  .superRefine((a, ctx) => {
-    // Written answers need a person to read them; auto-marking would score
-    // every submission zero.
-    if (a.type === "QNA" && a.gradingMode === "AUTO") {
-      ctx.addIssue({
-        code: "custom",
-        message: "Written answers have to be marked by hand.",
-        path: ["gradingMode"],
-      });
-    }
   });
 
 export const createAssignmentSchema = assignmentSchema;

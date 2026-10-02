@@ -27,6 +27,8 @@ export interface StudentQuiz {
   /** The academy's own grouping and numbering. */
   sequence: number;
   categoryName: string | null;
+  /** Every folder above this paper, outermost first — what the browser nests on. */
+  groupPath: string[];
   subCategoryName: string | null;
   /** How hard the academy says it is. */
   difficulty: string;
@@ -108,9 +110,13 @@ export async function listStudentQuizzes(userId: string): Promise<StudentQuiz[]>
       .map((g) => pathOf.get(g))
       .filter((path): path is string => Boolean(path))
       .sort()[0];
-    if (!first) return { category: null as string | null, sub: null as string | null };
-    const [head, ...rest] = first.split(" → ");
-    return { category: head, sub: rest.length ? rest.join(" → ") : null };
+    if (!first)
+      return { path: [] as string[], category: null as string | null, sub: null as string | null };
+    const path = first.split(" → ");
+    const [head, ...rest] = path;
+    // `path` is what the learner's browser nests on; the two names below are
+    // kept for the older places that still read a category and a sub-category.
+    return { path, category: head, sub: rest.length ? rest.join(" → ") : null };
   };
 
   return quizzes.map((z) => {
@@ -137,6 +143,7 @@ export async function listStudentQuizzes(userId: string): Promise<StudentQuiz[]>
       sequence: z.sequence,
       difficulty: z.difficulty,
       categoryName: folder.category ?? z.category?.name ?? null,
+      groupPath: folder.path,
       subCategoryName: folder.sub ?? z.subCategory?.name ?? null,
     };
   });

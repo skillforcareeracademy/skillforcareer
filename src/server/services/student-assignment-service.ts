@@ -242,6 +242,38 @@ export async function submitAssignment(
  * `autoScore` keeps what the machine awarded, so a grader who overrides it can
  * still see what it thought.
  */
+/**
+ * Does a written answer match the model answer?
+ *
+ * The academy sets papers of short factual answers — ICD codes, chapter ranges
+ * — so this is a comparison, not a judgement: case, spacing and punctuation are
+ * ignored, and a model answer may list several acceptable wordings separated by
+ * a `|` bar. Anything else is marked wrong, exactly as a multiple-choice answer
+ * would be, and the instructor can still change a score afterwards.
+ */
+function matchesModelAnswer(given: string, model: string): boolean {
+  const tidy = (value: string) =>
+    value
+      .toLowerCase()
+      .normalize("NFKD")
+      // Dashes vary by keyboard — an en dash in "A00–B99" must match a hyphen.
+      .replace(/[\u2010-\u2015]/g, "-")
+      .replace(/[^a-z0-9.\-]+/g, " ")
+      .trim()
+      .replace(/\s+/g, " ")
+      // "A00 – B99" and "A00-B99" are the same range typed two ways, so the
+      // spaces around a dash go too.
+      .replace(/\s*-\s*/g, "-");
+
+  const answer = tidy(given);
+  if (!answer) return false;
+  return model
+    .split("|")
+    .map(tidy)
+    .filter(Boolean)
+    .some((accepted) => accepted === answer);
+}
+
 export async function submitAssignmentAnswers(
   userId: string,
   assignmentId: string,
@@ -305,6 +337,15 @@ export async function submitAssignmentAnswers(
     const text = answer?.text ?? "";
 
     if (q.type === "SHORT_ANSWER") {
+      // A written answer can be checked against the model answer when the paper
+      // asked for it — a hundred ICD codes mark themselves. Without a model
+      // answer there is nothing to check against, so it still goes to a person.
+      if (assignment.gradingMode === "AUTO" && q.correctAnswer?.trim()) {
+        const isCorrect = matchesModelAnswer(text, q.correctAnswer);
+        const points = isCorrect ? q.points : 0;
+        autoScore += points;
+        return { questionId: q.id, optionIds: [], text, points, isCorrect };
+      }
       needsMarking = true;
       return { questionId: q.id, optionIds: [], text, points: 0, isCorrect: null };
     }

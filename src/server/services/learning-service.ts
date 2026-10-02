@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { moveToTrash } from "./trash-service";
 import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
 import { issueCertificate } from "@/server/services/certificate-service";
@@ -305,8 +306,14 @@ export async function updateNote(
 }
 
 export async function deleteNote(userId: string, noteId: string): Promise<void> {
-  const res = await prisma.note.deleteMany({ where: { id: noteId, userId } });
-  if (res.count === 0) throw AppError.notFound("Note not found.");
+  const existing = await prisma.note.findFirst({
+    where: { id: noteId, userId },
+    select: { id: true },
+  });
+  if (!existing) throw AppError.notFound("Note not found.");
+  // The learner's own bin — theirs to restore from.
+  await moveToTrash("NOTE", noteId, userId);
+  await prisma.note.delete({ where: { id: noteId } });
 }
 
 export async function listBookmarks(userId: string, target: SavedTarget) {

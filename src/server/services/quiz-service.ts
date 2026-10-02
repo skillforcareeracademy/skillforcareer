@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { moveToTrash } from "./trash-service";
 import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
 import { groupOptions, groupsOfMany } from "./content-group-service";
@@ -453,9 +454,11 @@ export async function listBatchesForSelect(courseId?: string, instructorId?: str
   }));
 }
 
-export async function deleteQuiz(id: string): Promise<void> {
+export async function deleteQuiz(id: string, deletedById: string): Promise<void> {
   const existing = await prisma.quiz.findUnique({ where: { id }, select: { id: true } });
   if (!existing) throw AppError.notFound("Quiz not found.");
+  // Copied into the recycle bin first, so it can be put back.
+  await moveToTrash("QUIZ", id, deletedById);
   await prisma.quiz.delete({ where: { id } });
 }
 

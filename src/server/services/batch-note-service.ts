@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { moveToTrash } from "./trash-service";
 import { AppError } from "@/lib/api/errors";
 import type { BatchNoteInput } from "@/lib/validations/batch-profile";
 import { notify } from "./notification-service";
@@ -116,11 +117,15 @@ export async function updateBatchNote(
 export async function deleteBatchNote(
   batchId: string,
   noteId: string,
+  deletedById: string,
 ): Promise<void> {
-  const { count } = await prisma.batchNote.deleteMany({
+  const existing = await prisma.batchNote.findFirst({
     where: { id: noteId, batchId },
+    select: { id: true },
   });
-  if (count === 0) throw AppError.notFound("Note not found.");
+  if (!existing) throw AppError.notFound("Note not found.");
+  await moveToTrash("BATCH_NOTE", noteId, deletedById);
+  await prisma.batchNote.delete({ where: { id: noteId } });
 }
 
 // ── Learner side ─────────────────────────────────────────────────────────────

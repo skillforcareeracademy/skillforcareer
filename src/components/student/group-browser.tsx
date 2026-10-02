@@ -16,72 +16,85 @@ import { cn } from "@/lib/utils";
  * Searching cuts across the whole lot: when there is a query, the grouping gets
  * out of the way and every match is listed flat, because nobody hunting for a
  * title wants to guess which folder it is in.
+ *
+ * Folders nest as deeply as the academy files them. This used to hold a group
+ * and a sub-group only, so a deeper shelf had its remaining path folded into
+ * one name and the same folder appeared once per file inside it — "Medical
+ * Anatomy → Chapter 1" and "Medical Anatomy → Chapter 2" side by side where
+ * there should have been a single Medical Anatomy to open.
  */
 
 export interface Grouped {
   categoryName: string | null;
   subCategoryName: string | null;
+  /** The full folder path. Falls back to the two names above when absent. */
+  groupPath?: string[] | null;
 }
 
 /** Items the academy never filed anywhere still need somewhere to live. */
 const UNGROUPED = "Everything else";
 
-const groupOf = (i: Grouped) => i.categoryName?.trim() || UNGROUPED;
-const subOf = (i: Grouped) => i.subCategoryName?.trim() || "";
-
-interface Node {
-  name: string;
-  count: number;
-  /** Sub-groups under this one, each with its own count. */
-  children: { name: string; count: number }[];
-  /** Items filed directly under the group, with no sub-group. */
-  direct: number;
+/** Where one item is filed, deepest-last. Never empty. */
+function pathOf(i: Grouped): string[] {
+  const full = (i.groupPath ?? [])
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (full.length > 0) return full;
+  const legacy = [i.categoryName, i.subCategoryName]
+    .map((p) => p?.trim() ?? "")
+    .filter(Boolean);
+  return legacy.length > 0 ? legacy : [UNGROUPED];
 }
 
-/** All quizzes › Anatomy › Upper limb — and the way back up. */
+const samePath = (a: string[], b: string[]) =>
+  a.length === b.length && a.every((seg, n) => seg === b[n]);
+
+const startsWith = (path: string[], trail: string[]) =>
+  trail.every((seg, n) => path[n] === seg);
+
+/** One folder directly inside the trail, and everything beneath it. */
+interface Child {
+  name: string;
+  /** Every item below this folder, however deep. */
+  count: number;
+}
+
+/** All quizzes › Anatomy › Upper limb › Humerus — and the way back up. */
 function Crumbs({
   many,
-  category,
-  sub,
-  onAll,
-  onCategory,
+  trail,
+  onGo,
 }: {
   many: string;
-  category: string | null;
-  sub: string | null;
-  onAll: () => void;
-  onCategory: () => void;
+  /** The folders currently open, outermost first. */
+  trail: string[];
+  /** Jump to a depth: 0 is the top, 1 is the first folder, and so on. */
+  onGo: (depth: number) => void;
 }) {
   return (
     <nav className="text-muted-foreground flex flex-wrap items-center gap-1 text-sm">
       <button
         type="button"
-        onClick={onAll}
+        onClick={() => onGo(0)}
         className="hover:text-foreground font-medium"
       >
         All {many}
       </button>
-      {category && (
-        <>
+      {trail.map((name, depth) => (
+        <span key={`${depth}-${name}`} className="flex items-center gap-1">
           <ChevronRight className="size-3.5" />
           <button
             type="button"
-            onClick={onCategory}
+            onClick={() => onGo(depth + 1)}
             className={cn(
               "hover:text-foreground",
-              !sub && "text-foreground font-medium",
+              depth === trail.length - 1 && "text-foreground font-medium",
             )}
           >
-            {category}
+            {name}
           </button>
-        </>
-      )}
-      {sub && (
-        <>
-          <ChevronRight className="size-3.5" />
-          <span className="text-foreground font-medium">{sub}</span>
-        </>
-      )}
+        </span>
+      ))}
     </nav>
   );
 }
@@ -134,48 +147,39 @@ export function GroupBrowser<T extends Grouped>({
   query?: string;
   columns?: string;
 }) {
-  const [category, setCategory] = useState<string | null>(null);
-  const [sub, setSub] = useState<string | null>(null);
+  /** The folders currently open, outermost first. Empty is the top level. */
+  const [trail, setTrail] = useState<string[]>([]);
 
-  const tree = useMemo(() => {
-    const map = new Map<string, Node>();
-    for (const item of items) {
-      const name = groupOf(item);
-      const node = map.get(name) ?? { name, count: 0, children: [], direct: 0 };
+  const paths = useMemo(() => items.map((i) => pathOf(i)), [items]);
+
+  /**
+   * The folders sitting directly inside the trail, each counting everything
+   * beneath it however deep — so one Medical Anatomy card says "2 items", and
+   * opening it reveals the two chapters.
+   */
+  const children = useMemo(() => {
+    const found = new Map<string, Child>();
+    paths.forEach((path) => {
+      if (path.length <= trail.length || !startsWith(path, trail)) return;
+      const name = path[trail.length];
+      const node = found.get(name) ?? { name, count: 0 };
       node.count += 1;
-      const child = subOf(item);
-      if (child) {
-        const found = node.children.find((c) => c.name === child);
-        if (found) found.count += 1;
-        else node.children.push({ name: child, count: 1 });
-      } else {
-        node.direct += 1;
-      }
-      map.set(name, node);
-    }
-    // The academy's own order is the order the items arrive in; a group takes
-    // the place of its first member, and the leftovers always come last.
-    return [...map.values()].sort((a, b) =>
+      found.set(name, node);
+    });
+    // The academy's own order is the order the items arrive in; the leftovers
+    // always come last.
+    return [...found.values()].sort((a, b) =>
       a.name === UNGROUPED ? 1 : b.name === UNGROUPED ? -1 : 0,
     );
-  }, [items]);
+  }, [paths, trail]);
+
+  /** What is filed in this folder itself, rather than in one below it. */
+  const here = useMemo(
+    () => items.filter((_, n) => samePath(paths[n], trail)),
+    [items, paths, trail],
+  );
 
   const searching = Boolean(query && query.trim());
-
-  const shown = useMemo(() => {
-    if (searching) return items;
-    if (!category) return [];
-    const inGroup = items.filter((i) => groupOf(i) === category);
-    if (sub) return inGroup.filter((i) => subOf(i) === sub);
-    // Inside a group with sub-groups, only what was filed directly under it;
-    // the rest is one more tap away.
-    const node = tree.find((n) => n.name === category);
-    return node && node.children.length > 0
-      ? inGroup.filter((i) => !subOf(i))
-      : inGroup;
-  }, [items, category, sub, searching, tree]);
-
-  const node = tree.find((n) => n.name === category) ?? null;
 
   // Searching: one flat list, no folders in the way.
   if (searching) {
@@ -190,57 +194,36 @@ export function GroupBrowser<T extends Grouped>({
     <div className="space-y-4">
       <Crumbs
         many={noun.many}
-        category={category}
-        sub={sub}
-        onAll={() => {
-          setCategory(null);
-          setSub(null);
-        }}
-        onCategory={() => setSub(null)}
+        trail={trail}
+        onGo={(depth) => setTrail((t) => t.slice(0, depth))}
       />
 
-      {!category && (
+      {children.length > 0 && (
         <div className={cn("grid gap-3", columns)}>
-          {tree.map((g) => (
-            <GroupCard
-              key={g.name}
-              name={g.name}
-              count={g.count}
-              noun={noun}
-              icon={Layers}
-              onOpen={() => {
-                setCategory(g.name);
-                setSub(null);
-              }}
-            />
-          ))}
-        </div>
-      )}
-
-      {category && !sub && node && node.children.length > 0 && (
-        <div className={cn("grid gap-3", columns)}>
-          {node.children.map((c) => (
+          {children.map((c) => (
             <GroupCard
               key={c.name}
               name={c.name}
               count={c.count}
               noun={noun}
-              icon={FolderOpen}
-              onOpen={() => setSub(c.name)}
+              icon={trail.length === 0 ? Layers : FolderOpen}
+              onOpen={() => setTrail((t) => [...t, c.name])}
             />
           ))}
         </div>
       )}
 
-      {category && shown.length > 0 && (
+      {here.length > 0 && (
         <div className={cn("grid gap-4", columns)}>
-          {shown.map((i) => renderItem(i))}
+          {here.map((i) => renderItem(i))}
         </div>
       )}
 
-      {category && shown.length === 0 && node && node.children.length === 0 && (
+      {children.length === 0 && here.length === 0 && (
         <p className="text-muted-foreground py-6 text-center text-sm">
-          Nothing in this group yet.
+          {trail.length === 0
+            ? `No ${noun.many} yet.`
+            : "Nothing in this folder yet."}
         </p>
       )}
     </div>

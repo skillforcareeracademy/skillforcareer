@@ -25,6 +25,8 @@ export interface LearnerMaterial {
   courseTitle: string | null;
   categoryName: string | null;
   subCategoryName: string | null;
+  /** Every folder above this piece, outermost first — what the browser nests on. */
+  groupPath: string[];
   fileUrl: string | null;
   fileName: string | null;
   mimeType: string | null;
@@ -128,9 +130,13 @@ export async function listMaterialsForLearner(userId: string): Promise<LearnerMa
       .map((g) => pathOf.get(g))
       .filter((p): p is string => Boolean(p))
       .sort()[0];
-    if (!first) return { category: null as string | null, sub: null as string | null };
-    const [head, ...rest] = first.split(" → ");
-    return { category: head, sub: rest.length ? rest.join(" → ") : null };
+    if (!first)
+      return { path: [] as string[], category: null as string | null, sub: null as string | null };
+    const path = first.split(" → ");
+    const [head, ...rest] = path;
+    // `path` is what the learner's browser nests on; the two names below are
+    // kept for the older places that still read a category and a sub-category.
+    return { path, category: head, sub: rest.length ? rest.join(" → ") : null };
   };
 
   return rows.map((m) => {
@@ -144,6 +150,7 @@ export async function listMaterialsForLearner(userId: string): Promise<LearnerMa
     courseTitle: m.course?.title ?? null,
     categoryName: folder.category ?? m.category?.name ?? null,
     subCategoryName: folder.sub ?? m.subCategory?.name ?? null,
+    groupPath: folder.path,
     fileUrl: m.fileUrl,
     fileName: m.fileName,
     mimeType: m.mimeType,
@@ -202,7 +209,7 @@ export async function getMaterialForLearner(
   });
   if (!m) return null;
 
-  const [read, marks] = await Promise.all([
+  const [read, marks, folders, options] = await Promise.all([
     prisma.materialRead.findUnique({
       where: { materialId_userId: { materialId, userId } },
       select: { seconds: true, opens: true },
@@ -219,7 +226,19 @@ export async function getMaterialForLearner(
         createdAt: true,
       },
     }),
+    groupsOfMany("MATERIAL", [materialId]),
+    groupOptions("MATERIAL"),
   ]);
+
+  // The same folder the list nested this under, so the reading page can say
+  // where it came from rather than falling back to the older category columns.
+  const pathOf = new Map(options.map((o) => [o.id, o.path]));
+  const groupPath = ((folders.get(materialId) ?? [])
+    .map((g) => pathOf.get(g))
+    .filter((path): path is string => Boolean(path))
+    .sort()[0] ?? "")
+    .split(" → ")
+    .filter(Boolean);
 
   return {
     id: m.id,
@@ -228,8 +247,10 @@ export async function getMaterialForLearner(
     title: m.title,
     description: m.description,
     courseTitle: m.course?.title ?? null,
-    categoryName: m.category?.name ?? null,
-    subCategoryName: m.subCategory?.name ?? null,
+    categoryName: groupPath[0] ?? m.category?.name ?? null,
+    subCategoryName:
+      groupPath.length > 1 ? groupPath.slice(1).join(" → ") : (m.subCategory?.name ?? null),
+    groupPath,
     fileUrl: m.fileUrl,
     fileName: m.fileName,
     mimeType: m.mimeType,
