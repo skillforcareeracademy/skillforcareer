@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { moveToTrash } from "./trash-service";
+import { copyTitle, type ImportMode } from "@/lib/validations/import-mode";
 import { notify } from "./notification-service";
 import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
@@ -455,12 +456,17 @@ export interface ImportAssignmentsResult {
 export async function importAssignments(
   input: ImportAssignmentsInput,
   createdById: string,
+  mode: ImportMode = "update",
 ): Promise<ImportAssignmentsResult> {
-  // Two reads for the whole file, not two per row.
-  const [courses, batches] = await Promise.all([
+  // Three reads for the whole file, not three per row.
+  const [courses, batches, existing] = await Promise.all([
     prisma.course.findMany({ select: { id: true, title: true, slug: true } }),
     prisma.batch.findMany({ select: { id: true, name: true, code: true, courseId: true } }),
+    prisma.assignment.findMany({ select: { id: true, title: true } }),
   ]);
+  const assignmentByTitle = new Map(
+    existing.map((a) => [a.title.trim().toLowerCase(), a.id]),
+  );
 
   const key = (v: string) => v.trim().toLowerCase();
   const courseByName = new Map<string, string>();
@@ -513,10 +519,19 @@ export async function importAssignments(
     // Written answers need a person to read them — the same rule the form has.
     const gradingMode = matchGrading(row.gradingMode);
 
+    const already = assignmentByTitle.get(row.title.trim().toLowerCase());
+    if (already && mode === "skip") {
+      errors.push({ row: lineNo, message: `"${row.title}" is already here.` });
+      continue;
+    }
+
     try {
-      await createAssignment(
-        {
-          title: row.title,
+      const title =
+        already && mode === "copy"
+          ? copyTitle(row.title, new Set(assignmentByTitle.keys()))
+          : row.title;
+      const fields = {
+          title,
           description: row.description,
           instructions: row.instructions,
           courseId: courseId ?? "",
@@ -534,9 +549,13 @@ export async function importAssignments(
           maxAttempts: 0,
           batchIds,
           studentIds: [],
-        },
-        createdById,
-      );
+      };
+      if (already && mode === "update") {
+        await updateAssignment(already, fields);
+      } else {
+        const id = await createAssignment(fields, createdById);
+        assignmentByTitle.set(title.trim().toLowerCase(), id);
+      }
       imported += 1;
     } catch (e) {
       errors.push({

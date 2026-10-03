@@ -10,7 +10,6 @@ import {
   Trash2,
   Download,
   Loader2,
-  Upload,
   FileQuestion,
   Send,
   Undo2,
@@ -29,6 +28,8 @@ import { cn } from "@/lib/utils";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
 import { ExportDialog } from "@/components/shared/export-dialog";
+import { ImportButton } from "@/components/shared/import-button";
+import type { ImportMode } from "@/lib/validations/import-mode";
 import {
   QUIZ_EXPORT_COLUMNS,
   DEFAULT_QUIZ_COLUMNS,
@@ -60,7 +61,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { QUIZ_DIFFICULTIES, QUIZ_DIFFICULTY_LABEL } from "@/lib/validations/quiz";
+import {
+  QUIZ_DIFFICULTIES,
+  QUIZ_DIFFICULTY_LABEL,
+} from "@/lib/validations/quiz";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -170,7 +174,8 @@ export function QuizzesClient({
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
   /** Folders, as the learner sees them, or the flat table. */
-  const view: "folders" | "table" = query.view === "table" ? "table" : "folders";
+  const view: "folders" | "table" =
+    query.view === "table" ? "table" : "folders";
   const [openFolders, setOpenFolders] = useState<Set<string>>(new Set());
 
   /** This page's quizzes, gathered under the folders they are filed in. */
@@ -196,16 +201,20 @@ export function QuizzesClient({
   const totalPages = Math.max(1, Math.ceil(total / query.pageSize));
   const hasFilters = Boolean(
     query.search ||
-      query.courseId ||
-      query.batchId ||
-      query.status ||
-      query.categoryId ||
-      query.subCategoryId ||
-      query.difficulty,
+    query.courseId ||
+    query.batchId ||
+    query.status ||
+    query.categoryId ||
+    query.subCategoryId ||
+    query.difficulty,
   );
   const parentCategories = categories.filter((c) => !c.parentId);
-  const subCategories = categories.filter((c) => c.parentId === query.categoryId);
-  const formSubCategories = categories.filter((c) => c.parentId === newCategory);
+  const subCategories = categories.filter(
+    (c) => c.parentId === query.categoryId,
+  );
+  const formSubCategories = categories.filter(
+    (c) => c.parentId === newCategory,
+  );
   /** Numbering is per group, so only neighbours in the same group can swap. */
   const inSameGroup = (a: QuizRow, b: QuizRow) =>
     a.categoryId === b.categoryId && a.subCategoryId === b.subCategoryId;
@@ -240,7 +249,8 @@ export function QuizzesClient({
       if (merged.difficulty) p.set("difficulty", String(merged.difficulty));
       if (merged.sort) p.set("sort", String(merged.sort));
       if (merged.view) p.set("view", String(merged.view));
-      if (merged.page && Number(merged.page) > 1) p.set("page", String(merged.page));
+      if (merged.page && Number(merged.page) > 1)
+        p.set("page", String(merged.page));
       const qs = p.toString();
       router.push(qs ? `${pathname}?${qs}` : pathname);
     },
@@ -274,7 +284,9 @@ export function QuizzesClient({
       toast.success("Quiz created.");
       router.push(`${basePath}/${id}`);
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Couldn't create quiz.");
+      toast.error(
+        err instanceof ApiError ? err.message : "Couldn't create quiz.",
+      );
       setCreating(false);
     }
   }
@@ -330,15 +342,38 @@ export function QuizzesClient({
   }
 
   const statCards = [
-    { label: "Quizzes", value: stats.total, icon: FileQuestion, tone: "text-rose-500" },
-    { label: "Published", value: stats.published, icon: Send, tone: "text-emerald-500" },
-    { label: "Drafts", value: stats.draft, icon: Pencil, tone: "text-amber-500" },
-    { label: "Attempts", value: stats.attempts, icon: Users, tone: "text-violet-500" },
+    {
+      label: "Quizzes",
+      value: stats.total,
+      icon: FileQuestion,
+      tone: "text-rose-500",
+    },
+    {
+      label: "Published",
+      value: stats.published,
+      icon: Send,
+      tone: "text-emerald-500",
+    },
+    {
+      label: "Drafts",
+      value: stats.draft,
+      icon: Pencil,
+      tone: "text-amber-500",
+    },
+    {
+      label: "Attempts",
+      value: stats.attempts,
+      icon: Users,
+      tone: "text-violet-500",
+    },
   ];
 
   function statusBadge(z: QuizRow) {
     return z.isPublished ? (
-      <Badge variant="secondary" className="bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
+      <Badge
+        variant="secondary"
+        className="bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
+      >
         Published
       </Badge>
     ) : (
@@ -351,7 +386,10 @@ export function QuizzesClient({
   function rowActions(z: QuizRow) {
     return (
       <DropdownMenu>
-        <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" />} aria-label="Actions">
+        <DropdownMenuTrigger
+          render={<Button variant="ghost" size="icon-sm" />}
+          aria-label="Actions"
+        >
           <MoreHorizontal className="size-4" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
@@ -391,13 +429,17 @@ export function QuizzesClient({
         const downTo = i + 1;
         return (
           <div className="flex items-center gap-0.5">
-            <span className="text-muted-foreground w-5 text-sm tabular-nums">{z.sequence}</span>
+            <span className="text-muted-foreground w-5 text-sm tabular-nums">
+              {z.sequence}
+            </span>
             {bySequence && (
               <>
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  disabled={moving || upTo < 0 || !inSameGroup(z, quizzes[upTo])}
+                  disabled={
+                    moving || upTo < 0 || !inSameGroup(z, quizzes[upTo])
+                  }
                   onClick={() => move(i, -1)}
                   aria-label={`Move ${z.title} up`}
                 >
@@ -406,7 +448,11 @@ export function QuizzesClient({
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  disabled={moving || downTo >= quizzes.length || !inSameGroup(z, quizzes[downTo])}
+                  disabled={
+                    moving ||
+                    downTo >= quizzes.length ||
+                    !inSameGroup(z, quizzes[downTo])
+                  }
                   onClick={() => move(i, 1)}
                   aria-label={`Move ${z.title} down`}
                 >
@@ -450,7 +496,13 @@ export function QuizzesClient({
             <Badge
               variant="secondary"
               className="cursor-pointer text-[10px] font-normal"
-              onClick={() => setParams({ category: z.categoryId ?? undefined, sub: undefined, page: 1 })}
+              onClick={() =>
+                setParams({
+                  category: z.categoryId ?? undefined,
+                  sub: undefined,
+                  page: 1,
+                })
+              }
             >
               {z.categoryName}
             </Badge>
@@ -493,7 +545,9 @@ export function QuizzesClient({
               </Badge>
             ))}
             {z.batchNames.length > 2 && (
-              <span className="text-muted-foreground text-xs">+{z.batchNames.length - 2}</span>
+              <span className="text-muted-foreground text-xs">
+                +{z.batchNames.length - 2}
+              </span>
             )}
           </span>
         ),
@@ -504,7 +558,8 @@ export function QuizzesClient({
       className: "tabular-nums",
       cell: (z) => (
         <span className="flex items-center gap-1 text-sm">
-          <ListChecks className="size-3.5 text-muted-foreground" /> {z.questions}
+          <ListChecks className="text-muted-foreground size-3.5" />{" "}
+          {z.questions}
         </span>
       ),
     },
@@ -517,8 +572,18 @@ export function QuizzesClient({
         </span>
       ),
     },
-    { key: "pass", header: "Pass %", cell: (z) => `${z.passingScore}%`, className: "tabular-nums" },
-    { key: "attempts", header: "Attempts", cell: (z) => z.attempts, className: "tabular-nums" },
+    {
+      key: "pass",
+      header: "Pass %",
+      cell: (z) => `${z.passingScore}%`,
+      className: "tabular-nums",
+    },
+    {
+      key: "attempts",
+      header: "Attempts",
+      cell: (z) => z.attempts,
+      className: "tabular-nums",
+    },
     { key: "status", header: "Status", cell: statusBadge },
     {
       key: "actions",
@@ -538,16 +603,20 @@ export function QuizzesClient({
             className="min-w-0 flex-1 text-left"
           >
             <p className="truncate font-medium">
-              {z.sequence > 0 && <span className="text-muted-foreground">{z.sequence}. </span>}
+              {z.sequence > 0 && (
+                <span className="text-muted-foreground">{z.sequence}. </span>
+              )}
               {z.title}
             </p>
             {z.quizNo > 0 && (
-              <p className="text-muted-foreground text-[11px]">Quiz no. Q{z.quizNo}</p>
+              <p className="text-muted-foreground text-[11px]">
+                Quiz no. Q{z.quizNo}
+              </p>
             )}
             <p className="text-muted-foreground truncate text-xs">
               {z.categoryName
                 ? `${z.categoryName}${z.subCategoryName ? ` · ${z.subCategoryName}` : ""}`
-                : z.courseTitle ?? "No course"}{" "}
+                : (z.courseTitle ?? "No course")}{" "}
               · {z.createdByName}
             </p>
           </button>
@@ -569,7 +638,11 @@ export function QuizzesClient({
               <Button
                 variant="outline"
                 size="icon-sm"
-                disabled={moving || quizzes.indexOf(z) === 0 || !inSameGroup(z, quizzes[quizzes.indexOf(z) - 1])}
+                disabled={
+                  moving ||
+                  quizzes.indexOf(z) === 0 ||
+                  !inSameGroup(z, quizzes[quizzes.indexOf(z) - 1])
+                }
                 onClick={() => move(quizzes.indexOf(z), -1)}
                 aria-label={`Move ${z.title} up`}
               >
@@ -597,21 +670,26 @@ export function QuizzesClient({
 
   /** Read a sheet of quizzes in. Matching is by title, so an export can be
    *  edited and sent straight back. */
-  async function onImport(file?: File) {
-    if (!file) return;
+  async function onImport(file: File, mode: ImportMode) {
+    // The mode decides what happens to a quiz of the same name.
     setImporting(true);
     try {
       const text = await file.text();
-      const res = await api.post<{ message: string; skipped: { row: number; reason: string }[] }>(
-        "/api/quizzes/import",
-        text,
-        { "Content-Type": "text/csv" },
-      );
+      const res = await api.post<{
+        message: string;
+        skipped: { row: number; reason: string }[];
+      }>(`/api/quizzes/import?mode=${mode}`, text, {
+        "Content-Type": "text/csv",
+      });
       toast.success(res.message);
-      res.skipped.slice(0, 3).forEach((s) => toast.warning(`Row ${s.row}: ${s.reason}`));
+      res.skipped
+        .slice(0, 3)
+        .forEach((s) => toast.warning(`Row ${s.row}: ${s.reason}`));
       router.refresh();
     } catch (error) {
-      toast.error(error instanceof ApiError ? error.message : "Couldn't read that sheet.");
+      toast.error(
+        error instanceof ApiError ? error.message : "Couldn't read that sheet.",
+      );
     } finally {
       setImporting(false);
     }
@@ -627,26 +705,29 @@ export function QuizzesClient({
             <Button
               variant="outline"
               nativeButton={false}
-              render={<Link href={`${basePath.replace("/quizzes", "")}/groups/quiz`} />}
+              render={
+                <Link
+                  href={`${basePath.replace("/quizzes", "")}/groups/quiz`}
+                />
+              }
             >
               <FolderTree className="size-4" /> Groups
             </Button>
             <Button variant="outline" onClick={() => setExporting(true)}>
               <Download className="size-4" /> Export
             </Button>
-            <Button variant="outline" render={<label />} nativeButton={false}>
-              {importing ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Upload className="size-4" />
-              )}
-              Import
-              <input
-                type="file"
-                accept=".csv,text/csv"
-                className="hidden"
-                onChange={(e) => void onImport(e.target.files?.[0])}
-              />
+            <ImportButton
+              busy={importing}
+              onImport={onImport}
+              title="Import quizzes"
+              description="Rows are matched by title. Choose what should happen when a quiz of that name is already here."
+            />
+            <Button onClick={() => setCreateOpen(true)}>
+              <Plus className="size-4" /> New quiz
+            </Button>
+          </div>
+        }
+      />
 
       <ExportDialog
         open={exporting}
@@ -661,25 +742,37 @@ export function QuizzesClient({
             key: "group",
             label: "Folder",
             anyLabel: "Every folder",
-            options: groups.map((g) => ({ value: g.id, label: g.path })),
+            options: groups.map((g) => ({
+              value: g.id,
+              label: g.path,
+            })),
           },
           {
             key: "course",
             label: "Course",
             anyLabel: "Every course",
-            options: courses.map((c) => ({ value: c.id, label: c.title })),
+            options: courses.map((c) => ({
+              value: c.id,
+              label: c.title,
+            })),
           },
           {
             key: "batch",
             label: "Batch",
             anyLabel: "Every batch",
-            options: batches.map((b) => ({ value: b.id, label: b.name })),
+            options: batches.map((b) => ({
+              value: b.id,
+              label: b.name,
+            })),
           },
           {
             key: "ids",
             label: "A single quiz",
             anyLabel: "Everything that matches",
-            options: quizzes.map((z) => ({ value: z.id, label: z.title })),
+            options: quizzes.map((z) => ({
+              value: z.id,
+              label: z.title,
+            })),
           },
           {
             key: "status",
@@ -701,13 +794,6 @@ export function QuizzesClient({
           },
         ]}
       />
-            </Button>
-            <Button onClick={() => setCreateOpen(true)}>
-              <Plus className="size-4" /> New quiz
-            </Button>
-          </div>
-        }
-      />
 
       {/* Summary */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
@@ -718,10 +804,12 @@ export function QuizzesClient({
                 <s.icon className={`size-5 ${s.tone}`} />
               </div>
               <div className="min-w-0">
-                <p className="text-2xl font-semibold leading-none tabular-nums">
+                <p className="text-2xl leading-none font-semibold tabular-nums">
                   {s.value.toLocaleString("en-IN")}
                 </p>
-                <p className="text-muted-foreground mt-1 truncate text-xs">{s.label}</p>
+                <p className="text-muted-foreground mt-1 truncate text-xs">
+                  {s.label}
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -760,7 +848,9 @@ export function QuizzesClient({
                       )}
                     />
                     <FolderTree className="text-muted-foreground size-4 shrink-0" />
-                    <span className="min-w-0 flex-1 truncate font-medium">{path}</span>
+                    <span className="min-w-0 flex-1 truncate font-medium">
+                      {path}
+                    </span>
                     <Badge variant="secondary" className="shrink-0 text-[10px]">
                       {list.length} {list.length === 1 ? "quiz" : "quizzes"}
                     </Badge>
@@ -768,7 +858,10 @@ export function QuizzesClient({
                   {open && (
                     <ul className="divide-y border-t">
                       {list.map((z) => (
-                        <li key={z.id} className="flex items-center gap-3 px-4 py-2.5">
+                        <li
+                          key={z.id}
+                          className="flex items-center gap-3 px-4 py-2.5"
+                        >
                           <span className="text-muted-foreground w-10 shrink-0 text-xs tabular-nums">
                             Q{z.quizNo}
                           </span>
@@ -781,10 +874,15 @@ export function QuizzesClient({
                             </Link>
                             <p className="text-muted-foreground truncate text-xs">
                               {z.courseTitle ?? "Any course"}
-                              {z.batchNames.length ? ` · ${z.batchNames.join(", ")}` : ""}
+                              {z.batchNames.length
+                                ? ` · ${z.batchNames.join(", ")}`
+                                : ""}
                             </p>
                           </div>
-                          <Badge variant="secondary" className="shrink-0 text-[10px]">
+                          <Badge
+                            variant="secondary"
+                            className="shrink-0 text-[10px]"
+                          >
                             {z.questions} Qs
                           </Badge>
                           <Badge
@@ -816,7 +914,9 @@ export function QuizzesClient({
         emptyIcon={FileQuestion}
         emptyTitle={hasFilters ? "No matching quizzes" : "No quizzes yet"}
         emptyDescription={
-          hasFilters ? "Try adjusting your search or filters." : "Create your first quiz to get started."
+          hasFilters
+            ? "Try adjusting your search or filters."
+            : "Create your first quiz to get started."
         }
         toolbar={
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -836,14 +936,20 @@ export function QuizzesClient({
             <div className="flex gap-2">
               <Select
                 value={query.status ?? ALL}
-                onValueChange={(v) => setParams({ status: !v || v === ALL ? undefined : v, page: 1 })}
+                onValueChange={(v) =>
+                  setParams({
+                    status: !v || v === ALL ? undefined : v,
+                    page: 1,
+                  })
+                }
               >
                 <SelectTrigger className="flex-1 sm:w-36">
                   <SelectValue>
                     {(v) =>
                       !v || v === ALL
                         ? "All statuses"
-                        : (STATUS_OPTIONS.find((s) => s.value === v)?.label ?? "Status")
+                        : (STATUS_OPTIONS.find((s) => s.value === v)?.label ??
+                          "Status")
                     }
                   </SelectValue>
                 </SelectTrigger>
@@ -887,7 +993,9 @@ export function QuizzesClient({
               </Select>
               <Select
                 value={query.batchId ?? ALL}
-                onValueChange={(v) => setParams({ batch: !v || v === ALL ? undefined : v, page: 1 })}
+                onValueChange={(v) =>
+                  setParams({ batch: !v || v === ALL ? undefined : v, page: 1 })
+                }
               >
                 <SelectTrigger className="flex-1 sm:w-44">
                   <SelectValue>
@@ -925,7 +1033,8 @@ export function QuizzesClient({
                         ? "All categories"
                         : v === UNGROUPED
                           ? "Ungrouped"
-                          : (categories.find((c) => c.id === v)?.name ?? "Category")
+                          : (categories.find((c) => c.id === v)?.name ??
+                            "Category")
                     }
                   </SelectValue>
                 </SelectTrigger>
@@ -942,14 +1051,17 @@ export function QuizzesClient({
               {subCategories.length > 0 && (
                 <Select
                   value={query.subCategoryId ?? ALL}
-                  onValueChange={(v) => setParams({ sub: !v || v === ALL ? undefined : v, page: 1 })}
+                  onValueChange={(v) =>
+                    setParams({ sub: !v || v === ALL ? undefined : v, page: 1 })
+                  }
                 >
                   <SelectTrigger className="flex-1 sm:w-40">
                     <SelectValue>
                       {(v) =>
                         !v || v === ALL
                           ? "All sub-categories"
-                          : (categories.find((c) => c.id === v)?.name ?? "Sub-category")
+                          : (categories.find((c) => c.id === v)?.name ??
+                            "Sub-category")
                       }
                     </SelectValue>
                   </SelectTrigger>
@@ -965,12 +1077,19 @@ export function QuizzesClient({
               )}
               <Select
                 value={query.difficulty ?? ALL}
-                onValueChange={(v) => setParams({ difficulty: !v || v === ALL ? undefined : v, page: 1 })}
+                onValueChange={(v) =>
+                  setParams({
+                    difficulty: !v || v === ALL ? undefined : v,
+                    page: 1,
+                  })
+                }
               >
                 <SelectTrigger className="flex-1 sm:w-40">
                   <SelectValue>
                     {(v) =>
-                      !v || v === ALL ? "All levels" : (QUIZ_DIFFICULTY_LABEL[String(v)] ?? "Level")
+                      !v || v === ALL
+                        ? "All levels"
+                        : (QUIZ_DIFFICULTY_LABEL[String(v)] ?? "Level")
                     }
                   </SelectValue>
                 </SelectTrigger>
@@ -986,12 +1105,17 @@ export function QuizzesClient({
               <Select
                 value={query.sort ?? "sequence"}
                 onValueChange={(v) =>
-                  setParams({ sort: !v || v === "sequence" ? undefined : v, page: 1 })
+                  setParams({
+                    sort: !v || v === "sequence" ? undefined : v,
+                    page: 1,
+                  })
                 }
               >
                 <SelectTrigger className="flex-1 sm:w-40">
                   <SelectValue>
-                    {(v) => (v === "recent" ? "Recently edited" : "In sequence")}
+                    {(v) =>
+                      v === "recent" ? "Recently edited" : "In sequence"
+                    }
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
@@ -1004,7 +1128,10 @@ export function QuizzesClient({
                 variant="outline"
                 size="sm"
                 onClick={() =>
-                  setParams({ view: view === "folders" ? "table" : "folders", page: 1 })
+                  setParams({
+                    view: view === "folders" ? "table" : "folders",
+                    page: 1,
+                  })
                 }
               >
                 {view === "folders" ? (
@@ -1018,7 +1145,12 @@ export function QuizzesClient({
                 )}
               </Button>
               {hasFilters && (
-                <Button variant="ghost" size="sm" onClick={clearFilters} className="text-muted-foreground">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearFilters}
+                  className="text-muted-foreground"
+                >
                   <X className="size-4" /> Clear
                 </Button>
               )}
@@ -1031,13 +1163,23 @@ export function QuizzesClient({
               {total} {total === 1 ? "quiz" : "quizzes"}
             </p>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" disabled={query.page <= 1} onClick={() => setParams({ page: query.page - 1 })}>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={query.page <= 1}
+                onClick={() => setParams({ page: query.page - 1 })}
+              >
                 Previous
               </Button>
               <span className="text-muted-foreground text-sm">
                 Page {query.page} of {totalPages}
               </span>
-              <Button variant="outline" size="sm" disabled={query.page >= totalPages} onClick={() => setParams({ page: query.page + 1 })}>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={query.page >= totalPages}
+                onClick={() => setParams({ page: query.page + 1 })}
+              >
                 Next
               </Button>
             </div>
@@ -1050,7 +1192,9 @@ export function QuizzesClient({
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>New quiz</DialogTitle>
-            <DialogDescription>Give it a title — add questions and settings next.</DialogDescription>
+            <DialogDescription>
+              Give it a title — add questions and settings next.
+            </DialogDescription>
           </DialogHeader>
           <form onSubmit={onCreate} className="space-y-4">
             <div className="space-y-1.5">
@@ -1064,10 +1208,16 @@ export function QuizzesClient({
             </div>
             <div className="space-y-1.5">
               <Label>Course (optional)</Label>
-              <Select value={newCourse} onValueChange={(v) => setNewCourse(v ?? "")}>
+              <Select
+                value={newCourse}
+                onValueChange={(v) => setNewCourse(v ?? "")}
+              >
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Choose a course">
-                    {(v) => courses.find((c) => c.id === v)?.title ?? "Choose a course"}
+                    {(v) =>
+                      courses.find((c) => c.id === v)?.title ??
+                      "Choose a course"
+                    }
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
@@ -1094,7 +1244,8 @@ export function QuizzesClient({
                       {(v) =>
                         !v || v === "none"
                           ? "Ungrouped"
-                          : (parentCategories.find((c) => c.id === v)?.name ?? "Ungrouped")
+                          : (parentCategories.find((c) => c.id === v)?.name ??
+                            "Ungrouped")
                       }
                     </SelectValue>
                   </SelectTrigger>
@@ -1112,7 +1263,9 @@ export function QuizzesClient({
                 <Label>Sub-category</Label>
                 <Select
                   value={newSubCategory || "none"}
-                  onValueChange={(v) => setNewSubCategory(v === "none" ? "" : (v ?? ""))}
+                  onValueChange={(v) =>
+                    setNewSubCategory(v === "none" ? "" : (v ?? ""))
+                  }
                   disabled={formSubCategories.length === 0}
                 >
                   <SelectTrigger className="w-full">
@@ -1122,7 +1275,8 @@ export function QuizzesClient({
                           ? formSubCategories.length === 0
                             ? "None available"
                             : "None"
-                          : (formSubCategories.find((c) => c.id === v)?.name ?? "None")
+                          : (formSubCategories.find((c) => c.id === v)?.name ??
+                            "None")
                       }
                     </SelectValue>
                   </SelectTrigger>
@@ -1139,13 +1293,21 @@ export function QuizzesClient({
             </div>
             <p className="text-muted-foreground text-xs">
               The quiz is numbered automatically inside its group — use{" "}
-              <strong>Groups</strong> to add categories, and the arrows in the list to reorder.
+              <strong>Groups</strong> to add categories, and the arrows in the
+              list to reorder.
             </p>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setCreateOpen(false)}
+              >
                 Cancel
               </Button>
-              <Button type="submit" disabled={creating || newTitle.trim().length < 3}>
+              <Button
+                type="submit"
+                disabled={creating || newTitle.trim().length < 3}
+              >
                 {creating && <Loader2 className="size-4 animate-spin" />}
                 Create &amp; edit
               </Button>
@@ -1154,17 +1316,24 @@ export function QuizzesClient({
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>
+      <AlertDialog
+        open={!!deleting}
+        onOpenChange={(o) => !o && setDeleting(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete “{deleting?.title}”?</AlertDialogTitle>
             <AlertDialogDescription>
-              This permanently removes the quiz, its questions and all attempts. This can&apos;t be undone.
+              This permanently removes the quiz, its questions and all attempts.
+              This can&apos;t be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete} className="bg-destructive hover:bg-destructive/90 text-white">
+            <AlertDialogAction
+              onClick={confirmDelete}
+              className="bg-destructive hover:bg-destructive/90 text-white"
+            >
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>

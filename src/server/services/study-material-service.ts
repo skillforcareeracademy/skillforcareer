@@ -3,6 +3,7 @@ import { moveToTrash } from "./trash-service";
 import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
 import { toCsv, parseCsv } from "@/lib/csv";
+import { copyTitle, type ImportMode } from "@/lib/validations/import-mode";
 import {
   MATERIAL_EXPORT_COLUMNS,
   DEFAULT_MATERIAL_COLUMNS,
@@ -652,6 +653,7 @@ export interface MaterialImportResult {
 export async function importMaterials(
   csv: string,
   createdById: string,
+  mode: ImportMode = "update",
 ): Promise<MaterialImportResult> {
   const { rows } = parseCsv(csv);
   const result: MaterialImportResult = { created: 0, updated: 0, skipped: [] };
@@ -722,13 +724,27 @@ export async function importMaterials(
       isPublished: (row.isPublished ?? "").trim().toLowerCase() === "yes",
     };
 
-    if (existing) {
+    if (existing && mode === "skip") {
+      result.skipped.push({ row: line, reason: `"${title}" is already here.` });
+      continue;
+    }
+    if (existing && mode === "update") {
       await prisma.studyMaterial.update({ where: { id: existing.id }, data });
       result.updated += 1;
     } else {
+      // A copy is marked in its title, so the two can be told apart.
+      const taken = await prisma.studyMaterial.findMany({
+        where: { title: { startsWith: title } },
+        select: { title: true },
+      });
+      const name =
+        existing || mode === "copy"
+          ? copyTitle(title, new Set(taken.map((t) => t.title.toLowerCase())))
+          : title;
       await prisma.studyMaterial.create({
         data: {
           ...data,
+          title: name,
           number: await nextNumber(),
           sequence: await nextSequence(categoryId, subCategoryId),
           createdById,

@@ -36,6 +36,8 @@ import { MultiPicker } from "@/components/admin/groups/multi-picker";
 import { FolderSelect } from "@/components/admin/groups/folder-select";
 import { PageHeader } from "@/components/shared/page-header";
 import { ExportDialog } from "@/components/shared/export-dialog";
+import { ImportButton } from "@/components/shared/import-button";
+import type { ImportMode } from "@/lib/validations/import-mode";
 import {
   MATERIAL_EXPORT_COLUMNS,
   DEFAULT_MATERIAL_COLUMNS,
@@ -419,13 +421,16 @@ export function MaterialsClient({
     }
   }
 
-  async function onImport(file: File | undefined) {
-    if (!file) return;
+  async function onImport(file: File, mode: ImportMode) {
     setImporting(true);
     try {
       const fd = new FormData();
       fd.append("file", file);
-      const res = await fetch("/api/materials/import", { method: "POST", body: fd });
+      // The mode decides what happens to a piece of the same name.
+      const res = await fetch(`/api/materials/import?mode=${mode}`, {
+        method: "POST",
+        body: fd,
+      });
       const json = await res.json().catch(() => null);
       if (!res.ok || !json?.success) throw new Error(json?.error?.message ?? "Import failed.");
       toast.success(json.data.message as string);
@@ -642,16 +647,12 @@ export function MaterialsClient({
             <Button variant="outline" onClick={() => setExporting(true)}>
               <Download className="size-4" /> Export
             </Button>
-            <Button variant="outline" render={<label />} nativeButton={false}>
-              {importing ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
-              Import
-              <input
-                type="file"
-                accept=".csv,text/csv"
-                className="hidden"
-                onChange={(e) => void onImport(e.target.files?.[0])}
-              />
-            </Button>
+            <ImportButton
+              busy={importing}
+              onImport={onImport}
+              title="Import study material"
+              description="Rows are matched by title. Choose what should happen when a piece of that name is already here."
+            />
             <Button onClick={() => setForm(blankForm())}>
               <Plus className="size-4" /> Add material
             </Button>

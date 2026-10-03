@@ -3,6 +3,7 @@ import { created } from "@/lib/api/response";
 import { requireApiPermission } from "@/lib/auth/api-guard";
 import { PERMISSIONS } from "@/config/roles";
 import { importAssignmentsSchema } from "@/lib/validations/assignment";
+import { importModeSchema } from "@/lib/validations/import-mode";
 import { importAssignments } from "@/server/services/assignment-service";
 
 export const runtime = "nodejs";
@@ -15,7 +16,10 @@ export const dynamic = "force-dynamic";
 export const POST = withRoute(async (req) => {
   const user = await requireApiPermission(PERMISSIONS.GRADE_ASSIGNMENT);
   const input = importAssignmentsSchema.parse(await req.json().catch(() => ({})));
-  const result = await importAssignments(input, user.id);
+  const mode = importModeSchema.parse(
+    new URL(req.url).searchParams.get("mode") ?? undefined,
+  );
+  const result = await importAssignments(input, user.id, mode);
   return created({
     ...result,
     message: `${result.imported} assignment${result.imported === 1 ? "" : "s"} created.`,

@@ -3,6 +3,7 @@ import { moveToTrash } from "./trash-service";
 import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
 import { toCsv, parseCsv } from "@/lib/csv";
+import { copyTitle, type ImportMode } from "@/lib/validations/import-mode";
 import {
   groupOptions,
   groupsOfMany,
@@ -822,6 +823,7 @@ const DIFFICULTIES = new Set<string>(QUIZ_DIFFICULTIES);
 export async function importQuizzes(
   csv: string,
   createdById: string,
+  mode: ImportMode = "update",
 ): Promise<QuizImportResult> {
   const { rows } = parseCsv(csv);
   const result: QuizImportResult = { created: 0, updated: 0, skipped: [] };
@@ -889,14 +891,21 @@ export async function importQuizzes(
 
     const found = quizByTitle.get(title.trim().toLowerCase());
     let quizId: string;
-    if (found) {
+    if (found && mode === "skip") {
+      result.skipped.push({ row: line, reason: `"${title}" is already here` });
+      continue;
+    }
+    if (found && mode === "update") {
       await prisma.quiz.update({ where: { id: found }, data });
       quizId = found;
       result.updated += 1;
     } else {
+      // A copy keeps the sheet's title but marked, so the two can be told apart.
+      const name = found || mode === "copy" ? copyTitle(title, new Set(quizByTitle.keys())) : title;
       const made = await prisma.quiz.create({
         data: {
           ...data,
+          title: name,
           quizNo: await nextQuizNo(),
           sequence: await nextSequence(null, null),
           createdById,
@@ -904,7 +913,7 @@ export async function importQuizzes(
         select: { id: true },
       });
       quizId = made.id;
-      quizByTitle.set(title.trim().toLowerCase(), quizId);
+      quizByTitle.set(name.trim().toLowerCase(), quizId);
       result.created += 1;
     }
 

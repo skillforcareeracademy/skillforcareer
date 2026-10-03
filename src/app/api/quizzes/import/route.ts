@@ -3,6 +3,7 @@ import { AppError } from "@/lib/api/errors";
 import { ok } from "@/lib/api/response";
 import { requireApiPermission } from "@/lib/auth/api-guard";
 import { PERMISSIONS } from "@/config/roles";
+import { importModeSchema } from "@/lib/validations/import-mode";
 import { importQuizzes } from "@/server/services/quiz-service";
 
 export const runtime = "nodejs";
@@ -14,7 +15,8 @@ export const POST = withRoute(async (req) => {
   const csv = await req.text();
   if (!csv.trim()) throw AppError.badRequest("That file is empty.");
 
-  const result = await importQuizzes(csv, user.id);
+  const mode = importModeSchema.parse(new URL(req.url).searchParams.get("mode") ?? undefined);
+  const result = await importQuizzes(csv, user.id, mode);
   const parts: string[] = [];
   if (result.created > 0) parts.push(`${result.created} added`);
   if (result.updated > 0) parts.push(`${result.updated} updated`);
