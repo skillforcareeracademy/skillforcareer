@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CheckCircle2, Circle, Loader2, XCircle } from "lucide-react";
+import {
+  CheckCircle2,
+  ChevronRight,
+  Circle,
+  Loader2,
+  XCircle,
+} from "lucide-react";
 import { api } from "@/lib/api-client";
 import type { BreakdownRow, StudentBreakdown } from "@/server/services/student-breakdown-service";
 import {
@@ -12,6 +18,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
+import { AttemptHistorySheet } from "@/components/shared/attempt-history-sheet";
 import { cn } from "@/lib/utils";
 
 /**
@@ -58,6 +65,8 @@ export function StudentBreakdownSheet({
 }) {
   const [data, setData] = useState<StudentBreakdown | null>(null);
   const [loading, setLoading] = useState(false);
+  /** Which quiz's attempts are open, if any. */
+  const [attemptsFor, setAttemptsFor] = useState<string | null>(null);
 
   useEffect(() => {
     if (!kind || data) return;
@@ -109,10 +118,14 @@ export function StudentBreakdownSheet({
           <ul className="divide-y">
             {rows.map((r) => {
               const Icon = STATE_ICON[r.state];
-              return (
-                <li key={r.id} className="flex items-center gap-3 py-2.5">
+              // A quiz that was actually taken opens into every attempt the
+              // learner made — "instead numbers there should be complete
+              // record". The rest of the kinds stay plain rows.
+              const openable = kind === "quizzes" && r.state === "done";
+              const body = (
+                <>
                   <Icon className={cn("size-4 shrink-0", STATE_TONE[r.state])} />
-                  <div className="min-w-0 flex-1">
+                  <div className="min-w-0 flex-1 text-left">
                     <p className="truncate text-sm font-medium">{r.title}</p>
                     {r.subtitle && (
                       <p className="text-muted-foreground truncate text-xs">{r.subtitle}</p>
@@ -123,12 +136,38 @@ export function StudentBreakdownSheet({
                       {r.value}
                     </Badge>
                   )}
+                  {openable && (
+                    <ChevronRight className="text-muted-foreground size-4 shrink-0" />
+                  )}
+                </>
+              );
+              return (
+                <li key={r.id}>
+                  {openable ? (
+                    <button
+                      type="button"
+                      onClick={() => setAttemptsFor(r.id)}
+                      className="hover:bg-accent/50 flex w-full items-center gap-3 rounded-lg py-2.5 transition-colors"
+                    >
+                      {body}
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-3 py-2.5">{body}</div>
+                  )}
                 </li>
               );
             })}
           </ul>
         </div>
       </SheetContent>
+
+      <AttemptHistorySheet
+        open={attemptsFor !== null}
+        onOpenChange={(o) => !o && setAttemptsFor(null)}
+        quizId={attemptsFor ?? ""}
+        studentId={userId}
+        title="Every attempt"
+      />
     </Sheet>
   );
 }

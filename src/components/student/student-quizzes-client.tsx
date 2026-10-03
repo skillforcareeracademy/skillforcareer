@@ -9,6 +9,7 @@ import {
   RefreshCw,
   PlayCircle,
   Search,
+  History,
 } from "lucide-react";
 import type { StudentQuiz } from "@/server/services/student-quiz-service";
 import { QUIZ_DIFFICULTY_LABEL } from "@/lib/validations/quiz";
@@ -20,8 +21,12 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { QuizBookmarkToggle } from "./quiz-bookmark-toggle";
 import { GroupBrowser } from "./group-browser";
+import { Button } from "@/components/ui/button";
+import { AttemptHistorySheet } from "@/components/shared/attempt-history-sheet";
 
 export function StudentQuizzesClient({ quizzes }: { quizzes: StudentQuiz[] }) {
+  /** Which quiz's attempts are open, if any. */
+  const [historyFor, setHistoryFor] = useState<string | null>(null);
   const [search, setSearch] = useState("");
 
   // Searching cuts across every group; without one, the groups lead.
@@ -189,7 +194,7 @@ export function StudentQuizzesClient({ quizzes }: { quizzes: StudentQuiz[] }) {
                     </span>
                   </div>
 
-                  <div className="mt-4">
+                  <div className="mt-4 flex flex-wrap gap-2">
                     <ButtonLink
                       href={`/student/quizzes/${q.id}`}
                       size="sm"
@@ -197,6 +202,17 @@ export function StudentQuizzesClient({ quizzes }: { quizzes: StudentQuiz[] }) {
                     >
                       <Icon className="size-4" /> {cta}
                     </ButtonLink>
+                    {/* Every attempt, not just the last one — and without
+                        having to open the paper again. */}
+                    {q.attemptsUsed > 0 && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setHistoryFor(q.id)}
+                      >
+                        <History className="size-4" /> Previous results
+                      </Button>
+                    )}
                   </div>
                 </Card>
               );
@@ -204,6 +220,12 @@ export function StudentQuizzesClient({ quizzes }: { quizzes: StudentQuiz[] }) {
           />
         </>
       )}
+
+      <AttemptHistorySheet
+        open={historyFor !== null}
+        onOpenChange={(o) => !o && setHistoryFor(null)}
+        quizId={historyFor ?? ""}
+      />
     </div>
   );
 }

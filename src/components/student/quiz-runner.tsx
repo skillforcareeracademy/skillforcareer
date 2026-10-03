@@ -17,6 +17,7 @@ import {
   XCircle,
   Check,
   Lock,
+  History,
   RefreshCw,
   Trophy,
   Clock,
@@ -34,6 +35,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { QuizNotesBar } from "./quiz-notes-bar";
 import { QuestionReportDialog } from "./question-report-dialog";
+import { AttemptHistorySheet } from "@/components/shared/attempt-history-sheet";
 import { cn } from "@/lib/utils";
 
 interface Option {
@@ -373,6 +375,8 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
   );
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<Result | null>(null);
+  /** Every earlier attempt, on demand. */
+  const [historyOpen, setHistoryOpen] = useState(false);
   // Timer: only when the admin set a time limit — otherwise unlimited.
   const [remaining, setRemaining] = useState<number | null>(
     quiz.timeLimitMinutes ? quiz.timeLimitMinutes * 60 : null,
@@ -534,13 +538,27 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
           You&apos;ve used all {quiz.maxAttempts} attempt
           {quiz.maxAttempts === 1 ? "" : "s"} for this quiz.
         </p>
-        <Button nativeButton={false} render={<Link href="/student/quizzes" />}>
-          <ArrowLeft className="size-4" /> Back to quizzes
-        </Button>
+        <div className="flex flex-wrap justify-center gap-2">
+          <Button
+            variant="outline"
+            nativeButton={false}
+            render={<Link href="/student/quizzes" />}
+          >
+            <ArrowLeft className="size-4" /> Back to quizzes
+          </Button>
+          <Button onClick={() => setHistoryOpen(true)}>
+            <History className="size-4" /> See previous results
+          </Button>
+        </div>
         <QuizNotesBar
           quizId={quiz.id}
           bookmarked={quiz.bookmarked}
           className="mx-auto max-w-md text-left"
+        />
+        <AttemptHistorySheet
+          open={historyOpen}
+          onOpenChange={setHistoryOpen}
+          quizId={quiz.id}
         />
       </div>
     );
@@ -659,7 +677,9 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
               "Not passed"
             )}
           </Badge>
-          <div className="mt-5 flex justify-center gap-2">
+          {/* "Only try again button shouldn't be coming. More buttons should be
+              coming like see previous results." */}
+          <div className="mt-5 flex flex-wrap justify-center gap-2">
             <Button
               variant="outline"
               nativeButton={false}
@@ -667,7 +687,11 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
             >
               Back to quizzes
             </Button>
-            {quiz.attemptsUsed + 1 < quiz.maxAttempts && (
+            <Button variant="outline" onClick={() => setHistoryOpen(true)}>
+              <History className="size-4" /> See previous results
+            </Button>
+            {(quiz.maxAttempts === 0 ||
+              quiz.attemptsUsed + 1 < quiz.maxAttempts) && (
               <Button onClick={() => router.refresh()}>
                 <RefreshCw className="size-4" /> Try again
               </Button>
@@ -832,6 +856,12 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
             </p>
           </div>
         )}
+
+        <AttemptHistorySheet
+          open={historyOpen}
+          onOpenChange={setHistoryOpen}
+          quizId={quiz.id}
+        />
       </div>
     );
   }
