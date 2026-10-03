@@ -460,6 +460,7 @@ model User {
   curriculumChanges    CurriculumChange[]     @relation("CurriculumChangeAuthor")
   withdrawalsHandled   WalletWithdrawal[]     @relation("WalletWithdrawalAdmin")
   broadcastsSent       Broadcast[]            @relation("BroadcastSender")
+  assignmentAttempts   AssignmentAttempt[]    @relation("AssignmentAttemptStudent")
   trashed              TrashItem[]            @relation("TrashOwner")
 
   @@index([roleId])
@@ -1442,6 +1443,7 @@ model Assignment {
   createdBy   User                   @relation("AssignmentCreator", fields: [createdById], references: [id], onUpdate: NoAction)
   submissions AssignmentSubmission[]
   questions   AssignmentQuestion[]
+  attemptLog  AssignmentAttempt[]
   batches     AssignmentBatch[]
   students    AssignmentStudent[]
 
@@ -1481,6 +1483,37 @@ model AssignmentStudent {
 
 /// A question on an MCQ / Q&A assignment — the quiz question model, kept
 /// separate so assignment marking and quiz attempts can evolve apart.
+/// A record of one submission, kept so every attempt can be looked back at.
+///
+/// `AssignmentSubmission` holds one row per learner and overwrites it on each
+/// resubmission — that row is what grading reads, and changing it would mean
+/// reworking marking. So each submission also writes a snapshot here. Nothing
+/// reads this but the history view, which is exactly the point: the live row
+/// keeps its meaning and the learner still gets "the result of every attempt
+/// they take even after later".
+model AssignmentAttempt {
+  id           String   @id @default(cuid())
+  assignmentId String
+  studentId    String
+  attemptNo    Int
+  /// The answers as sent, in the same shape the submission stores them.
+  answers      Json?
+  autoScore    Int?
+  score        Int?
+  maxScore     Int      @default(0)
+  /// Whether it still needed a person when it landed.
+  needsMarking Boolean  @default(false)
+  submittedAt  DateTime @default(now())
+
+  createdAt DateTime @default(now())
+
+  assignment Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  student    User       @relation("AssignmentAttemptStudent", fields: [studentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([assignmentId, studentId])
+  @@index([submittedAt])
+}
+
 model AssignmentQuestion {
   id            String       @id @default(cuid())
   assignmentId  String

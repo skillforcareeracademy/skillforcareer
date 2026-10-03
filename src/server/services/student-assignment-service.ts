@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@/generated/prisma/client";
 import { notify } from "./notification-service";
 import { AppError } from "@/lib/api/errors";
 import type { SubmitAssignmentInput } from "@/lib/validations/submission";
@@ -406,6 +407,28 @@ export async function submitAssignmentAnswers(
       });
     }
   }
+
+  // A record of this submission, so every attempt can be looked back at. The
+  // live submission row above is still the one grading reads; this is the
+  // history beside it, and a failure here must not lose the submission.
+  const sent = await prisma.assignmentAttempt.count({
+    where: { assignmentId, studentId: userId },
+  });
+  await prisma.assignmentAttempt
+    .create({
+      data: {
+        assignmentId,
+        studentId: userId,
+        attemptNo: sent + 1,
+        answers: recorded as Prisma.InputJsonValue,
+        autoScore,
+        score: settled ? autoScore : null,
+        maxScore,
+        needsMarking,
+        submittedAt: now,
+      },
+    })
+    .catch(() => undefined);
 
   return { autoScore, maxScore, needsMarking };
 }

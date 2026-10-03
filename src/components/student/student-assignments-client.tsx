@@ -12,6 +12,7 @@ import {
   CalendarClock,
   FileText,
   ExternalLink,
+  History,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
@@ -34,6 +35,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { AttemptHistorySheet } from "@/components/shared/attempt-history-sheet";
 
 type A = StudentAssignment;
 
@@ -49,6 +51,8 @@ function statusOf(a: A): { label: string; cls: string } {
 
 export function StudentAssignmentsClient({ assignments }: { assignments: A[] }) {
   const [active, setActive] = useState<A | null>(null);
+  /** Which assignment's attempts are open, if any. */
+  const [historyFor, setHistoryFor] = useState<string | null>(null);
 
   const stats = {
     total: assignments.length,
@@ -132,7 +136,7 @@ export function StudentAssignmentsClient({ assignments }: { assignments: A[] }) 
                     </div>
                   )}
 
-                  <div className="mt-4">
+                  <div className="mt-4 flex flex-wrap gap-2">
                     <Button
                       variant={a.submission ? "outline" : "default"}
                       size="sm"
@@ -140,6 +144,16 @@ export function StudentAssignmentsClient({ assignments }: { assignments: A[] }) 
                     >
                       {graded ? "View" : a.submission ? "View / resubmit" : "Submit"}
                     </Button>
+                    {/* Every time this was sent, not just the last one. */}
+                    {a.submission && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setHistoryFor(a.id)}
+                      >
+                        <History className="size-4" /> Previous results
+                      </Button>
+                    )}
                   </div>
                 </Card>
               );
@@ -149,6 +163,13 @@ export function StudentAssignmentsClient({ assignments }: { assignments: A[] }) 
       )}
 
       <SubmitDialog assignment={active} onOpenChange={(o) => !o && setActive(null)} />
+
+      <AttemptHistorySheet
+        open={historyFor !== null}
+        onOpenChange={(o) => !o && setHistoryFor(null)}
+        quizId={historyFor ?? ""}
+        kind="assignment"
+      />
     </div>
   );
 }

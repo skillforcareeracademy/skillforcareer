@@ -115,13 +115,18 @@ export function AttemptHistorySheet({
   /** Whose attempts. Omit for your own. */
   studentId,
   title = "Previous results",
+  /** Quizzes and assignments keep the same shape, on different routes. */
+  kind = "quiz",
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   quizId: string;
   studentId?: string;
   title?: string;
+  kind?: "quiz" | "assignment";
 }) {
+  const listPath = kind === "assignment" ? "assignments" : "quizzes";
+  const detailPath = kind === "assignment" ? "assignment-attempts" : "quiz-attempts";
   const [attempts, setAttempts] = useState<Summary[]>([]);
   const [quizTitle, setQuizTitle] = useState("");
   const [loading, setLoading] = useState(true);
@@ -132,7 +137,7 @@ export function AttemptHistorySheet({
     setLoading(true);
     try {
       const res = await api.get<{ attempts: Summary[]; quizTitle: string }>(
-        `/api/quizzes/${quizId}/attempts${studentId ? `?student=${studentId}` : ""}`,
+        `/api/${listPath}/${quizId}/attempts${studentId ? `?student=${studentId}` : ""}`,
       );
       setAttempts(res.attempts);
       setQuizTitle(res.quizTitle);
@@ -141,7 +146,7 @@ export function AttemptHistorySheet({
     } finally {
       setLoading(false);
     }
-  }, [quizId, studentId]);
+  }, [quizId, studentId, listPath]);
 
   // Deferred so the sheet paints before the loading cascade.
   useEffect(() => {
@@ -161,7 +166,7 @@ export function AttemptHistorySheet({
   async function openAttempt(id: string) {
     setOpening(id);
     try {
-      setDetail(await api.get<Detail>(`/api/quiz-attempts/${id}`));
+      setDetail(await api.get<Detail>(`/api/${detailPath}/${id}`));
     } catch (error) {
       toast.error(error instanceof ApiError ? error.message : "Couldn't open that attempt.");
     } finally {
