@@ -39,6 +39,7 @@ import {
   IdCard,
   Library,
   BookA,
+  PenLine,
   Megaphone,
   Trash2,
 } from "lucide-react";
@@ -112,6 +113,8 @@ export const NAV_SECTIONS: NavSection[] = [
       { title: "Batches", href: "/batches", icon: Layers, roles: TEACHING },
       { title: "My Learning", href: "/learning", icon: GraduationCap, roles: [ROLES.STUDENT] },
       { title: "Live Classes", href: "/live", icon: Video, roles: ALL },
+      // The on-screen notepad for teaching; learners have no use for it.
+      { title: "Board", href: "/board", icon: PenLine, roles: TEACHING },
       { title: "Offline Classes", href: "/offline", icon: School, roles: STAFF },
       // Staff manage webinars here; learners get their own tab of the same
       // route showing what they're registered for and what's coming up.

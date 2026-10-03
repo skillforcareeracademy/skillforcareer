@@ -477,6 +477,7 @@ model User {
   broadcastsSent       Broadcast[]            @relation("BroadcastSender")
   assignmentAttempts   AssignmentAttempt[]    @relation("AssignmentAttemptStudent")
   terms                Term[]                 @relation("TermAuthor")
+  boardSlides          BoardSlide[]           @relation("BoardAuthor")
   termBookmarks        TermBookmark[]         @relation("TermBookmarkUser")
   trashed              TrashItem[]            @relation("TrashOwner")
 
@@ -1093,6 +1094,7 @@ model Course {
   coupons           Coupon[]
   leads             Lead[]
   curriculumCourses CurriculumCourse[]
+  boardSlides BoardSlide[]
 
   @@index([categoryId])
   @@index([instructorId])
@@ -1142,6 +1144,7 @@ model Batch {
   notes             BatchNote[]
   curriculumBatches CurriculumBatch[]
   groupAccess       BatchGroupAccess[]
+  boardSlides BoardSlide[]
 
   @@index([courseId])
   @@index([instructorId])
@@ -2296,6 +2299,7 @@ model Meeting {
   recordingAccess  RecordingAccess[]
   recordingViews   RecordingView[]
   recordingDevices RecordingDevice[]
+  boardSlides BoardSlide[]
 
   @@index([courseId])
   @@index([batchId])
@@ -2600,6 +2604,42 @@ model TermBookmark {
 
   @@index([userId])
   @@index([termId])
+}
+
+/// A page from the on-screen notepad an instructor writes on while teaching.
+///
+/// "An option of notepad to write like a board on screen with screen pen …
+/// also an option to save those slides and filter those slides lecture wise or
+/// class wise."
+///
+/// Strokes, not a picture: a page is kept as the lines that were drawn, in
+/// coordinates from 0 to 1. So it reopens at any screen size, can be drawn on
+/// further, and costs a few kilobytes rather than a megabyte of PNG.
+model BoardSlide {
+  id      String  @id @default(cuid())
+  title   String
+  /// The drawing: an array of strokes, each with its tool, colour, width and
+  /// points. See `lib/validations/board.ts` for the shape.
+  strokes Json
+  /// What it was drawn for, which is what the filters work on.
+  batchId   String?
+  meetingId String?
+  courseId  String?
+
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  batch     Batch?   @relation(fields: [batchId], references: [id], onUpdate: NoAction)
+  meeting   Meeting? @relation(fields: [meetingId], references: [id], onUpdate: NoAction)
+  course    Course?  @relation(fields: [courseId], references: [id], onUpdate: NoAction)
+  createdBy User     @relation("BoardAuthor", fields: [createdById], references: [id], onUpdate: NoAction)
+
+  @@index([createdById])
+  @@index([batchId])
+  @@index([meetingId])
+  @@index([courseId])
+  @@index([createdAt])
 }
 
 model ActivityLog {
