@@ -38,6 +38,7 @@ import {
   ClipboardCheck,
   IdCard,
   Library,
+  BookA,
   Megaphone,
   Trash2,
 } from "lucide-react";
@@ -169,6 +170,7 @@ export const NAV_SECTIONS: NavSection[] = [
         icon: Library,
         roles: [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.INSTRUCTOR, ROLES.STUDENT],
       },
+      { title: "Terminology", href: "/terminology", icon: BookA, roles: ALL },
       { title: "Notes", href: "/notes", icon: NotebookPen, roles: [ROLES.STUDENT] },
       // Refer-and-earn pays into here, and this is where a learner asks for it.
       { title: "Wallet", href: "/wallet", icon: Wallet, roles: [ROLES.STUDENT] },

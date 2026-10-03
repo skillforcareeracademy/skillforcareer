@@ -43,6 +43,7 @@ import {
 import { EmptyState } from "@/components/shared/empty-state";
 import { GroupBrowser } from "./group-browser";
 import { cn } from "@/lib/utils";
+import { WordLookup } from "@/components/shared/word-lookup";
 
 /**
  * The reading a learner has been set, and the reader they read it in.
@@ -630,13 +631,20 @@ export function StudentMaterialsClient({
             )}
 
             {detail?.body && (
-              <div onMouseUp={captureSelection} onTouchEnd={captureSelection}>
-                {looksLikeHtml(detail.body) ? (
-                  <HtmlBody body={detail.body} marks={detail.marks} />
-                ) : (
-                  <MarkedUpBody body={detail.body} marks={detail.marks} />
-                )}
-              </div>
+              /* Double-tapping a word here looks it up in the academy's
+                 dictionary — "when anyone read notes, meaning of a word should
+                 be visible by clicking on that word". Highlighting still works:
+                 the lookup listens for a double-click, the highlighter for the
+                 selection left behind by a drag. */
+              <WordLookup>
+                <div onMouseUp={captureSelection} onTouchEnd={captureSelection}>
+                  {looksLikeHtml(detail.body) ? (
+                    <HtmlBody body={detail.body} marks={detail.marks} />
+                  ) : (
+                    <MarkedUpBody body={detail.body} marks={detail.marks} />
+                  )}
+                </div>
+              </WordLookup>
             )}
 
             {detail?.body && (

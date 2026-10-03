@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { when } from "@/components/admin/batches/profile/format";
+import { WordLookup } from "@/components/shared/word-lookup";
 
 /**
  * Notes and material the learner's batches have shared — slides, reading, a
@@ -182,7 +183,11 @@ export function BatchNotesSection({ notes }: { notes: StudentBatchNote[] }) {
                 </DialogDescription>
               </DialogHeader>
               {open.body ? (
-                <p className="text-sm leading-relaxed whitespace-pre-line">{open.body}</p>
+                /* Same lookup as the study material: double-tap a word to see
+                   what it means. */
+                <WordLookup>
+                  <p className="text-sm leading-relaxed whitespace-pre-line">{open.body}</p>
+                </WordLookup>
               ) : (
                 <p className="text-muted-foreground text-sm">
                   This note has no text of its own — open the attachment below.

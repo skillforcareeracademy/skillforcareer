@@ -317,6 +317,21 @@ enum NotificationChannel {
 /// What a thrown-away item used to be. Only things that can be put back
 /// whole are listed here — a course or a batch drags half the database behind
 /// it and is not something a bin can honestly promise to restore.
+/// The kinds of term the academy keeps — the client's own list: "Root,
+/// suffix, prefix, abbreviations, Diagnosis terms, procedure terms, HCPCS
+/// terms, units, instruments."
+enum TermKind {
+  ROOT
+  PREFIX
+  SUFFIX
+  ABBREVIATION
+  DIAGNOSIS
+  PROCEDURE
+  HCPCS
+  UNIT
+  INSTRUMENT
+}
+
 enum TrashKind {
   QUIZ
   ASSIGNMENT
@@ -461,6 +476,8 @@ model User {
   withdrawalsHandled   WalletWithdrawal[]     @relation("WalletWithdrawalAdmin")
   broadcastsSent       Broadcast[]            @relation("BroadcastSender")
   assignmentAttempts   AssignmentAttempt[]    @relation("AssignmentAttemptStudent")
+  terms                Term[]                 @relation("TermAuthor")
+  termBookmarks        TermBookmark[]         @relation("TermBookmarkUser")
   trashed              TrashItem[]            @relation("TrashOwner")
 
   @@index([roleId])
@@ -2523,6 +2540,66 @@ model TrashItem {
   @@index([kind])
   @@index([deletedById])
   @@index([deletedAt])
+}
+
+/// One word in the academy's dictionary.
+///
+/// "Terminology: which is like dictionary is required to upload every possible
+/// meaning there and when anyone read notes, meaning of a word should be
+/// visible by clicking on that word." So a term carries both a one-line meaning,
+/// which is what a pop-up shows, and a fuller explanation for its own page.
+///
+/// `word` is not unique: the same spelling can be a root and an abbreviation,
+/// and a lookup shows every sense rather than guessing one.
+model Term {
+  id          String   @id @default(cuid())
+  word        String   @db.VarChar(120)
+  /// `word` with case, punctuation and the slashes a dictionary uses stripped —
+  /// "cardi/o" becomes "cardio". A learner clicks the word as it appears in the
+  /// reading, which never carries those marks, so the lookup matches on this.
+  wordKey     String   @default("") @db.VarChar(120)
+  /// The same treatment for every synonym, joined and wrapped in bars
+  /// ("|cardiac|heart|") so one `contains` finds an exact synonym.
+  synonymKey  String?  @db.Text
+  kind        TermKind @default(ROOT)
+  /// Other words for the same thing, as a JSON array of strings. These are
+  /// searched and looked up too, so a synonym finds the entry.
+  synonyms    Json?
+  /// The line a pop-up shows.
+  meaning     String   @db.Text
+  /// The fuller account, on the term's own page.
+  explanation String?  @db.Text
+  /// Worked examples, as a JSON array of strings.
+  examples    Json?
+  isPublished Boolean  @default(true)
+
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  createdBy User           @relation("TermAuthor", fields: [createdById], references: [id], onUpdate: NoAction)
+  bookmarks TermBookmark[]
+
+  @@index([kind])
+  @@index([word])
+  @@index([wordKey])
+  @@index([isPublished])
+}
+
+/// A word a learner saved — "an option to bookmark or save any word for later
+/// studies".
+model TermBookmark {
+  id     String @id @default(cuid())
+  userId String
+  termId String
+
+  createdAt DateTime @default(now())
+
+  user User @relation("TermBookmarkUser", fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  term Term @relation(fields: [termId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([userId])
+  @@index([termId])
 }
 
 model ActivityLog {
