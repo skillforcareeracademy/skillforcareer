@@ -1,6 +1,13 @@
 "use client";
 
-import { useState, useEffect, useRef, type FormEvent } from "react";
+import {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  memo,
+  type FormEvent,
+} from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -89,15 +96,261 @@ interface Result {
 }
 
 /** Option ids → the words the learner actually saw, for a summary line. */
-function answerTextFor(question: Question, optionIds: string[], text: string): string {
+function answerTextFor(
+  question: Question,
+  optionIds: string[],
+  text: string,
+): string {
   if (question.type === "SHORT_ANSWER") return text.trim() || "Not answered";
-  const chosen = question.options.filter((o) => optionIds.includes(o.id)).map((o) => o.text);
+  const chosen = question.options
+    .filter((o) => optionIds.includes(o.id))
+    .map((o) => o.text);
   return chosen.length > 0 ? chosen.join(", ") : "Not answered";
 }
 
+/**
+ * One question, on its own.
+ *
+ * Separate and memoised because of what the academy reported: a hundred-question
+ * paper on a phone "gets stuck" when you tap an option. Every tap changed one
+ * object in the parent, and the parent re-rendered all hundred cards and six
+ * hundred option buttons for it — on a mid-range phone, a second of nothing
+ * happening. A card now re-renders only when its own answer, verdict or lock
+ * changes, so a tap costs one card.
+ */
+const QuestionCard = memo(function QuestionCard({
+  q,
+  i,
+  a,
+  verdict,
+  isLocked,
+  checking,
+  paced,
+  quizId,
+  showAnswerPerQuestion,
+  summaryOpen,
+  onSummaryToggle,
+  setSingle,
+  toggleMulti,
+  setText,
+  checkOne,
+}: {
+  q: Question;
+  i: number;
+  a: { optionIds: string[]; text: string } | undefined;
+  verdict: Checked | undefined;
+  isLocked: boolean;
+  checking: string | null;
+  paced: boolean;
+  quizId: string;
+  showAnswerPerQuestion: boolean;
+  summaryOpen: boolean;
+  onSummaryToggle: (id: string) => void;
+  setSingle: (qid: string, optId: string) => void;
+  toggleMulti: (qid: string, optId: string) => void;
+  setText: (qid: string, text: string) => void;
+  checkOne: (q: Question) => void;
+}) {
+  const isMulti = q.type === "MULTIPLE_CHOICE";
+  const answered = Boolean(a && (a.optionIds.length > 0 || a.text.trim()));
+  return (
+    <Card key={q.id} className="p-5">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <p className="font-medium">
+          {i + 1}. {q.text}
+        </p>
+        <Badge variant="secondary" className="shrink-0 text-[10px]">
+          {q.points} pt{q.points === 1 ? "" : "s"}
+        </Badge>
+      </div>
+      {isMulti && (
+        <p className="text-muted-foreground mb-2 text-xs">
+          Select all that apply
+        </p>
+      )}
+
+      {q.type === "SHORT_ANSWER" ? (
+        <Input
+          value={a?.text ?? ""}
+          onChange={(e) => setText(q.id, e.target.value)}
+          placeholder="Your answer…"
+          disabled={Boolean(verdict) || isLocked}
+        />
+      ) : (
+        <div className="space-y-2">
+          {q.options.map((o) => {
+            const selected = a?.optionIds.includes(o.id) ?? false;
+            const isKey = verdict?.correctOptionIds.includes(o.id) ?? false;
+            const wrongPick = Boolean(verdict) && selected && !isKey;
+            return (
+              <button
+                key={o.id}
+                type="button"
+                disabled={Boolean(verdict) || isLocked}
+                onClick={() =>
+                  isMulti ? toggleMulti(q.id, o.id) : setSingle(q.id, o.id)
+                }
+                className={cn(
+                  "flex w-full items-center gap-3 rounded-lg border p-3 text-left text-sm transition-colors",
+                  // Once marked, the card reads as the answer key: the
+                  // right option green, a wrong pick red, the rest plain.
+                  isKey
+                    ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300"
+                    : wrongPick
+                      ? "border-rose-500 bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-300"
+                      : selected
+                        ? "border-primary bg-primary/5"
+                        : verdict
+                          ? "opacity-70"
+                          : "hover:bg-accent",
+                )}
+              >
+                <span
+                  className={cn(
+                    "grid size-5 shrink-0 place-items-center border",
+                    isMulti ? "rounded-md" : "rounded-full",
+                    isKey
+                      ? "border-emerald-500 bg-emerald-500 text-white"
+                      : wrongPick
+                        ? "border-rose-500 bg-rose-500 text-white"
+                        : selected
+                          ? "border-primary bg-primary text-white"
+                          : "border-input",
+                  )}
+                >
+                  {isKey ? (
+                    <Check className="size-3.5" />
+                  ) : wrongPick ? (
+                    <XCircle className="size-3.5" />
+                  ) : (
+                    selected && <Check className="size-3.5" />
+                  )}
+                </span>
+                {o.text}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="mt-3">
+        <QuestionReportDialog
+          quizId={quizId}
+          questionId={q.id}
+          questionNo={i + 1}
+        />
+      </div>
+
+      {paced && isLocked && !verdict && (
+        <p className="text-muted-foreground mt-3 flex items-center gap-1.5 text-xs">
+          <Timer className="size-3.5" /> Time up on this question — your answer
+          is locked in.
+        </p>
+      )}
+
+      {/* Answer as you go, when the quiz is set that way. Checking locks
+                  the answer — seeing the key and then changing your mind isn't
+                  practice. */}
+      {showAnswerPerQuestion && (
+        <div className="mt-3">
+          {verdict ? (
+            <div className="space-y-1">
+              <p
+                className={cn(
+                  "flex items-center gap-1.5 text-sm font-medium",
+                  verdict.isCorrect === null
+                    ? "text-muted-foreground"
+                    : verdict.isCorrect
+                      ? "text-emerald-600 dark:text-emerald-400"
+                      : "text-rose-600 dark:text-rose-400",
+                )}
+              >
+                {verdict.isCorrect === null ? (
+                  <>
+                    <Eye className="size-4" /> Your instructor marks this one.
+                  </>
+                ) : verdict.isCorrect ? (
+                  <>
+                    <CheckCircle2 className="size-4" /> Correct
+                  </>
+                ) : (
+                  <>
+                    <XCircle className="size-4" /> Not quite — the right answer
+                    is marked above.
+                  </>
+                )}
+              </p>
+              {verdict.explanation && (
+                <p className="text-muted-foreground flex items-start gap-1.5 text-xs">
+                  <Lightbulb className="mt-0.5 size-3.5 shrink-0" />
+                  <span>{verdict.explanation}</span>
+                </p>
+              )}
+
+              {/* "View summary ka option aana chahiye if anyone wants to
+                          see the summary question wise" — the question's own
+                          summary, without leaving the paper. */}
+              <button
+                type="button"
+                onClick={() => onSummaryToggle(q.id)}
+                className="text-primary inline-flex items-center gap-1.5 text-xs font-medium hover:underline"
+              >
+                <ListChecks className="size-3.5" />
+                {summaryOpen ? "Hide summary" : "View summary"}
+              </button>
+
+              {summaryOpen && (
+                <div className="bg-muted/40 space-y-1 rounded-lg p-3 text-xs">
+                  <p>
+                    <span className="text-muted-foreground">Your answer: </span>
+                    {answerTextFor(q, a?.optionIds ?? [], a?.text ?? "")}
+                  </p>
+                  {q.type !== "SHORT_ANSWER" && (
+                    <p>
+                      <span className="text-muted-foreground">
+                        Correct answer:{" "}
+                      </span>
+                      {answerTextFor(q, verdict.correctOptionIds, "")}
+                    </p>
+                  )}
+                  <p className="text-muted-foreground">
+                    Worth {q.points} point{q.points === 1 ? "" : "s"} ·{" "}
+                    {verdict.isCorrect === null
+                      ? "marked by your instructor"
+                      : verdict.isCorrect
+                        ? "you got this one"
+                        : "not this time"}
+                  </p>
+                </div>
+              )}
+            </div>
+          ) : (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={!answered || checking === q.id}
+              onClick={() => checkOne(q)}
+            >
+              {checking === q.id ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Eye className="size-4" />
+              )}
+              Check answer
+            </Button>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+});
+
 export function QuizRunner({ quiz }: { quiz: QuizData }) {
   const router = useRouter();
-  const [answers, setAnswers] = useState<Record<string, { optionIds: string[]; text: string }>>({});
+  const [answers, setAnswers] = useState<
+    Record<string, { optionIds: string[]; text: string }>
+  >({});
   const [checked, setChecked] = useState<Record<string, Checked>>({});
   const [checking, setChecking] = useState<string | null>(null);
   /** Questions whose summary the learner has opened mid-attempt. */
@@ -108,6 +361,11 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
    * (if the academy set one too) still runs alongside.
    */
   const paced = (quiz.perQuestionSeconds ?? 0) > 0;
+  /** Toggling one question's summary, kept stable so the cards stay memoised. */
+  const toggleSummary = useCallback((qid: string) => {
+    setSummaryOpen((p) => ({ ...p, [qid]: !p[qid] }));
+  }, []);
+
   const [index, setIndex] = useState(0);
   const [locked, setLocked] = useState<Record<string, true>>({});
   const [questionLeft, setQuestionLeft] = useState<number | null>(
@@ -120,6 +378,76 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
     quiz.timeLimitMinutes ? quiz.timeLimitMinutes * 60 : null,
   );
   const submitRef = useRef<() => void>(() => {});
+  /** The current question, so a paced paper can bring it into view. */
+  const questionRef = useRef<HTMLDivElement>(null);
+  const firstQuestionPaint = useRef(true);
+
+  /** The latest state, for handlers that must not change identity. */
+  const latest = useRef({ answers, checked, locked, checking });
+  useEffect(() => {
+    latest.current = { answers, checked, locked, checking };
+  });
+
+  /**
+   * The handlers below are passed to every question card, so they have to keep
+   * the same identity between renders — a new function each time would hand all
+   * hundred cards new props and undo the memoising that keeps a tap cheap.
+   * They read the guards off `latest` rather than closing over the state.
+   */
+  const setSingle = useCallback((qid: string, optId: string) => {
+    const { checked: c, locked: l } = latest.current;
+    if (c[qid] || l[qid]) return; // marked or timed out — it stands
+    setAnswers((p) => ({ ...p, [qid]: { optionIds: [optId], text: "" } }));
+  }, []);
+
+  const toggleMulti = useCallback((qid: string, optId: string) => {
+    const { checked: c, locked: l } = latest.current;
+    if (c[qid] || l[qid]) return;
+    setAnswers((p) => {
+      const cur = p[qid]?.optionIds ?? [];
+      const next = cur.includes(optId)
+        ? cur.filter((x) => x !== optId)
+        : [...cur, optId];
+      return { ...p, [qid]: { optionIds: next, text: "" } };
+    });
+  }, []);
+
+  const setText = useCallback((qid: string, text: string) => {
+    const { checked: c, locked: l } = latest.current;
+    if (c[qid] || l[qid]) return;
+    setAnswers((p) => ({ ...p, [qid]: { optionIds: [], text } }));
+  }, []);
+
+  /**
+   * Mark one question now, for a quiz set to answer as it goes. The key comes
+   * from the server one question at a time — the paper never carries it — and
+   * the answer locks once it has been marked.
+   */
+  const checkOne = useCallback(
+    async (q: Question) => {
+      const { answers: all, checked: c, checking: busy } = latest.current;
+      const a = all[q.id];
+      if (!a || (a.optionIds.length === 0 && !a.text.trim()) || c[q.id] || busy)
+        return;
+      setChecking(q.id);
+      try {
+        const res = await api.post<Checked>(`/api/quizzes/${quiz.id}/check`, {
+          questionId: q.id,
+          optionIds: a.optionIds,
+        });
+        setChecked((p) => ({ ...p, [q.id]: res }));
+      } catch (err) {
+        toast.error(
+          err instanceof ApiError
+            ? err.message
+            : "Couldn't check that just now.",
+        );
+      } finally {
+        setChecking(null);
+      }
+    },
+    [quiz.id],
+  );
 
   // The result screen replaces the paper in place, so a learner who submitted
   // from the last question stayed parked at the bottom of a long page instead
@@ -128,6 +456,23 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
   useEffect(() => {
     if (result) window.scrollTo({ top: 0, behavior: "smooth" });
   }, [result]);
+
+  /**
+   * A paced paper swaps one question for the next in place, and the page keeps
+   * whatever scroll position the last one left it at. On a phone — where a
+   * question with its options and an open summary is taller than the screen —
+   * the next question opens halfway down, its number and wording above the
+   * fold, and the page reads as stuck. Bring the question back into view, the
+   * same way submitting takes them up to their score.
+   */
+  useEffect(() => {
+    if (!paced || result) return;
+    if (firstQuestionPaint.current) {
+      firstQuestionPaint.current = false;
+      return;
+    }
+    questionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [index, paced, result]);
 
   // Keep a stable pointer to the latest submit for the timer to call on timeout.
   useEffect(() => {
@@ -168,7 +513,15 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
       }
     }, 250);
     return () => clearInterval(id);
-  }, [paced, index, quiz.canAttempt, quiz.questions, quiz.perQuestionSeconds, locked, result]);
+  }, [
+    paced,
+    index,
+    quiz.canAttempt,
+    quiz.questions,
+    quiz.perQuestionSeconds,
+    locked,
+    result,
+  ]);
 
   if (!quiz.canAttempt && !result) {
     return (
@@ -178,7 +531,8 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
         </div>
         <h1 className="text-xl font-bold">{quiz.title}</h1>
         <p className="text-muted-foreground text-sm">
-          You&apos;ve used all {quiz.maxAttempts} attempt{quiz.maxAttempts === 1 ? "" : "s"} for this quiz.
+          You&apos;ve used all {quiz.maxAttempts} attempt
+          {quiz.maxAttempts === 1 ? "" : "s"} for this quiz.
         </p>
         <Button nativeButton={false} render={<Link href="/student/quizzes" />}>
           <ArrowLeft className="size-4" /> Back to quizzes
@@ -190,45 +544,6 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
         />
       </div>
     );
-  }
-
-  function setSingle(qid: string, optId: string) {
-    if (checked[qid] || locked[qid]) return; // marked or timed out — it stands
-    setAnswers((p) => ({ ...p, [qid]: { optionIds: [optId], text: "" } }));
-  }
-  function toggleMulti(qid: string, optId: string) {
-    if (checked[qid] || locked[qid]) return;
-    setAnswers((p) => {
-      const cur = p[qid]?.optionIds ?? [];
-      const next = cur.includes(optId) ? cur.filter((x) => x !== optId) : [...cur, optId];
-      return { ...p, [qid]: { optionIds: next, text: "" } };
-    });
-  }
-  function setText(qid: string, text: string) {
-    if (checked[qid] || locked[qid]) return;
-    setAnswers((p) => ({ ...p, [qid]: { optionIds: [], text } }));
-  }
-
-  /**
-   * Mark one question now, for a quiz set to answer as it goes. The key comes
-   * from the server one question at a time — the paper never carries it — and
-   * the answer locks once it has been marked.
-   */
-  async function checkOne(q: Question) {
-    const a = answers[q.id];
-    if (!a || (a.optionIds.length === 0 && !a.text.trim()) || checked[q.id] || checking) return;
-    setChecking(q.id);
-    try {
-      const res = await api.post<Checked>(`/api/quizzes/${quiz.id}/check`, {
-        questionId: q.id,
-        optionIds: a.optionIds,
-      });
-      setChecked((p) => ({ ...p, [q.id]: res }));
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Couldn't check that just now.");
-    } finally {
-      setChecking(null);
-    }
   }
 
   /** Lock what is on screen and move to the next question. */
@@ -258,11 +573,16 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
           text: answers[q.id]?.text ?? "",
         })),
       };
-      const res = await api.post<Result>(`/api/quizzes/${quiz.id}/submit`, payload);
+      const res = await api.post<Result>(
+        `/api/quizzes/${quiz.id}/submit`,
+        payload,
+      );
       setResult(res);
       router.refresh();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Couldn't submit quiz.");
+      toast.error(
+        err instanceof ApiError ? err.message : "Couldn't submit quiz.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -288,27 +608,39 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
     const showSummary = result.showAnswers || result.showAnswerPerQuestion;
     return (
       <div className="mx-auto max-w-2xl space-y-6 py-2">
-        <Link href="/student/quizzes" className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 text-sm">
+        <Link
+          href="/student/quizzes"
+          className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 text-sm"
+        >
           <ArrowLeft className="size-4" /> Back to quizzes
         </Link>
 
         <Card
           className={cn(
             "p-8 text-center",
-            result.passed ? "border-emerald-200 dark:border-emerald-900/40" : "border-amber-200 dark:border-amber-900/40",
+            result.passed
+              ? "border-emerald-200 dark:border-emerald-900/40"
+              : "border-amber-200 dark:border-amber-900/40",
           )}
         >
           <div
             className={cn(
               "mx-auto mb-4 grid size-16 place-items-center rounded-full text-white",
-              result.passed ? "bg-gradient-to-br from-emerald-500 to-green-600" : "bg-gradient-to-br from-amber-500 to-orange-600",
+              result.passed
+                ? "bg-gradient-to-br from-emerald-500 to-green-600"
+                : "bg-gradient-to-br from-amber-500 to-orange-600",
             )}
           >
-            {result.passed ? <Trophy className="size-8" /> : <RefreshCw className="size-8" />}
+            {result.passed ? (
+              <Trophy className="size-8" />
+            ) : (
+              <RefreshCw className="size-8" />
+            )}
           </div>
           <p className="text-4xl font-bold tabular-nums">{result.percent}%</p>
           <p className="text-muted-foreground mt-1 text-sm">
-            {result.score} / {result.maxScore} points · Pass mark {result.passingScore}%
+            {result.score} / {result.maxScore} points · Pass mark{" "}
+            {result.passingScore}%
           </p>
           <Badge
             variant="secondary"
@@ -328,7 +660,11 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
             )}
           </Badge>
           <div className="mt-5 flex justify-center gap-2">
-            <Button variant="outline" nativeButton={false} render={<Link href="/student/quizzes" />}>
+            <Button
+              variant="outline"
+              nativeButton={false}
+              render={<Link href="/student/quizzes" />}
+            >
               Back to quizzes
             </Button>
             {quiz.attemptsUsed + 1 < quiz.maxAttempts && (
@@ -346,20 +682,43 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
           <h2 className="mb-3 text-lg font-semibold">Analysis</h2>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {[
-              { label: "Correct", value: tally.correct, tone: "text-emerald-600 dark:text-emerald-400" },
-              { label: "Incorrect", value: tally.incorrect, tone: "text-rose-600 dark:text-rose-400" },
-              { label: "Unanswered", value: tally.unanswered, tone: "text-muted-foreground" },
-              { label: "Being marked", value: tally.manual, tone: "text-amber-600 dark:text-amber-400" },
+              {
+                label: "Correct",
+                value: tally.correct,
+                tone: "text-emerald-600 dark:text-emerald-400",
+              },
+              {
+                label: "Incorrect",
+                value: tally.incorrect,
+                tone: "text-rose-600 dark:text-rose-400",
+              },
+              {
+                label: "Unanswered",
+                value: tally.unanswered,
+                tone: "text-muted-foreground",
+              },
+              {
+                label: "Being marked",
+                value: tally.manual,
+                tone: "text-amber-600 dark:text-amber-400",
+              },
             ].map((s) => (
               <div key={s.label} className="rounded-xl border p-3 text-center">
-                <p className={cn("text-2xl font-semibold tabular-nums", s.tone)}>{s.value}</p>
-                <p className="text-muted-foreground mt-0.5 text-xs">{s.label}</p>
+                <p
+                  className={cn("text-2xl font-semibold tabular-nums", s.tone)}
+                >
+                  {s.value}
+                </p>
+                <p className="text-muted-foreground mt-0.5 text-xs">
+                  {s.label}
+                </p>
               </div>
             ))}
           </div>
           <p className="text-muted-foreground mt-3 text-xs">
-            Attempt {result.attemptNo} · {result.score} of {result.maxScore} points ·{" "}
-            {quiz.questions.length} question{quiz.questions.length === 1 ? "" : "s"}
+            Attempt {result.attemptNo} · {result.score} of {result.maxScore}{" "}
+            points · {quiz.questions.length} question
+            {quiz.questions.length === 1 ? "" : "s"}
           </p>
         </Card>
 
@@ -391,8 +750,11 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
                               key={o.id}
                               className={cn(
                                 "flex items-center gap-2 rounded-md px-2 py-1 text-sm",
-                                isCorrect && "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300",
-                                chosen && !isCorrect && "bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-300",
+                                isCorrect &&
+                                  "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300",
+                                chosen &&
+                                  !isCorrect &&
+                                  "bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-300",
                               )}
                             >
                               {isCorrect ? (
@@ -403,13 +765,19 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
                                 <span className="size-3.5" />
                               )}
                               {o.text}
-                              {chosen && <span className="text-muted-foreground text-xs">(your answer)</span>}
+                              {chosen && (
+                                <span className="text-muted-foreground text-xs">
+                                  (your answer)
+                                </span>
+                              )}
                             </li>
                           );
                         })}
                       </ul>
                       {q.type === "SHORT_ANSWER" && (
-                        <p className="text-muted-foreground mt-1 text-xs">Short answers are reviewed by your instructor.</p>
+                        <p className="text-muted-foreground mt-1 text-xs">
+                          Short answers are reviewed by your instructor.
+                        </p>
                       )}
                       {b?.explanation && (
                         <p className="text-muted-foreground mt-2 flex items-start gap-1.5 text-xs">
@@ -473,13 +841,17 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
     <form onSubmit={submit} className="mx-auto max-w-2xl space-y-6 py-2">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <Link href="/student/quizzes" className="text-muted-foreground hover:text-foreground mb-3 inline-flex items-center gap-1.5 text-sm">
+          <Link
+            href="/student/quizzes"
+            className="text-muted-foreground hover:text-foreground mb-3 inline-flex items-center gap-1.5 text-sm"
+          >
             <ArrowLeft className="size-4" /> Quizzes
           </Link>
           <h1 className="text-2xl font-bold">{quiz.title}</h1>
           <p className="text-muted-foreground mt-1 text-sm">
             {quiz.categoryName ? `${quiz.categoryName} · ` : ""}
-            {quiz.courseTitle} · {quiz.questions.length} questions · {quiz.totalPoints} points · Pass {quiz.passingScore}%
+            {quiz.courseTitle} · {quiz.questions.length} questions ·{" "}
+            {quiz.totalPoints} points · Pass {quiz.passingScore}%
           </p>
           {quiz.preparedFrom.length > 0 && (
             <p className="text-muted-foreground mt-1 flex items-start gap-1.5 text-xs">
@@ -499,7 +871,8 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
               aria-label="Time remaining"
             >
               <Clock className="size-4" />
-              {String(Math.floor(remaining / 60)).padStart(2, "0")}:{String(remaining % 60).padStart(2, "0")}
+              {String(Math.floor(remaining / 60)).padStart(2, "0")}:
+              {String(remaining % 60).padStart(2, "0")}
             </div>
           )}
           {/* The question's own clock, when the academy set one. */}
@@ -521,194 +894,30 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
 
       <QuizNotesBar quizId={quiz.id} bookmarked={quiz.bookmarked} />
 
-      {(paced ? quiz.questions.slice(index, index + 1) : quiz.questions).map((q) => {
-        const i = quiz.questions.indexOf(q);
-        const a = answers[q.id];
-        const isMulti = q.type === "MULTIPLE_CHOICE";
-        const verdict = checked[q.id];
-        const isLocked = Boolean(locked[q.id]);
-        const answered = Boolean(a && (a.optionIds.length > 0 || a.text.trim()));
-        return (
-          <Card key={q.id} className="p-5">
-            <div className="mb-3 flex items-start justify-between gap-3">
-              <p className="font-medium">
-                {i + 1}. {q.text}
-              </p>
-              <Badge variant="secondary" className="shrink-0 text-[10px]">
-                {q.points} pt{q.points === 1 ? "" : "s"}
-              </Badge>
-            </div>
-            {isMulti && <p className="text-muted-foreground mb-2 text-xs">Select all that apply</p>}
-
-            {q.type === "SHORT_ANSWER" ? (
-              <Input
-                value={a?.text ?? ""}
-                onChange={(e) => setText(q.id, e.target.value)}
-                placeholder="Your answer…"
-                disabled={Boolean(verdict) || isLocked}
-              />
-            ) : (
-              <div className="space-y-2">
-                {q.options.map((o) => {
-                  const selected = a?.optionIds.includes(o.id) ?? false;
-                  const isKey = verdict?.correctOptionIds.includes(o.id) ?? false;
-                  const wrongPick = Boolean(verdict) && selected && !isKey;
-                  return (
-                    <button
-                      key={o.id}
-                      type="button"
-                      disabled={Boolean(verdict) || isLocked}
-                      onClick={() => (isMulti ? toggleMulti(q.id, o.id) : setSingle(q.id, o.id))}
-                      className={cn(
-                        "flex w-full items-center gap-3 rounded-lg border p-3 text-left text-sm transition-colors",
-                        // Once marked, the card reads as the answer key: the
-                        // right option green, a wrong pick red, the rest plain.
-                        isKey
-                          ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300"
-                          : wrongPick
-                            ? "border-rose-500 bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-300"
-                            : selected
-                              ? "border-primary bg-primary/5"
-                              : verdict
-                                ? "opacity-70"
-                                : "hover:bg-accent",
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          "grid size-5 shrink-0 place-items-center border",
-                          isMulti ? "rounded-md" : "rounded-full",
-                          isKey
-                            ? "border-emerald-500 bg-emerald-500 text-white"
-                            : wrongPick
-                              ? "border-rose-500 bg-rose-500 text-white"
-                              : selected
-                                ? "border-primary bg-primary text-white"
-                                : "border-input",
-                        )}
-                      >
-                        {isKey ? (
-                          <Check className="size-3.5" />
-                        ) : wrongPick ? (
-                          <XCircle className="size-3.5" />
-                        ) : (
-                          selected && <Check className="size-3.5" />
-                        )}
-                      </span>
-                      {o.text}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-
-            <div className="mt-3">
-              <QuestionReportDialog quizId={quiz.id} questionId={q.id} questionNo={i + 1} />
-            </div>
-
-            {paced && isLocked && !verdict && (
-              <p className="text-muted-foreground mt-3 flex items-center gap-1.5 text-xs">
-                <Timer className="size-3.5" /> Time up on this question — your answer is locked in.
-              </p>
-            )}
-
-            {/* Answer as you go, when the quiz is set that way. Checking locks
-                the answer — seeing the key and then changing your mind isn't
-                practice. */}
-            {quiz.showAnswerPerQuestion && (
-              <div className="mt-3">
-                {verdict ? (
-                  <div className="space-y-1">
-                    <p
-                      className={cn(
-                        "flex items-center gap-1.5 text-sm font-medium",
-                        verdict.isCorrect === null
-                          ? "text-muted-foreground"
-                          : verdict.isCorrect
-                            ? "text-emerald-600 dark:text-emerald-400"
-                            : "text-rose-600 dark:text-rose-400",
-                      )}
-                    >
-                      {verdict.isCorrect === null ? (
-                        <>
-                          <Eye className="size-4" /> Your instructor marks this one.
-                        </>
-                      ) : verdict.isCorrect ? (
-                        <>
-                          <CheckCircle2 className="size-4" /> Correct
-                        </>
-                      ) : (
-                        <>
-                          <XCircle className="size-4" /> Not quite — the right answer is marked
-                          above.
-                        </>
-                      )}
-                    </p>
-                    {verdict.explanation && (
-                      <p className="text-muted-foreground flex items-start gap-1.5 text-xs">
-                        <Lightbulb className="mt-0.5 size-3.5 shrink-0" />
-                        <span>{verdict.explanation}</span>
-                      </p>
-                    )}
-
-                    {/* "View summary ka option aana chahiye if anyone wants to
-                        see the summary question wise" — the question's own
-                        summary, without leaving the paper. */}
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setSummaryOpen((p) => ({ ...p, [q.id]: !p[q.id] }))
-                      }
-                      className="text-primary inline-flex items-center gap-1.5 text-xs font-medium hover:underline"
-                    >
-                      <ListChecks className="size-3.5" />
-                      {summaryOpen[q.id] ? "Hide summary" : "View summary"}
-                    </button>
-
-                    {summaryOpen[q.id] && (
-                      <div className="bg-muted/40 space-y-1 rounded-lg p-3 text-xs">
-                        <p>
-                          <span className="text-muted-foreground">Your answer: </span>
-                          {answerTextFor(q, a?.optionIds ?? [], a?.text ?? "")}
-                        </p>
-                        {q.type !== "SHORT_ANSWER" && (
-                          <p>
-                            <span className="text-muted-foreground">Correct answer: </span>
-                            {answerTextFor(q, verdict.correctOptionIds, "")}
-                          </p>
-                        )}
-                        <p className="text-muted-foreground">
-                          Worth {q.points} point{q.points === 1 ? "" : "s"} ·{" "}
-                          {verdict.isCorrect === null
-                            ? "marked by your instructor"
-                            : verdict.isCorrect
-                              ? "you got this one"
-                              : "not this time"}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={!answered || checking === q.id}
-                    onClick={() => checkOne(q)}
-                  >
-                    {checking === q.id ? (
-                      <Loader2 className="size-4 animate-spin" />
-                    ) : (
-                      <Eye className="size-4" />
-                    )}
-                    Check answer
-                  </Button>
-                )}
-              </div>
-            )}
-          </Card>
-        );
-      })}
+      <div ref={questionRef} className="scroll-mt-20 space-y-4">
+        {(paced ? quiz.questions.slice(index, index + 1) : quiz.questions).map(
+          (q) => (
+            <QuestionCard
+              key={q.id}
+              q={q}
+              i={quiz.questions.indexOf(q)}
+              a={answers[q.id]}
+              verdict={checked[q.id]}
+              isLocked={Boolean(locked[q.id])}
+              checking={checking}
+              paced={paced}
+              quizId={quiz.id}
+              showAnswerPerQuestion={quiz.showAnswerPerQuestion}
+              summaryOpen={Boolean(summaryOpen[q.id])}
+              onSummaryToggle={toggleSummary}
+              setSingle={setSingle}
+              toggleMulti={toggleMulti}
+              setText={setText}
+              checkOne={checkOne}
+            />
+          ),
+        )}
+      </div>
 
       <div className="bg-background/80 sticky bottom-0 flex items-center justify-between gap-3 border-t py-3 backdrop-blur">
         <p className="text-muted-foreground text-sm">
