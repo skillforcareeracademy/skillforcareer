@@ -174,10 +174,15 @@ export async function getQuizForAttempt(userId: string, quizId: string) {
   });
   if (!enrolled) return null;
 
-  const [attemptsUsed, bookmark, { settings }] = await Promise.all([
-    prisma.quizAttempt.count({ where: { quizId, studentId: userId } }),
+  const [attemptsUsed, bookmark, { settings }, paused] = await Promise.all([
+    // A paper paused part-way is not an attempt spent — it is this one, still
+    // open. Counting it would lock a learner out of their own saved work.
+    prisma.quizAttempt.count({
+      where: { quizId, studentId: userId, status: { not: "IN_PROGRESS" } },
+    }),
     prisma.bookmark.findFirst({ where: { userId, quizId }, select: { id: true } }),
     getSettings(),
+    quiz.allowPause ? pausedWork(userId, quizId) : Promise.resolve(null),
   ]);
   // Same effective cap the submit path applies, so the button and the endpoint
   // never disagree about whether an attempt is left.
@@ -194,7 +199,11 @@ export async function getQuizForAttempt(userId: string, quizId: string) {
     passingScore: quiz.passingScore,
     maxAttempts: cap,
     attemptsUsed,
-    canAttempt: cap === 0 || attemptsUsed < cap,
+    canAttempt: cap === 0 || attemptsUsed < cap || paused != null,
+    /** Whether this paper may be stopped part-way. */
+    allowPause: quiz.allowPause,
+    /** What was saved at the last pause, if anything. */
+    paused,
     bookmarked: bookmark != null,
     /** Marks each question as it is answered, rather than only at the end. */
     showAnswerPerQuestion: quiz.showAnswerPerQuestion,
@@ -340,8 +349,20 @@ export async function submitQuizAttempt(
   // to 0 rather than to some large number.
   const { settings } = await getSettings();
   const cap = quiz.maxAttempts || settings.quizAttemptLimit;
-  const attemptsUsed = await prisma.quizAttempt.count({ where: { quizId, studentId: userId } });
-  if (cap > 0 && attemptsUsed >= cap) {
+
+  // A paused attempt is this submission, not a new one: it keeps its number and
+  // does not count twice against the cap.
+  const [paused, finished] = await Promise.all([
+    prisma.quizAttempt.findFirst({
+      where: { quizId, studentId: userId, status: "IN_PROGRESS" },
+      select: { id: true, attemptNo: true, timeSpentSeconds: true },
+    }),
+    prisma.quizAttempt.count({
+      where: { quizId, studentId: userId, status: { not: "IN_PROGRESS" } },
+    }),
+  ]);
+  const attemptsUsed = finished;
+  if (!paused && cap > 0 && finished >= cap) {
     throw AppError.badRequest("You've used all your attempts for this quiz.");
   }
 
@@ -381,32 +402,49 @@ export async function submitQuizAttempt(
 
   const percent = maxScore > 0 ? Math.round((score / maxScore) * 100) : 0;
   const passed = percent >= quiz.passingScore;
-  const attemptNo = attemptsUsed + 1;
+  const attemptNo = paused?.attemptNo ?? attemptsUsed + 1;
   const now = new Date();
+  // Time already spent before the pause counts towards the total.
+  const spent = (input.timeSpentSeconds ?? 0) + (paused?.timeSpentSeconds ?? 0);
+  const rows = responses.map((r) => ({
+    questionId: r.questionId,
+    selectedOptions: r.selected as Prisma.InputJsonValue,
+    isCorrect: r.isCorrect,
+    pointsAwarded: r.points,
+  }));
 
-  const attempt = await prisma.quizAttempt.create({
-    data: {
-      quizId,
-      studentId: userId,
-      attemptNo,
-      status: "GRADED",
-      score,
-      maxScore,
-      timeSpentSeconds: input.timeSpentSeconds ?? 0,
-      submittedAt: now,
-      gradedAt: now,
-      responses: {
-        create: responses.map((r) => ({
-          questionId: r.questionId,
-          selectedOptions: r.selected as Prisma.InputJsonValue,
-          isCorrect: r.isCorrect,
-          pointsAwarded: r.points,
-        })),
+  if (paused) {
+    // The half-finished answers are replaced wholesale by the submitted ones.
+    await prisma.quizResponse.deleteMany({ where: { attemptId: paused.id } });
+    await prisma.quizAttempt.update({
+      where: { id: paused.id },
+      data: {
+        status: "GRADED",
+        score,
+        maxScore,
+        timeSpentSeconds: spent,
+        submittedAt: now,
+        gradedAt: now,
+        responses: { create: rows },
       },
-    },
-    select: { id: true },
-  });
-  void attempt;
+    });
+  } else {
+    await prisma.quizAttempt.create({
+      data: {
+        quizId,
+        studentId: userId,
+        attemptNo,
+        status: "GRADED",
+        score,
+        maxScore,
+        timeSpentSeconds: spent,
+        submittedAt: now,
+        gradedAt: now,
+        responses: { create: rows },
+      },
+      select: { id: true },
+    });
+  }
 
   void logActivity({
     userId,
@@ -428,4 +466,121 @@ export async function submitQuizAttempt(
     showAnswers: quiz.showAnswers,
     showAnswerPerQuestion: quiz.showAnswerPerQuestion,
   };
+}
+
+// ── Pausing ──────────────────────────────────────────────────────────────────
+
+export interface PausedWork {
+  answers: { questionId: string; optionIds: string[]; text: string }[];
+  timeSpentSeconds: number;
+  pausedAt: string;
+}
+
+/**
+ * Stop part-way and come back to it — "student should be able to pause the quiz
+ * in some cases. Admin and instructor should have access to allow students or
+ * not to pause."
+ *
+ * The half-finished paper is kept as an IN_PROGRESS attempt, which is the same
+ * row the submission will later become: resuming does not spend a second
+ * attempt, and the time already spent carries over.
+ */
+export async function pauseQuizAttempt(
+  userId: string,
+  quizId: string,
+  input: { answers: { questionId: string; optionIds: string[]; text?: string }[]; timeSpentSeconds?: number },
+): Promise<{ saved: number }> {
+  const quiz = await prisma.quiz.findFirst({
+    where: { id: quizId, isPublished: true },
+    select: { id: true, courseId: true, allowPause: true },
+  });
+  if (!quiz || !quiz.courseId) throw AppError.notFound("Quiz not found.");
+  if (!quiz.allowPause) {
+    throw AppError.badRequest("This quiz can't be paused.");
+  }
+
+  const enrolled = await prisma.enrollment.findUnique({
+    where: { userId_courseId: { userId, courseId: quiz.courseId } },
+    select: { id: true },
+  });
+  if (!enrolled) throw AppError.forbidden("You're not enrolled in this course.");
+
+  const existing = await prisma.quizAttempt.findFirst({
+    where: { quizId, studentId: userId, status: "IN_PROGRESS" },
+    select: { id: true },
+  });
+  const finished = await prisma.quizAttempt.count({
+    where: { quizId, studentId: userId, status: { not: "IN_PROGRESS" } },
+  });
+
+  // Nothing is marked here — a pause is a save, and the key must not leak into
+  // a half-finished row that the learner could read back.
+  const rows = input.answers.map((a) => ({
+    questionId: a.questionId,
+    selectedOptions: a.optionIds as Prisma.InputJsonValue,
+    answerText: a.text?.trim() || null,
+    isCorrect: null,
+    pointsAwarded: 0,
+  }));
+
+  if (existing) {
+    await prisma.quizResponse.deleteMany({ where: { attemptId: existing.id } });
+    await prisma.quizAttempt.update({
+      where: { id: existing.id },
+      data: {
+        timeSpentSeconds: input.timeSpentSeconds ?? 0,
+        responses: { create: rows },
+      },
+    });
+  } else {
+    await prisma.quizAttempt.create({
+      data: {
+        quizId,
+        studentId: userId,
+        attemptNo: finished + 1,
+        status: "IN_PROGRESS",
+        maxScore: 0,
+        timeSpentSeconds: input.timeSpentSeconds ?? 0,
+        responses: { create: rows },
+      },
+    });
+  }
+  return { saved: rows.length };
+}
+
+/** The paper a learner left half-finished, if there is one. */
+export async function pausedWork(
+  userId: string,
+  quizId: string,
+): Promise<PausedWork | null> {
+  const attempt = await prisma.quizAttempt.findFirst({
+    where: { quizId, studentId: userId, status: "IN_PROGRESS" },
+    select: {
+      timeSpentSeconds: true,
+      updatedAt: true,
+      responses: {
+        select: { questionId: true, selectedOptions: true, answerText: true },
+      },
+    },
+  });
+  if (!attempt) return null;
+
+  return {
+    answers: attempt.responses.map((r) => ({
+      questionId: r.questionId,
+      optionIds: Array.isArray(r.selectedOptions)
+        ? (r.selectedOptions as unknown[]).filter((v): v is string => typeof v === "string")
+        : [],
+      text: r.answerText ?? "",
+    })),
+    timeSpentSeconds: attempt.timeSpentSeconds,
+    pausedAt: attempt.updatedAt.toISOString(),
+  };
+}
+
+/** Throw away a paused paper and start again. */
+export async function discardPausedWork(userId: string, quizId: string): Promise<void> {
+  await prisma.quizAttempt.deleteMany({
+    where: { quizId, studentId: userId, status: "IN_PROGRESS" },
+  });
 }

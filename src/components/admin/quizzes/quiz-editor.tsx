@@ -79,6 +79,7 @@ interface Quiz {
   gradingMode: string;
   maxAttempts: number;
   shuffleQuestions: boolean;
+  allowPause: boolean;
   showAnswers: boolean;
   showAnswerPerQuestion: boolean;
   categoryId: string | null;
@@ -146,6 +147,7 @@ export function QuizEditor({
     gradingMode: quiz.gradingMode,
     maxAttempts: String(quiz.maxAttempts),
     shuffleQuestions: quiz.shuffleQuestions,
+    allowPause: quiz.allowPause,
     showAnswers: quiz.showAnswers,
     showAnswerPerQuestion: quiz.showAnswerPerQuestion,
     difficulty: quiz.difficulty,
@@ -267,6 +269,7 @@ export function QuizEditor({
         gradingMode: form.gradingMode,
         maxAttempts: Number(form.maxAttempts) || 0,
         shuffleQuestions: form.shuffleQuestions,
+        allowPause: form.allowPause,
         showAnswers: form.showAnswers,
         showAnswerPerQuestion: form.showAnswerPerQuestion,
         difficulty: form.difficulty,
@@ -602,6 +605,23 @@ export function QuizEditor({
               <Switch
                 checked={form.shuffleQuestions}
                 onCheckedChange={(v) => set("shuffleQuestions", v)}
+              />
+            </label>
+            {/* "Admin and instructor should have access to allow students or
+                not to pause the quiz." Off by default: a timed assessment that
+                can be stopped and resumed is not timed. */}
+            <label className="flex items-start justify-between gap-4 text-sm">
+              <span>
+                Let learners pause and come back
+                <span className="text-muted-foreground block text-xs">
+                  Their answers and the time spent are kept; resuming does not
+                  use up another attempt.
+                </span>
+              </span>
+              <Switch
+                checked={form.allowPause}
+                onCheckedChange={(v) => set("allowPause", v)}
+                className="mt-0.5"
               />
             </label>
             {/* The two ways a paper can give itself away, asked as the academy

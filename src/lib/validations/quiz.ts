@@ -63,6 +63,8 @@ export const updateQuizSchema = z.object({
   gradingMode: z.enum(GRADING_MODES).default("AUTO"),
   /** 0 = unlimited, falling back to the platform default in Settings. */
   maxAttempts: z.coerce.number().int().min(0).max(50).default(1),
+  /** Whether a learner may stop part-way and come back to it. */
+  allowPause: z.boolean().default(false),
   shuffleQuestions: z.boolean().default(false),
   /** The whole answer key, once the paper is submitted. */
   showAnswers: z.boolean().default(true),
@@ -231,3 +233,18 @@ export const DEFAULT_QUIZ_COLUMNS: QuizExportColumn[] = [
   "isPublished",
   "questions",
 ];
+
+/** Saving a half-finished paper. Nothing is marked, so no key is involved. */
+export const pauseQuizSchema = z.object({
+  answers: z
+    .array(
+      z.object({
+        questionId: z.string().min(1),
+        optionIds: z.array(z.string().min(1)).max(20).default([]),
+        text: z.string().max(5000).optional().or(z.literal("")),
+      }),
+    )
+    .max(500)
+    .default([]),
+  timeSpentSeconds: z.coerce.number().int().min(0).max(86_400).optional(),
+});

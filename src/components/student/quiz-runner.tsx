@@ -18,6 +18,7 @@ import {
   Check,
   Lock,
   History,
+  PauseCircle,
   RefreshCw,
   Trophy,
   Clock,
@@ -62,6 +63,14 @@ interface QuizData {
   attemptsUsed: number;
   canAttempt: boolean;
   bookmarked: boolean;
+  /** Whether this paper may be stopped part-way and picked up later. */
+  allowPause: boolean;
+  /** What was saved at the last pause, if anything. */
+  paused: {
+    answers: { questionId: string; optionIds: string[]; text: string }[];
+    timeSpentSeconds: number;
+    pausedAt: string;
+  } | null;
   /** Marks each question as it is answered, rather than only at the end. */
   showAnswerPerQuestion: boolean;
   categoryName: string | null;
@@ -352,7 +361,15 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
   const router = useRouter();
   const [answers, setAnswers] = useState<
     Record<string, { optionIds: string[]; text: string }>
-  >({});
+  >(() =>
+    // Picking up where they left off, when the paper was paused.
+    Object.fromEntries(
+      (quiz.paused?.answers ?? []).map((a) => [
+        a.questionId,
+        { optionIds: a.optionIds, text: a.text },
+      ]),
+    ),
+  );
   const [checked, setChecked] = useState<Record<string, Checked>>({});
   const [checking, setChecking] = useState<string | null>(null);
   /** Questions whose summary the learner has opened mid-attempt. */
@@ -377,6 +394,7 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
   const [result, setResult] = useState<Result | null>(null);
   /** Every earlier attempt, on demand. */
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [pausing, setPausing] = useState(false);
   // Timer: only when the admin set a time limit — otherwise unlimited.
   const [remaining, setRemaining] = useState<number | null>(
     quiz.timeLimitMinutes ? quiz.timeLimitMinutes * 60 : null,
@@ -578,6 +596,41 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
     const a = answers[q.id];
     return a && (a.optionIds.length > 0 || a.text.trim().length > 0);
   }).length;
+
+  /**
+   * Stop here and come back to it. The answers so far and the time spent are
+   * saved against this attempt, so resuming does not use up another one.
+   */
+  async function pause() {
+    setPausing(true);
+    try {
+      await api.post(`/api/quizzes/${quiz.id}/pause`, {
+        answers: quiz.questions.map((q) => ({
+          questionId: q.id,
+          optionIds: answers[q.id]?.optionIds ?? [],
+          text: answers[q.id]?.text ?? "",
+        })),
+        timeSpentSeconds: spentSoFar(),
+      });
+      toast.success("Saved — pick it up whenever you like.");
+      router.push("/student/quizzes");
+    } catch (error) {
+      toast.error(
+        error instanceof ApiError ? error.message : "Couldn't save that.",
+      );
+    } finally {
+      setPausing(false);
+    }
+  }
+
+  /** Seconds on this sitting, plus anything carried over from an earlier one. */
+  function spentSoFar(): number {
+    const thisSitting =
+      quiz.timeLimitMinutes && remaining != null
+        ? quiz.timeLimitMinutes * 60 - remaining
+        : 0;
+    return Math.max(0, thisSitting) + (quiz.paused?.timeSpentSeconds ?? 0);
+  }
 
   async function submit(e?: FormEvent) {
     e?.preventDefault();
@@ -922,6 +975,22 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
         </div>
       </div>
 
+      {quiz.paused && (
+        <p className="flex items-start gap-2 rounded-lg border border-dashed p-3 text-xs">
+          <PauseCircle className="mt-0.5 size-3.5 shrink-0" />
+          <span>
+            Picked up where you left off — your answers from{" "}
+            {new Date(quiz.paused.pausedAt).toLocaleString("en-IN", {
+              day: "numeric",
+              month: "short",
+              hour: "numeric",
+              minute: "2-digit",
+            })}{" "}
+            are still here. This still counts as the same attempt.
+          </span>
+        </p>
+      )}
+
       <QuizNotesBar quizId={quiz.id} bookmarked={quiz.bookmarked} />
 
       <div ref={questionRef} className="scroll-mt-20 space-y-4">
@@ -955,16 +1024,33 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
             ? `Question ${index + 1} of ${quiz.questions.length}`
             : `${answeredCount}/${quiz.questions.length} answered`}
         </p>
-        {paced && index < quiz.questions.length - 1 ? (
-          <Button type="button" onClick={nextQuestion}>
-            Next question
-          </Button>
-        ) : (
-          <Button type="submit" disabled={submitting || answeredCount === 0}>
-            {submitting && <Loader2 className="size-4 animate-spin" />}
-            Submit quiz
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {quiz.allowPause && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void pause()}
+              disabled={pausing || submitting}
+            >
+              {pausing ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <PauseCircle className="size-4" />
+              )}
+              Pause
+            </Button>
+          )}
+          {paced && index < quiz.questions.length - 1 ? (
+            <Button type="button" onClick={nextQuestion}>
+              Next question
+            </Button>
+          ) : (
+            <Button type="submit" disabled={submitting || answeredCount === 0}>
+              {submitting && <Loader2 className="size-4 animate-spin" />}
+              Submit quiz
+            </Button>
+          )}
+        </div>
       </div>
     </form>
   );

@@ -1430,6 +1430,9 @@ model Assignment {
   releaseAt   DateTime?
   /// How many times a learner may submit. 0 = unlimited (the shipped behaviour).
   maxAttempts Int       @default(0)
+  /// Whether a learner may stop part-way and come back to it. Off keeps the
+  /// old behaviour, where leaving the page loses the answers.
+  allowPause  Boolean   @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1558,6 +1561,9 @@ model Quiz {
   passingScore     Int         @default(60) // percentage
   gradingMode      GradingMode @default(AUTO)
   maxAttempts      Int         @default(1)
+  /// Whether a learner may stop part-way and come back to it. Off keeps the
+  /// old behaviour, where leaving the page loses the answers.
+  allowPause       Boolean     @default(false)
   shuffleQuestions Boolean     @default(false)
   showAnswers      Boolean     @default(true)
   isPublished      Boolean     @default(false)
