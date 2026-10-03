@@ -7,6 +7,7 @@ import { copyTitle, type ImportMode } from "@/lib/validations/import-mode";
 import {
   MATERIAL_EXPORT_COLUMNS,
   DEFAULT_MATERIAL_COLUMNS,
+  type MaterialSampleKind,
   type MaterialExportColumn,
   type StudyMaterialInput,
 } from "@/lib/validations/study-material";
@@ -613,7 +614,10 @@ export async function exportMaterials(
  * example is what makes it usable: a header on its own doesn't say whether
  * Published wants a tick, a yes, or a 1.
  */
-export function materialSampleSheet(columns?: string[]): string {
+export function materialSampleSheet(
+  columns?: string[],
+  kind: MaterialSampleKind = "mixed",
+): string {
   const picked = wanted(columns);
   const example: Record<MaterialExportColumn, string> = {
     number: "1",
@@ -636,6 +640,22 @@ export function materialSampleSheet(columns?: string[]): string {
     createdAt: "",
     updatedAt: "",
   };
+  // The example is tailored to the kind of material being written up.
+  if (kind === "written") {
+    example.fileUrl = "";
+    example.fileName = "";
+  }
+  if (kind === "file") {
+    example.body = "";
+    example.title = "Chapter 1 — Introduction (PDF)";
+  }
+  if (kind === "link") {
+    example.body = "";
+    example.fileUrl = "https://www.youtube.com/watch?v=xxxxxxxxxxx";
+    example.fileName = "Introduction video";
+    example.title = "Chapter 1 — Introduction (video)";
+  }
+
   return toCsv(headersFor(picked), [picked.map((key) => example[key])]);
 }
 

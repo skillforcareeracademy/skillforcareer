@@ -102,9 +102,32 @@ export function questionsToCsv(questions: BankQuestion[]): string {
   return toCsv(QUESTION_CSV_HEADERS, rows);
 }
 
-/** A blank sheet with one worked example of each type, to fill in and re-import. */
-export function questionCsvTemplate(): string {
-  return questionsToCsv([
+/**
+ * Which worked examples a sample sheet should carry — "provide different sample
+ * download options as per Quiz type". A teacher writing a hundred true/false
+ * questions wants a sheet of true/false, not one of each with three rows to
+ * delete.
+ */
+export const TEMPLATE_KINDS = [
+  "ALL",
+  "SINGLE_CHOICE",
+  "MULTIPLE_CHOICE",
+  "TRUE_FALSE",
+  "SHORT_ANSWER",
+] as const;
+export type TemplateKind = (typeof TEMPLATE_KINDS)[number];
+
+export const TEMPLATE_KIND_LABEL: Record<TemplateKind, string> = {
+  ALL: "One of every type",
+  SINGLE_CHOICE: "Single choice only",
+  MULTIPLE_CHOICE: "Multiple choice only",
+  TRUE_FALSE: "True / False only",
+  SHORT_ANSWER: "Written answers only",
+};
+
+/** A blank sheet with worked examples to fill in and re-import. */
+export function questionCsvTemplate(kind: TemplateKind = "ALL"): string {
+  const examples: BankQuestion[] = [
     {
       type: "SINGLE_CHOICE",
       text: "Which code set is used for diagnoses in the United States?",
@@ -151,7 +174,13 @@ export function questionCsvTemplate(): string {
       explanation: "",
       options: [],
     },
-  ]);
+  ];
+
+  // Three rows to delete is not a sample sheet, so a chosen type stands alone —
+  // and a sheet of one type repeats the row, to show the shape is the same.
+  if (kind === "ALL") return questionsToCsv(examples);
+  const one = examples.filter((q) => q.type === kind);
+  return questionsToCsv(one.length > 0 ? one : examples);
 }
 
 export interface ParsedBank {

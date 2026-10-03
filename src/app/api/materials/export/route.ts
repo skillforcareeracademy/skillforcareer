@@ -3,6 +3,10 @@ import { requireApiPermission } from "@/lib/auth/api-guard";
 import { PERMISSIONS, ROLES } from "@/config/roles";
 import { csvResponse } from "@/lib/csv";
 import {
+  MATERIAL_SAMPLE_KINDS,
+  type MaterialSampleKind,
+} from "@/lib/validations/study-material";
+import {
   exportMaterials,
   materialSampleSheet,
 } from "@/server/services/study-material-service";
@@ -28,7 +32,15 @@ export const GET = withRoute(async (req) => {
   const columns = sp.get("columns")?.split(",").map((c) => c.trim()).filter(Boolean);
 
   if (sp.get("sample") === "1") {
-    return csvResponse("study-material-sample.csv", materialSampleSheet(columns));
+    // `?kind=` tailors the example row to the kind of material being written up.
+    const asked = sp.get("kind") ?? "mixed";
+    const kind = (MATERIAL_SAMPLE_KINDS as readonly string[]).includes(asked)
+      ? (asked as MaterialSampleKind)
+      : "mixed";
+    return csvResponse(
+      kind === "mixed" ? "study-material-sample.csv" : `study-material-sample-${kind}.csv`,
+      materialSampleSheet(columns, kind),
+    );
   }
 
   const csv = await exportMaterials(

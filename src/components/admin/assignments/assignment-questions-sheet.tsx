@@ -6,7 +6,6 @@ import { toast } from "sonner";
 import {
   Check,
   Download,
-  FileSpreadsheet,
   GripVertical,
   ListChecks,
   Loader2,
@@ -25,6 +24,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
+import { SampleSheetMenu } from "@/components/shared/sample-sheet-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -361,16 +361,9 @@ function Body({
         <Button size="sm" onClick={openNew}>
           <Plus className="size-4" /> Add question
         </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          nativeButton={false}
-          render={
-            <a href={`/api/assignments/${assignment.id}/questions/template`} download />
-          }
-        >
-          <FileSpreadsheet className="size-4" /> Sample sheet
-        </Button>
+        <SampleSheetMenu
+          endpoint={`/api/assignments/${assignment.id}/questions/template`}
+        />
         <Button
           size="sm"
           variant="outline"

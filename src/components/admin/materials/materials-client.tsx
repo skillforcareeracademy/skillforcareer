@@ -41,6 +41,8 @@ import type { ImportMode } from "@/lib/validations/import-mode";
 import {
   MATERIAL_EXPORT_COLUMNS,
   DEFAULT_MATERIAL_COLUMNS,
+  MATERIAL_SAMPLE_KINDS,
+  MATERIAL_SAMPLE_LABEL,
 } from "@/lib/validations/study-material";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { StatCard } from "@/components/dashboard/stat-card";
@@ -668,6 +670,10 @@ export function MaterialsClient({
         endpoint="/api/materials/export"
         columns={[...MATERIAL_EXPORT_COLUMNS]}
         defaultColumns={[...DEFAULT_MATERIAL_COLUMNS]}
+        sampleKinds={MATERIAL_SAMPLE_KINDS.map((k) => ({
+          key: k,
+          label: MATERIAL_SAMPLE_LABEL[k],
+        }))}
         scopes={[
           {
             key: "group",

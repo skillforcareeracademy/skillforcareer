@@ -15,7 +15,6 @@ import {
   ListChecks,
   Upload,
   Download,
-  FileSpreadsheet,
   Sparkles,
   ArrowUp,
   ArrowDown,
@@ -64,6 +63,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { QuestionDialog, type EditableQuestion } from "@/components/admin/quizzes/question-dialog";
 import { QuizGenerateDialog } from "@/components/admin/quizzes/quiz-generate-dialog";
+import { SampleSheetMenu } from "@/components/shared/sample-sheet-menu";
 import { QuizSourcesCard, type QuizSourceRow } from "@/components/admin/quizzes/quiz-sources-card";
 import { AudiencePicker } from "@/components/shared/audience-picker";
 import { cn } from "@/lib/utils";
@@ -640,15 +640,9 @@ export function QuizEditor({
               {/* The blank sheet first: an admin who has never imported a paper
                   needs to see the columns before the Import button means
                   anything. */}
-              <Button
-                variant="ghost"
-                nativeButton={false}
-                render={
-                  <a href={`/api/quizzes/${quiz.id}/questions/template`} download />
-                }
-              >
-                <FileSpreadsheet className="size-4" /> Sample sheet
-              </Button>
+              <SampleSheetMenu
+                endpoint={`/api/quizzes/${quiz.id}/questions/template`}
+              />
               <Button
                 variant="outline"
                 onClick={() => fileRef.current?.click()}

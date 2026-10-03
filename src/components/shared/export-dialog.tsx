@@ -1,12 +1,26 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CalendarDays, Columns3, Download, FileSpreadsheet } from "lucide-react";
+import {
+  CalendarDays,
+  ChevronDown,
+  Columns3,
+  Download,
+  FileSpreadsheet,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Dialog,
   DialogContent,
@@ -63,6 +77,12 @@ export function ExportDialog({
   fixedParams,
   /** Off where a blank sheet makes no sense. */
   sampleSheet = true,
+  /**
+   * Flavours of the blank sheet, when one shape does not suit everything the
+   * academy files — "different sample download option … as per type". The key
+   * is sent as `kind`.
+   */
+  sampleKinds,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -74,6 +94,7 @@ export function ExportDialog({
   scopes?: ExportScope[];
   fixedParams?: Record<string, string | undefined>;
   sampleSheet?: boolean;
+  sampleKinds?: { key: string; label: string }[];
 }) {
   const [picked, setPicked] = useState<string[]>(defaultColumns);
   const [scopeValues, setScopeValues] = useState<Record<string, string>>({});
@@ -209,7 +230,32 @@ export function ExportDialog({
         </div>
 
         <DialogFooter className="gap-2 sm:justify-between">
-          {sampleSheet ? (
+          {sampleSheet && sampleKinds && sampleKinds.length > 0 ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button variant="outline">
+                    <FileSpreadsheet className="size-4" /> Blank sample sheet
+                    <ChevronDown className="size-3.5" />
+                  </Button>
+                }
+              />
+              <DropdownMenuContent align="start">
+                <DropdownMenuLabel>Sample sheet for…</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {sampleKinds.map((k) => (
+                  <DropdownMenuItem
+                    key={k.key}
+                    render={
+                      <a href={`${url}&sample=1&kind=${k.key}`} download>
+                        {k.label}
+                      </a>
+                    }
+                  />
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : sampleSheet ? (
             <Button
               variant="outline"
               nativeButton={false}

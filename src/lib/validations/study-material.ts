@@ -119,3 +119,18 @@ export const DEFAULT_MATERIAL_COLUMNS: MaterialExportColumn[] = [
   "downloadsEnabled",
   "isPublished",
 ];
+
+/**
+ * "Different sample download option for study material as per study material
+ * type" — a sheet for reading typed into the panel should not suggest a file
+ * URL, and one for files should not suggest a wall of text.
+ */
+export const MATERIAL_SAMPLE_KINDS = ["mixed", "written", "file", "link"] as const;
+export type MaterialSampleKind = (typeof MATERIAL_SAMPLE_KINDS)[number];
+
+export const MATERIAL_SAMPLE_LABEL: Record<MaterialSampleKind, string> = {
+  mixed: "A bit of everything",
+  written: "Written in the panel",
+  file: "An uploaded document",
+  link: "A link or a video",
+};
