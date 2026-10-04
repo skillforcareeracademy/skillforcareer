@@ -59,10 +59,10 @@ export default async function InstructorHome() {
       />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="My courses" value={stats.courses} icon={BookOpen} tint="from-rose-500 to-pink-600" />
-        <StatCard label="Students" value={stats.students} icon={Users} tint="from-violet-500 to-purple-600" />
-        <StatCard label="To grade" value={stats.pendingGrading} icon={ClipboardCheck} tint="from-amber-500 to-orange-600" />
-        <StatCard label="Live classes" value={stats.liveClasses} icon={Video} tint="from-sky-500 to-blue-600" />
+        <StatCard label="My courses" value={stats.courses} icon={BookOpen} tint="from-rose-500 to-pink-600" href="/instructor/courses" />
+        <StatCard label="Students" value={stats.students} icon={Users} tint="from-violet-500 to-purple-600" href="/instructor/batches" />
+        <StatCard label="To grade" value={stats.pendingGrading} icon={ClipboardCheck} tint="from-amber-500 to-orange-600" href="/instructor/assignments?grading=pending" />
+        <StatCard label="Live classes" value={stats.liveClasses} icon={Video} tint="from-sky-500 to-blue-600" href="/instructor/live" />
       </div>
 
       {/* What they are teaching today — the first thing an instructor opens

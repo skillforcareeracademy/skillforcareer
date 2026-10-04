@@ -24,13 +24,13 @@ import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
+import { StatCards, type StatCard } from "@/components/shared/stat-cards";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -141,18 +141,25 @@ export function WebinarsClient({
   const [form, setForm] = useState<FormState>(blank);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<WebinarRow | null>(null);
-  const [participantsFor, setParticipantsFor] = useState<WebinarParticipantsTarget | null>(null);
+  const [participantsFor, setParticipantsFor] =
+    useState<WebinarParticipantsTarget | null>(null);
   const [generating, setGenerating] = useState<string | null>(null);
 
   const totalPages = Math.max(1, Math.ceil(total / query.pageSize));
 
   const setParams = useCallback(
     (next: Record<string, string | number | undefined>) => {
-      const merged = { search: query.search, status: query.status, page: query.page, ...next };
+      const merged = {
+        search: query.search,
+        status: query.status,
+        page: query.page,
+        ...next,
+      };
       const p = new URLSearchParams();
       if (merged.search) p.set("search", String(merged.search));
       if (merged.status) p.set("status", String(merged.status));
-      if (merged.page && Number(merged.page) > 1) p.set("page", String(merged.page));
+      if (merged.page && Number(merged.page) > 1)
+        p.set("page", String(merged.page));
       const qs = p.toString();
       router.push(qs ? `${pathname}?${qs}` : pathname);
     },
@@ -207,8 +214,14 @@ export function WebinarsClient({
       setDialogOpen(false);
       router.refresh();
     } catch (err) {
-      const d = err instanceof ApiError ? (err.details as { issues?: { message: string }[] }) : undefined;
-      toast.error(d?.issues?.[0]?.message ?? (err instanceof ApiError ? err.message : "Couldn't save."));
+      const d =
+        err instanceof ApiError
+          ? (err.details as { issues?: { message: string }[] })
+          : undefined;
+      toast.error(
+        d?.issues?.[0]?.message ??
+          (err instanceof ApiError ? err.message : "Couldn't save."),
+      );
     } finally {
       setSaving(false);
     }
@@ -222,7 +235,10 @@ export function WebinarsClient({
   async function generateLink(w: WebinarRow) {
     setGenerating(w.id);
     try {
-      const res = await api.post<{ joinUrl: string }>(`/api/webinars/${w.id}/room`, {});
+      const res = await api.post<{ joinUrl: string }>(
+        `/api/webinars/${w.id}/room`,
+        {},
+      );
       const absolute = `${window.location.origin}${res.joinUrl}`;
       try {
         await navigator.clipboard.writeText(absolute);
@@ -232,7 +248,11 @@ export function WebinarsClient({
       }
       router.refresh();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Couldn't create the join link.");
+      toast.error(
+        err instanceof ApiError
+          ? err.message
+          : "Couldn't create the join link.",
+      );
     } finally {
       setGenerating(null);
     }
@@ -252,7 +272,9 @@ export function WebinarsClient({
 
   async function togglePublish(w: WebinarRow) {
     try {
-      await api.post(`/api/webinars/${w.id}/publish`, { publish: !w.isPublished });
+      await api.post(`/api/webinars/${w.id}/publish`, {
+        publish: !w.isPublished,
+      });
       toast.success(w.isPublished ? "Unpublished." : "Published.");
       router.refresh();
     } catch (err) {
@@ -272,17 +294,51 @@ export function WebinarsClient({
     }
   }
 
-  const statCards = [
-    { label: "Webinars", value: stats.total, icon: Presentation, tone: "text-rose-500" },
-    { label: "Published", value: stats.published, icon: Send, tone: "text-emerald-500" },
-    { label: "Upcoming", value: stats.upcoming, icon: CalendarClock, tone: "text-sky-500" },
-    { label: "Registrations", value: stats.registrations, icon: Users, tone: "text-violet-500" },
+  const statCards: StatCard[] = [
+    {
+      label: "Webinars",
+      value: stats.total,
+      icon: Presentation,
+      tone: "text-rose-500",
+      hint: "Every webinar. Tap to clear the filters.",
+      active: !query.search && !query.status,
+      onClick: () =>
+        setParams({ status: undefined, search: undefined, page: 1 }),
+    },
+    {
+      label: "Published",
+      value: stats.published,
+      icon: Send,
+      tone: "text-emerald-500",
+      hint: "Webinars people can sign up for.",
+      active: query.status === "PUBLISHED",
+      onClick: () =>
+        setParams({
+          status: query.status === "PUBLISHED" ? undefined : "PUBLISHED",
+          page: 1,
+        }),
+    },
+    {
+      label: "Upcoming",
+      value: stats.upcoming,
+      icon: CalendarClock,
+      tone: "text-sky-500",
+    },
+    {
+      label: "Registrations",
+      value: stats.registrations,
+      icon: Users,
+      tone: "text-violet-500",
+    },
   ];
 
   function rowActions(w: WebinarRow) {
     return (
       <DropdownMenu>
-        <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" />} aria-label="Actions">
+        <DropdownMenuTrigger
+          render={<Button variant="ghost" size="icon-sm" />}
+          aria-label="Actions"
+        >
           <MoreHorizontal className="size-4" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
@@ -305,7 +361,13 @@ export function WebinarsClient({
               </DropdownMenuItem>
               {w.roomCode && (
                 <DropdownMenuItem
-                  onClick={() => window.open(`/live/room/${w.roomCode}`, "_blank", "noopener")}
+                  onClick={() =>
+                    window.open(
+                      `/live/room/${w.roomCode}`,
+                      "_blank",
+                      "noopener",
+                    )
+                  }
                 >
                   <Video className="size-4" /> Open webinar room
                 </DropdownMenuItem>
@@ -328,15 +390,26 @@ export function WebinarsClient({
             <Pencil className="size-4" /> Edit
           </DropdownMenuItem>
           {w.isPublished && (
-            <DropdownMenuItem onClick={() => window.open(`/webinars/${w.slug}`, "_blank", "noopener")}>
+            <DropdownMenuItem
+              onClick={() =>
+                window.open(`/webinars/${w.slug}`, "_blank", "noopener")
+              }
+            >
               <ExternalLink className="size-4" /> View page
             </DropdownMenuItem>
           )}
           <DropdownMenuItem onClick={() => togglePublish(w)}>
-            {w.isPublished ? <Undo2 className="size-4" /> : <Send className="size-4" />}
+            {w.isPublished ? (
+              <Undo2 className="size-4" />
+            ) : (
+              <Send className="size-4" />
+            )}
             {w.isPublished ? "Unpublish" : "Publish"}
           </DropdownMenuItem>
-          <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setDeleting(w)}>
+          <DropdownMenuItem
+            className="text-destructive focus:text-destructive"
+            onClick={() => setDeleting(w)}
+          >
             <Trash2 className="size-4" /> Delete
           </DropdownMenuItem>
         </DropdownMenuContent>
@@ -349,9 +422,17 @@ export function WebinarsClient({
       key: "title",
       header: "Webinar",
       cell: (w) => (
-        <button type="button" onClick={() => openEdit(w)} className="min-w-0 text-left">
-          <p className="hover:text-primary truncate font-medium transition-colors">{w.title}</p>
-          <p className="text-muted-foreground truncate text-xs">by {w.hostName}</p>
+        <button
+          type="button"
+          onClick={() => openEdit(w)}
+          className="min-w-0 text-left"
+        >
+          <p className="hover:text-primary truncate font-medium transition-colors">
+            {w.title}
+          </p>
+          <p className="text-muted-foreground truncate text-xs">
+            by {w.hostName}
+          </p>
         </button>
       ),
     },
@@ -359,7 +440,9 @@ export function WebinarsClient({
       key: "when",
       header: "When",
       cell: (w) => (
-        <span className="text-sm whitespace-nowrap">{format(new Date(w.scheduledStart), "d MMM, h:mm a")}</span>
+        <span className="text-sm whitespace-nowrap">
+          {format(new Date(w.scheduledStart), "d MMM, h:mm a")}
+        </span>
       ),
     },
     {
@@ -399,15 +482,30 @@ export function WebinarsClient({
       header: "Status",
       cell: (w) =>
         w.isPublished ? (
-          <Badge variant="secondary" className="bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">Published</Badge>
+          <Badge
+            variant="secondary"
+            className="bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
+          >
+            Published
+          </Badge>
         ) : (
-          <Badge variant="secondary" className="bg-muted text-muted-foreground">Draft</Badge>
+          <Badge variant="secondary" className="bg-muted text-muted-foreground">
+            Draft
+          </Badge>
         ),
     },
-    { key: "actions", header: <span className="sr-only">Actions</span>, headerClassName: "w-10", cell: rowActions },
+    {
+      key: "actions",
+      header: <span className="sr-only">Actions</span>,
+      headerClassName: "w-10",
+      cell: rowActions,
+    },
   ];
 
-  const canSave = form.title.trim().length >= 3 && form.hostName.trim().length >= 2 && Boolean(form.scheduledStart);
+  const canSave =
+    form.title.trim().length >= 3 &&
+    form.hostName.trim().length >= 2 &&
+    Boolean(form.scheduledStart);
 
   return (
     <div className="space-y-6">
@@ -421,21 +519,10 @@ export function WebinarsClient({
         }
       />
 
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-        {statCards.map((s) => (
-          <Card key={s.label}>
-            <CardContent className="flex items-center gap-3 py-4">
-              <div className="bg-muted grid size-10 shrink-0 place-items-center rounded-lg">
-                <s.icon className={`size-5 ${s.tone}`} />
-              </div>
-              <div className="min-w-0">
-                <p className="text-2xl font-semibold leading-none tabular-nums">{s.value}</p>
-                <p className="text-muted-foreground mt-1 truncate text-xs">{s.label}</p>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      <StatCards
+        cards={statCards}
+        className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4"
+      />
 
       <DataTable
         data={webinars}
@@ -444,16 +531,28 @@ export function WebinarsClient({
         renderCard={(w) => (
           <div className="rounded-xl border p-4">
             <div className="flex items-start justify-between gap-2">
-              <button type="button" onClick={() => openEdit(w)} className="min-w-0 text-left">
+              <button
+                type="button"
+                onClick={() => openEdit(w)}
+                className="min-w-0 text-left"
+              >
                 <p className="truncate font-medium">{w.title}</p>
-                <p className="text-muted-foreground truncate text-xs">by {w.hostName}</p>
+                <p className="text-muted-foreground truncate text-xs">
+                  by {w.hostName}
+                </p>
               </button>
               {rowActions(w)}
             </div>
             <div className="text-muted-foreground mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
               <span>{format(new Date(w.scheduledStart), "d MMM, h:mm a")}</span>
-              <span className="flex items-center gap-1"><Users className="size-3" /> {w.registrations}</span>
-              {!w.isPublished && <Badge variant="secondary" className="text-[10px]">Draft</Badge>}
+              <span className="flex items-center gap-1">
+                <Users className="size-3" /> {w.registrations}
+              </span>
+              {!w.isPublished && (
+                <Badge variant="secondary" className="text-[10px]">
+                  Draft
+                </Badge>
+              )}
             </div>
           </div>
         )}
@@ -462,13 +561,37 @@ export function WebinarsClient({
         emptyDescription="Create a public masterclass to grow your audience."
         toolbar={
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <form onSubmit={(e) => { e.preventDefault(); setParams({ search: search || undefined, page: 1 }); }} className="relative flex-1">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                setParams({ search: search || undefined, page: 1 });
+              }}
+              className="relative flex-1"
+            >
               <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
-              <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search webinars…" className="pl-9" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search webinars…"
+                className="pl-9"
+              />
             </form>
-            <Select value={query.status ?? ALL} onValueChange={(v) => setParams({ status: !v || v === ALL ? undefined : v, page: 1 })}>
+            <Select
+              value={query.status ?? ALL}
+              onValueChange={(v) =>
+                setParams({ status: !v || v === ALL ? undefined : v, page: 1 })
+              }
+            >
               <SelectTrigger className="w-full sm:w-40">
-                <SelectValue>{(v) => (!v || v === ALL ? "All statuses" : v === "PUBLISHED" ? "Published" : "Draft")}</SelectValue>
+                <SelectValue>
+                  {(v) =>
+                    !v || v === ALL
+                      ? "All statuses"
+                      : v === "PUBLISHED"
+                        ? "Published"
+                        : "Draft"
+                  }
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={ALL}>All statuses</SelectItem>
@@ -480,11 +603,29 @@ export function WebinarsClient({
         }
         footer={
           <div className="flex items-center justify-between">
-            <span className="text-muted-foreground text-sm">{total} webinars</span>
+            <span className="text-muted-foreground text-sm">
+              {total} webinars
+            </span>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" disabled={query.page <= 1} onClick={() => setParams({ page: query.page - 1 })}>Previous</Button>
-              <span className="text-muted-foreground text-sm">Page {query.page} of {totalPages}</span>
-              <Button variant="outline" size="sm" disabled={query.page >= totalPages} onClick={() => setParams({ page: query.page + 1 })}>Next</Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={query.page <= 1}
+                onClick={() => setParams({ page: query.page - 1 })}
+              >
+                Previous
+              </Button>
+              <span className="text-muted-foreground text-sm">
+                Page {query.page} of {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={query.page >= totalPages}
+                onClick={() => setParams({ page: query.page + 1 })}
+              >
+                Next
+              </Button>
             </div>
           </div>
         }
@@ -493,20 +634,34 @@ export function WebinarsClient({
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>{editing ? "Edit webinar" : "New webinar"}</DialogTitle>
+            <DialogTitle>
+              {editing ? "Edit webinar" : "New webinar"}
+            </DialogTitle>
             <DialogDescription>Public masterclass details.</DialogDescription>
           </DialogHeader>
-          <form onSubmit={onSave} className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
+          <form
+            onSubmit={onSave}
+            className="max-h-[70vh] space-y-4 overflow-y-auto pr-1"
+          >
             <div className="space-y-1.5">
               <Label htmlFor="w-title">Title</Label>
-              <Input id="w-title" value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} placeholder="e.g. Break into Data Science in 2026" />
+              <Input
+                id="w-title"
+                value={form.title}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, title: e.target.value }))
+                }
+                placeholder="e.g. Break into Data Science in 2026"
+              />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="w-topic">Topic</Label>
               <Input
                 id="w-topic"
                 value={form.topic}
-                onChange={(e) => setForm((f) => ({ ...f, topic: e.target.value }))}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, topic: e.target.value }))
+                }
                 placeholder="The one line that says what this session is about"
               />
             </div>
@@ -516,8 +671,12 @@ export function WebinarsClient({
                 id="w-agenda"
                 rows={4}
                 value={form.agenda}
-                onChange={(e) => setForm((f) => ({ ...f, agenda: e.target.value }))}
-                placeholder={"What gets covered, one point per line:\n• Why medical coding is hiring right now\n• CPC certification, start to finish\n• Live Q&A"}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, agenda: e.target.value }))
+                }
+                placeholder={
+                  "What gets covered, one point per line:\n• Why medical coding is hiring right now\n• CPC certification, start to finish\n• Live Q&A"
+                }
               />
               <p className="text-muted-foreground text-xs">
                 One point per line — shown as a list on the public webinar page.
@@ -525,26 +684,61 @@ export function WebinarsClient({
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="w-desc">Description</Label>
-              <Textarea id="w-desc" rows={3} value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} />
+              <Textarea
+                id="w-desc"
+                rows={3}
+                value={form.description}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, description: e.target.value }))
+                }
+              />
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="w-host">Presenter</Label>
-                <Input id="w-host" value={form.hostName} onChange={(e) => setForm((f) => ({ ...f, hostName: e.target.value }))} />
+                <Input
+                  id="w-host"
+                  value={form.hostName}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, hostName: e.target.value }))
+                  }
+                />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="w-start">Starts</Label>
-                <Input id="w-start" type="datetime-local" value={form.scheduledStart} onChange={(e) => setForm((f) => ({ ...f, scheduledStart: e.target.value }))} />
+                <Input
+                  id="w-start"
+                  type="datetime-local"
+                  value={form.scheduledStart}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, scheduledStart: e.target.value }))
+                  }
+                />
               </div>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="w-dur">Duration (min)</Label>
-                <Input id="w-dur" type="number" value={form.durationMinutes} onChange={(e) => setForm((f) => ({ ...f, durationMinutes: e.target.value }))} />
+                <Input
+                  id="w-dur"
+                  type="number"
+                  value={form.durationMinutes}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, durationMinutes: e.target.value }))
+                  }
+                />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="w-cap">Capacity (optional)</Label>
-                <Input id="w-cap" type="number" value={form.capacity} onChange={(e) => setForm((f) => ({ ...f, capacity: e.target.value }))} placeholder="Unlimited" />
+                <Input
+                  id="w-cap"
+                  type="number"
+                  value={form.capacity}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, capacity: e.target.value }))
+                  }
+                  placeholder="Unlimited"
+                />
                 <p className="text-muted-foreground text-xs">
                   Registration closes on the site once these seats are gone.
                 </p>
@@ -558,7 +752,12 @@ export function WebinarsClient({
                 min={0}
                 max={100}
                 value={form.attendanceDiscountPercent}
-                onChange={(e) => setForm((f) => ({ ...f, attendanceDiscountPercent: e.target.value }))}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    attendanceDiscountPercent: e.target.value,
+                  }))
+                }
               />
               <p className="text-muted-foreground text-xs">
                 Anyone who stays for the whole session is sent a single-use code
@@ -567,26 +766,54 @@ export function WebinarsClient({
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="w-cover">Cover image URL (optional)</Label>
-              <Input id="w-cover" value={form.coverImageUrl} onChange={(e) => setForm((f) => ({ ...f, coverImageUrl: e.target.value }))} placeholder="https://…" />
+              <Input
+                id="w-cover"
+                value={form.coverImageUrl}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, coverImageUrl: e.target.value }))
+                }
+                placeholder="https://…"
+              />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="w-join">Join link (optional)</Label>
-              <Input id="w-join" value={form.joinUrl} onChange={(e) => setForm((f) => ({ ...f, joinUrl: e.target.value }))} placeholder="Meeting URL shown to registrants" />
+              <Input
+                id="w-join"
+                value={form.joinUrl}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, joinUrl: e.target.value }))
+                }
+                placeholder="Meeting URL shown to registrants"
+              />
               <p className="text-muted-foreground text-xs">
-                Leave this blank and use <span className="font-medium">Generate join link</span>{" "}
-                from the row menu — that creates a room on our own video system,
-                which is what lets attendance be taken automatically.
+                Leave this blank and use{" "}
+                <span className="font-medium">Generate join link</span> from the
+                row menu — that creates a room on our own video system, which is
+                what lets attendance be taken automatically.
               </p>
             </div>
             <div className="flex items-center justify-between rounded-lg border p-3">
               <div>
                 <p className="text-sm font-medium">Published</p>
-                <p className="text-muted-foreground text-xs">Visible on the public webinars page.</p>
+                <p className="text-muted-foreground text-xs">
+                  Visible on the public webinars page.
+                </p>
               </div>
-              <Switch checked={form.isPublished} onCheckedChange={(v) => setForm((f) => ({ ...f, isPublished: v }))} />
+              <Switch
+                checked={form.isPublished}
+                onCheckedChange={(v) =>
+                  setForm((f) => ({ ...f, isPublished: v }))
+                }
+              />
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setDialogOpen(false)}
+              >
+                Cancel
+              </Button>
               <Button type="submit" disabled={saving || !canSave}>
                 {saving && <Loader2 className="size-4 animate-spin" />}
                 {editing ? "Save" : "Create"}
@@ -601,15 +828,25 @@ export function WebinarsClient({
         onOpenChange={(o) => !o && setParticipantsFor(null)}
       />
 
-      <AlertDialog open={deleting != null} onOpenChange={(o) => !o && setDeleting(null)}>
+      <AlertDialog
+        open={deleting != null}
+        onOpenChange={(o) => !o && setDeleting(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete &ldquo;{deleting?.title}&rdquo;?</AlertDialogTitle>
-            <AlertDialogDescription>The webinar and its {deleting?.registrations} registration(s) will be removed.</AlertDialogDescription>
+            <AlertDialogTitle>
+              Delete &ldquo;{deleting?.title}&rdquo;?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              The webinar and its {deleting?.registrations} registration(s) will
+              be removed.
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete}>Delete</AlertDialogAction>
+            <AlertDialogAction onClick={confirmDelete}>
+              Delete
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

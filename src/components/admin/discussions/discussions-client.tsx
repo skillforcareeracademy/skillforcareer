@@ -22,6 +22,7 @@ import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
+import { StatCards, type StatCard } from "@/components/shared/stat-cards";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -36,7 +37,6 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -101,7 +101,12 @@ const STATUS_OPTIONS = [
 ];
 
 function initials(name: string): string {
-  return name.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase();
+  return name
+    .split(" ")
+    .map((p) => p[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
 }
 function label(t: ThreadRow): string {
   if (t.title) return t.title;
@@ -144,8 +149,16 @@ export function DiscussionsClient({
       setForm({ courseId: "", title: "", body: "" });
       router.refresh();
     } catch (err) {
-      const d = err instanceof ApiError ? (err.details as { issues?: { message: string }[] }) : undefined;
-      toast.error(d?.issues?.[0]?.message ?? (err instanceof ApiError ? err.message : "Couldn't start discussion."));
+      const d =
+        err instanceof ApiError
+          ? (err.details as { issues?: { message: string }[] })
+          : undefined;
+      toast.error(
+        d?.issues?.[0]?.message ??
+          (err instanceof ApiError
+            ? err.message
+            : "Couldn't start discussion."),
+      );
     } finally {
       setCreating(false);
     }
@@ -167,7 +180,8 @@ export function DiscussionsClient({
       if (merged.search) p.set("search", String(merged.search));
       if (merged.course) p.set("course", String(merged.course));
       if (merged.status) p.set("status", String(merged.status));
-      if (merged.page && Number(merged.page) > 1) p.set("page", String(merged.page));
+      if (merged.page && Number(merged.page) > 1)
+        p.set("page", String(merged.page));
       const qs = p.toString();
       router.push(qs ? `${pathname}?${qs}` : pathname);
     },
@@ -176,10 +190,18 @@ export function DiscussionsClient({
 
   function clearFilters() {
     setSearch("");
-    setParams({ search: undefined, course: undefined, status: undefined, page: 1 });
+    setParams({
+      search: undefined,
+      course: undefined,
+      status: undefined,
+      page: 1,
+    });
   }
 
-  async function moderate(t: ThreadRow, patch: { isPinned?: boolean; isResolved?: boolean }) {
+  async function moderate(
+    t: ThreadRow,
+    patch: { isPinned?: boolean; isResolved?: boolean },
+  ) {
     try {
       await api.patch(`/api/discussions/${t.id}`, patch);
       toast.success("Updated.");
@@ -201,18 +223,64 @@ export function DiscussionsClient({
     }
   }
 
-  const statCards = [
-    { label: "Threads", value: stats.threads, icon: MessagesSquare, tone: "text-rose-500" },
-    { label: "Open", value: stats.open, icon: MessageCircleQuestion, tone: "text-amber-500" },
-    { label: "Pinned", value: stats.pinned, icon: Pin, tone: "text-sky-500" },
-    { label: "Replies", value: stats.replies, icon: ReplyIcon, tone: "text-violet-500" },
+  const statCards: StatCard[] = [
+    {
+      label: "Threads",
+      value: stats.threads,
+      icon: MessagesSquare,
+      tone: "text-rose-500",
+      hint: "Every thread. Tap to clear the filters.",
+      active: !hasFilters,
+      onClick: () =>
+        setParams({
+          status: undefined,
+          course: undefined,
+          search: undefined,
+          page: 1,
+        }),
+    },
+    {
+      label: "Open",
+      value: stats.open,
+      icon: MessageCircleQuestion,
+      tone: "text-amber-500",
+      hint: "Threads still waiting on an answer.",
+      active: query.status === "OPEN",
+      onClick: () =>
+        setParams({
+          status: query.status === "OPEN" ? undefined : "OPEN",
+          page: 1,
+        }),
+    },
+    {
+      label: "Pinned",
+      value: stats.pinned,
+      icon: Pin,
+      tone: "text-sky-500",
+      hint: "Threads pinned to the top.",
+      active: query.status === "PINNED",
+      onClick: () =>
+        setParams({
+          status: query.status === "PINNED" ? undefined : "PINNED",
+          page: 1,
+        }),
+    },
+    {
+      label: "Replies",
+      value: stats.replies,
+      icon: ReplyIcon,
+      tone: "text-violet-500",
+    },
   ];
 
   function statusBadges(t: ThreadRow) {
     return (
       <span className="flex flex-wrap items-center gap-1.5">
         {t.isPinned && (
-          <Badge variant="secondary" className="gap-1 bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300">
+          <Badge
+            variant="secondary"
+            className="gap-1 bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300"
+          >
             <Pin className="size-3" /> Pinned
           </Badge>
         )}
@@ -233,19 +301,34 @@ export function DiscussionsClient({
   function rowActions(t: ThreadRow) {
     return (
       <DropdownMenu>
-        <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" />} aria-label="Actions">
+        <DropdownMenuTrigger
+          render={<Button variant="ghost" size="icon-sm" />}
+          aria-label="Actions"
+        >
           <MoreHorizontal className="size-4" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuItem onClick={() => setDetailId(t.id)}>
             <Eye className="size-4" /> View &amp; reply
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => moderate(t, { isPinned: !t.isPinned })}>
-            {t.isPinned ? <PinOff className="size-4" /> : <Pin className="size-4" />}
+          <DropdownMenuItem
+            onClick={() => moderate(t, { isPinned: !t.isPinned })}
+          >
+            {t.isPinned ? (
+              <PinOff className="size-4" />
+            ) : (
+              <Pin className="size-4" />
+            )}
             {t.isPinned ? "Unpin" : "Pin"}
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => moderate(t, { isResolved: !t.isResolved })}>
-            {t.isResolved ? <RotateCcw className="size-4" /> : <CheckCircle2 className="size-4" />}
+          <DropdownMenuItem
+            onClick={() => moderate(t, { isResolved: !t.isResolved })}
+          >
+            {t.isResolved ? (
+              <RotateCcw className="size-4" />
+            ) : (
+              <CheckCircle2 className="size-4" />
+            )}
             {t.isResolved ? "Reopen" : "Resolve"}
           </DropdownMenuItem>
           <DropdownMenuItem
@@ -266,8 +349,12 @@ export function DiscussionsClient({
       cell: (t) => (
         <div className="flex min-w-0 items-center gap-3">
           <Avatar className="size-8 shrink-0">
-            {t.authorAvatar && <AvatarImage src={t.authorAvatar} alt={t.authorName} />}
-            <AvatarFallback className="text-xs">{initials(t.authorName)}</AvatarFallback>
+            {t.authorAvatar && (
+              <AvatarImage src={t.authorAvatar} alt={t.authorName} />
+            )}
+            <AvatarFallback className="text-xs">
+              {initials(t.authorName)}
+            </AvatarFallback>
           </Avatar>
           <div className="min-w-0">
             <p className="truncate font-medium">{label(t)}</p>
@@ -284,7 +371,7 @@ export function DiscussionsClient({
       className: "tabular-nums",
       cell: (t) => (
         <span className="flex items-center gap-1 text-sm">
-          <ReplyIcon className="size-3.5 text-muted-foreground" /> {t.replies}
+          <ReplyIcon className="text-muted-foreground size-3.5" /> {t.replies}
         </span>
       ),
     },
@@ -345,23 +432,10 @@ export function DiscussionsClient({
       />
 
       {/* Summary */}
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-        {statCards.map((s) => (
-          <Card key={s.label}>
-            <CardContent className="flex items-center gap-3 py-4">
-              <div className="bg-muted grid size-10 shrink-0 place-items-center rounded-lg">
-                <s.icon className={`size-5 ${s.tone}`} />
-              </div>
-              <div className="min-w-0">
-                <p className="text-2xl font-semibold leading-none tabular-nums">
-                  {s.value.toLocaleString("en-IN")}
-                </p>
-                <p className="text-muted-foreground mt-1 truncate text-xs">{s.label}</p>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      <StatCards
+        cards={statCards}
+        className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4"
+      />
 
       <DataTable
         columns={columns}
@@ -369,9 +443,13 @@ export function DiscussionsClient({
         rowKey={(t) => t.id}
         renderCard={renderCard}
         emptyIcon={MessagesSquare}
-        emptyTitle={hasFilters ? "No matching discussions" : "No discussions yet"}
+        emptyTitle={
+          hasFilters ? "No matching discussions" : "No discussions yet"
+        }
         emptyDescription={
-          hasFilters ? "Try adjusting your search or filters." : "Learner discussions will appear here to moderate."
+          hasFilters
+            ? "Try adjusting your search or filters."
+            : "Learner discussions will appear here to moderate."
         }
         toolbar={
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -391,14 +469,20 @@ export function DiscussionsClient({
             <div className="flex gap-2">
               <Select
                 value={query.status ?? ALL}
-                onValueChange={(v) => setParams({ status: !v || v === ALL ? undefined : v, page: 1 })}
+                onValueChange={(v) =>
+                  setParams({
+                    status: !v || v === ALL ? undefined : v,
+                    page: 1,
+                  })
+                }
               >
                 <SelectTrigger className="flex-1 sm:w-36">
                   <SelectValue>
                     {(v) =>
                       !v || v === ALL
                         ? "All statuses"
-                        : (STATUS_OPTIONS.find((s) => s.value === v)?.label ?? "Status")
+                        : (STATUS_OPTIONS.find((s) => s.value === v)?.label ??
+                          "Status")
                     }
                   </SelectValue>
                 </SelectTrigger>
@@ -413,7 +497,12 @@ export function DiscussionsClient({
               </Select>
               <Select
                 value={query.courseId ?? ALL}
-                onValueChange={(v) => setParams({ course: !v || v === ALL ? undefined : v, page: 1 })}
+                onValueChange={(v) =>
+                  setParams({
+                    course: !v || v === ALL ? undefined : v,
+                    page: 1,
+                  })
+                }
               >
                 <SelectTrigger className="flex-1 sm:w-48">
                   <SelectValue>
@@ -434,7 +523,12 @@ export function DiscussionsClient({
                 </SelectContent>
               </Select>
               {hasFilters && (
-                <Button variant="ghost" size="sm" onClick={clearFilters} className="text-muted-foreground">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearFilters}
+                  className="text-muted-foreground"
+                >
                   <X className="size-4" /> Clear
                 </Button>
               )}
@@ -447,13 +541,23 @@ export function DiscussionsClient({
               {total} {total === 1 ? "thread" : "threads"}
             </p>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" disabled={query.page <= 1} onClick={() => setParams({ page: query.page - 1 })}>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={query.page <= 1}
+                onClick={() => setParams({ page: query.page - 1 })}
+              >
                 Previous
               </Button>
               <span className="text-muted-foreground text-sm">
                 Page {query.page} of {totalPages}
               </span>
-              <Button variant="outline" size="sm" disabled={query.page >= totalPages} onClick={() => setParams({ page: query.page + 1 })}>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={query.page >= totalPages}
+                onClick={() => setParams({ page: query.page + 1 })}
+              >
                 Next
               </Button>
             </div>
@@ -461,22 +565,35 @@ export function DiscussionsClient({
         }
       />
 
-      <DiscussionDetailSheet threadId={detailId} onOpenChange={(o) => !o && setDetailId(null)} />
+      <DiscussionDetailSheet
+        threadId={detailId}
+        onOpenChange={(o) => !o && setDetailId(null)}
+      />
 
       {/* Start a discussion (as staff, in any course) */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Start a discussion</DialogTitle>
-            <DialogDescription>Post an announcement or question to a course.</DialogDescription>
+            <DialogDescription>
+              Post an announcement or question to a course.
+            </DialogDescription>
           </DialogHeader>
           <form onSubmit={onCreate} className="space-y-4">
             <div className="space-y-1.5">
               <Label>Course</Label>
-              <Select value={form.courseId} onValueChange={(v) => setForm((f) => ({ ...f, courseId: v ?? "" }))}>
+              <Select
+                value={form.courseId}
+                onValueChange={(v) =>
+                  setForm((f) => ({ ...f, courseId: v ?? "" }))
+                }
+              >
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Choose a course">
-                    {(v) => courses.find((c) => c.id === v)?.title ?? "Choose a course"}
+                    {(v) =>
+                      courses.find((c) => c.id === v)?.title ??
+                      "Choose a course"
+                    }
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
@@ -490,15 +607,44 @@ export function DiscussionsClient({
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="d-title">Title</Label>
-              <Input id="d-title" value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} placeholder="e.g. Week 3 — live doubt session" />
+              <Input
+                id="d-title"
+                value={form.title}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, title: e.target.value }))
+                }
+                placeholder="e.g. Week 3 — live doubt session"
+              />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="d-body">Message</Label>
-              <Textarea id="d-body" rows={4} value={form.body} onChange={(e) => setForm((f) => ({ ...f, body: e.target.value }))} placeholder="Write your announcement or question…" />
+              <Textarea
+                id="d-body"
+                rows={4}
+                value={form.body}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, body: e.target.value }))
+                }
+                placeholder="Write your announcement or question…"
+              />
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
-              <Button type="submit" disabled={creating || !form.courseId || form.title.trim().length < 3 || !form.body.trim()}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setCreateOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={
+                  creating ||
+                  !form.courseId ||
+                  form.title.trim().length < 3 ||
+                  !form.body.trim()
+                }
+              >
                 {creating && <Loader2 className="size-4 animate-spin" />}
                 Post
               </Button>
@@ -507,17 +653,24 @@ export function DiscussionsClient({
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>
+      <AlertDialog
+        open={!!deleting}
+        onOpenChange={(o) => !o && setDeleting(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete this discussion?</AlertDialogTitle>
             <AlertDialogDescription>
-              This permanently removes the thread and all its replies. This can&apos;t be undone.
+              This permanently removes the thread and all its replies. This
+              can&apos;t be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete} className="bg-destructive hover:bg-destructive/90 text-white">
+            <AlertDialogAction
+              onClick={confirmDelete}
+              className="bg-destructive hover:bg-destructive/90 text-white"
+            >
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>

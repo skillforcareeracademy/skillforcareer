@@ -27,6 +27,7 @@ import { api, ApiError } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
+import { StatCards, type StatCard } from "@/components/shared/stat-cards";
 import { ExportDialog } from "@/components/shared/export-dialog";
 import { ImportButton } from "@/components/shared/import-button";
 import type { ImportMode } from "@/lib/validations/import-mode";
@@ -39,7 +40,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -341,30 +341,72 @@ export function QuizzesClient({
     }
   }
 
-  const statCards = [
+  /**
+   * Each figure narrows the list to exactly what it counts, and tapping the
+   * same card again clears that — so the card is also the way back.
+   */
+  const statCards: StatCard[] = [
     {
       label: "Quizzes",
       value: stats.total,
       icon: FileQuestion,
       tone: "text-rose-500",
+      hint: "Every quiz. Tap to clear the filters.",
+      active: !hasFilters,
+      onClick: () =>
+        setParams({
+          status: undefined,
+          course: undefined,
+          batch: undefined,
+          category: undefined,
+          sub: undefined,
+          difficulty: undefined,
+          search: undefined,
+          sort: undefined,
+          page: 1,
+        }),
     },
     {
       label: "Published",
       value: stats.published,
       icon: Send,
       tone: "text-emerald-500",
+      hint: "Quizzes learners can see.",
+      active: query.status === "PUBLISHED",
+      onClick: () =>
+        setParams({
+          status: query.status === "PUBLISHED" ? undefined : "PUBLISHED",
+          page: 1,
+        }),
     },
     {
       label: "Drafts",
       value: stats.draft,
       icon: Pencil,
       tone: "text-amber-500",
+      hint: "Not published yet.",
+      active: query.status === "DRAFT",
+      onClick: () =>
+        setParams({
+          status: query.status === "DRAFT" ? undefined : "DRAFT",
+          page: 1,
+        }),
     },
     {
       label: "Attempts",
       value: stats.attempts,
       icon: Users,
       tone: "text-violet-500",
+      // There is no "has attempts" filter to narrow to, so this orders the
+      // list by the most-sat papers, which is the question behind the number.
+      hint: "Sit the most-attempted papers at the top.",
+      active: query.sort === "attempts",
+      onClick: () =>
+        setParams({
+          sort: query.sort === "attempts" ? undefined : "attempts",
+          view: "table",
+          page: 1,
+        }),
     },
   ];
 
@@ -796,25 +838,7 @@ export function QuizzesClient({
       />
 
       {/* Summary */}
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-        {statCards.map((s) => (
-          <Card key={s.label}>
-            <CardContent className="flex items-center gap-3 py-4">
-              <div className="bg-muted grid size-10 shrink-0 place-items-center rounded-lg">
-                <s.icon className={`size-5 ${s.tone}`} />
-              </div>
-              <div className="min-w-0">
-                <p className="text-2xl leading-none font-semibold tabular-nums">
-                  {s.value.toLocaleString("en-IN")}
-                </p>
-                <p className="text-muted-foreground mt-1 truncate text-xs">
-                  {s.label}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      <StatCards cards={statCards} />
 
       {/* Folder view, the same as the learner sees — "admin me bhi quiz folder
           wise dikhni chahiye jaise student panel me dikh rhi hai". */}

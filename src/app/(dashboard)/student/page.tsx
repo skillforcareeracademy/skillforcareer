@@ -49,10 +49,10 @@ export default async function StudentHome() {
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Enrolled courses" value={String(stats.enrolled)} icon={GraduationCap} tint="from-rose-500 to-pink-600" />
-        <StatCard label="In progress" value={String(stats.inProgress)} icon={PlayCircle} tint="from-violet-500 to-purple-600" />
-        <StatCard label="Certificates" value={String(stats.certificates)} icon={Award} tint="from-amber-500 to-orange-600" />
-        <StatCard label="Completed" value={String(stats.completed)} icon={CalendarClock} tint="from-sky-500 to-blue-600" />
+        <StatCard label="Enrolled courses" value={String(stats.enrolled)} icon={GraduationCap} tint="from-rose-500 to-pink-600" href="/student/learning" />
+        <StatCard label="In progress" value={String(stats.inProgress)} icon={PlayCircle} tint="from-violet-500 to-purple-600" href="/student/learning" />
+        <StatCard label="Certificates" value={String(stats.certificates)} icon={Award} tint="from-amber-500 to-orange-600" href="/student/certificates" />
+        <StatCard label="Completed" value={String(stats.completed)} icon={CalendarClock} tint="from-sky-500 to-blue-600" href="/student/learning" />
       </div>
 
       <ProfileCompletionNotice view={detail} />

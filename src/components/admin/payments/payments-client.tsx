@@ -30,13 +30,13 @@ import {
 import { PaymentAccountsDialog } from "@/components/admin/payments/payment-accounts-dialog";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
+import { StatCards, type StatCard } from "@/components/shared/stat-cards";
 import { Button } from "@/components/ui/button";
 import { SearchSelect } from "@/components/shared/search-select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -128,7 +128,12 @@ const NONE = "none";
 const inr = (n: number) => `₹${n.toLocaleString("en-IN")}`;
 
 function initials(name: string): string {
-  return name.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase();
+  return name
+    .split(" ")
+    .map((p) => p[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
 }
 
 export function PaymentsClient({
@@ -166,7 +171,11 @@ export function PaymentsClient({
     type: "ONE_TIME",
     installments: "3",
   });
-  const [coupon, setCoupon] = useState<{ discount: number; net: number; code: string } | null>(null);
+  const [coupon, setCoupon] = useState<{
+    discount: number;
+    net: number;
+    code: string;
+  } | null>(null);
   const [applying, setApplying] = useState(false);
 
   async function applyCoupon() {
@@ -176,19 +185,34 @@ export function PaymentsClient({
     }
     setApplying(true);
     try {
-      const r = await api.post<{ valid: boolean; reason?: string; discount?: number; netAmount?: number; code?: string }>(
-        "/api/coupons/validate",
-        { code: form.couponCode, amount: Number(form.amount), courseId: form.courseId || undefined },
-      );
+      const r = await api.post<{
+        valid: boolean;
+        reason?: string;
+        discount?: number;
+        netAmount?: number;
+        code?: string;
+      }>("/api/coupons/validate", {
+        code: form.couponCode,
+        amount: Number(form.amount),
+        courseId: form.courseId || undefined,
+      });
       if (!r.valid) {
         setCoupon(null);
         toast.error(r.reason ?? "Invalid coupon.");
       } else {
-        setCoupon({ discount: r.discount ?? 0, net: r.netAmount ?? Number(form.amount), code: r.code ?? form.couponCode });
-        toast.success(`Coupon applied — ₹${(r.discount ?? 0).toLocaleString("en-IN")} off.`);
+        setCoupon({
+          discount: r.discount ?? 0,
+          net: r.netAmount ?? Number(form.amount),
+          code: r.code ?? form.couponCode,
+        });
+        toast.success(
+          `Coupon applied — ₹${(r.discount ?? 0).toLocaleString("en-IN")} off.`,
+        );
       }
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Couldn't validate coupon.");
+      toast.error(
+        err instanceof ApiError ? err.message : "Couldn't validate coupon.",
+      );
     } finally {
       setApplying(false);
     }
@@ -199,7 +223,11 @@ export function PaymentsClient({
 
   const totalPages = Math.max(1, Math.ceil(total / query.pageSize));
   const hasFilters = Boolean(
-    query.search || query.courseId || query.status || query.provider || query.method,
+    query.search ||
+    query.courseId ||
+    query.status ||
+    query.provider ||
+    query.method,
   );
 
   const setParams = useCallback(
@@ -219,7 +247,8 @@ export function PaymentsClient({
       if (merged.status) p.set("status", String(merged.status));
       if (merged.provider) p.set("provider", String(merged.provider));
       if (merged.method) p.set("method", String(merged.method));
-      if (merged.page && Number(merged.page) > 1) p.set("page", String(merged.page));
+      if (merged.page && Number(merged.page) > 1)
+        p.set("page", String(merged.page));
       const qs = p.toString();
       router.push(qs ? `${pathname}?${qs}` : pathname);
     },
@@ -228,7 +257,14 @@ export function PaymentsClient({
 
   function clearFilters() {
     setSearch("");
-    setParams({ search: undefined, course: undefined, status: undefined, provider: undefined, method: undefined, page: 1 });
+    setParams({
+      search: undefined,
+      course: undefined,
+      status: undefined,
+      provider: undefined,
+      method: undefined,
+      page: 1,
+    });
   }
   function set<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -257,7 +293,19 @@ export function PaymentsClient({
       });
       toast.success("Payment recorded.");
       setRecordOpen(false);
-      setForm({ userId: "", courseId: "", amount: "", status: "PAID", provider: "MANUAL", method: "UPI", accountId: "", paidAt: "", couponCode: "", type: "ONE_TIME", installments: "3" });
+      setForm({
+        userId: "",
+        courseId: "",
+        amount: "",
+        status: "PAID",
+        provider: "MANUAL",
+        method: "UPI",
+        accountId: "",
+        paidAt: "",
+        couponCode: "",
+        type: "ONE_TIME",
+        installments: "3",
+      });
       setCoupon(null);
       router.refresh();
     } catch (err) {
@@ -272,7 +320,9 @@ export function PaymentsClient({
 
   async function sendReminder(p: PaymentRow) {
     try {
-      const res = await api.post<{ message: string }>(`/api/payments/${p.id}/remind`);
+      const res = await api.post<{ message: string }>(
+        `/api/payments/${p.id}/remind`,
+      );
       toast.success(res.message ?? "Reminder sent.");
     } catch (err) {
       if (err instanceof ApiError) toast.error(err.message);
@@ -292,11 +342,56 @@ export function PaymentsClient({
     }
   }
 
-  const statCards = [
-    { label: "Revenue", value: inr(stats.revenue), icon: IndianRupee, tone: "text-emerald-500" },
-    { label: "Transactions", value: String(stats.transactions), icon: Receipt, tone: "text-rose-500" },
-    { label: "Paid", value: String(stats.paid), icon: CircleCheckBig, tone: "text-sky-500" },
-    { label: "Refunded", value: String(stats.refunded), icon: Undo2, tone: "text-violet-500" },
+  const statCards: StatCard[] = [
+    {
+      label: "Revenue",
+      value: inr(stats.revenue),
+      icon: IndianRupee,
+      tone: "text-emerald-500",
+    },
+    {
+      label: "Transactions",
+      value: String(stats.transactions),
+      icon: Receipt,
+      tone: "text-rose-500",
+      hint: "Every payment. Tap to clear the filters.",
+      active: !hasFilters,
+      onClick: () =>
+        setParams({
+          status: undefined,
+          course: undefined,
+          provider: undefined,
+          method: undefined,
+          search: undefined,
+          page: 1,
+        }),
+    },
+    {
+      label: "Paid",
+      value: String(stats.paid),
+      icon: CircleCheckBig,
+      tone: "text-sky-500",
+      hint: "Payments that went through.",
+      active: query.status === "PAID",
+      onClick: () =>
+        setParams({
+          status: query.status === "PAID" ? undefined : "PAID",
+          page: 1,
+        }),
+    },
+    {
+      label: "Refunded",
+      value: String(stats.refunded),
+      icon: Undo2,
+      tone: "text-violet-500",
+      hint: "Payments sent back.",
+      active: query.status === "REFUNDED",
+      onClick: () =>
+        setParams({
+          status: query.status === "REFUNDED" ? undefined : "REFUNDED",
+          page: 1,
+        }),
+    },
   ];
 
   function statusBadge(p: PaymentRow) {
@@ -310,7 +405,10 @@ export function PaymentsClient({
   function rowActions(p: PaymentRow) {
     return (
       <DropdownMenu>
-        <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" />} aria-label="Actions">
+        <DropdownMenuTrigger
+          render={<Button variant="ghost" size="icon-sm" />}
+          aria-label="Actions"
+        >
           <MoreHorizontal className="size-4" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
@@ -338,14 +436,22 @@ export function PaymentsClient({
       cell: (p) => (
         <div className="flex min-w-0 items-center gap-3">
           <Avatar className="size-8 shrink-0">
-            {p.studentAvatar && <AvatarImage src={p.studentAvatar} alt={p.studentName} />}
-            <AvatarFallback className="text-xs">{initials(p.studentName)}</AvatarFallback>
+            {p.studentAvatar && (
+              <AvatarImage src={p.studentAvatar} alt={p.studentName} />
+            )}
+            <AvatarFallback className="text-xs">
+              {initials(p.studentName)}
+            </AvatarFallback>
           </Avatar>
           <div className="min-w-0">
             <p className="truncate font-medium">{p.studentName}</p>
             <p className="text-muted-foreground truncate text-xs">
               {p.invoiceNumber}
-              {p.courseTitle ? ` · ${p.courseTitle}` : p.purpose ? ` · ${p.purpose}` : ""}
+              {p.courseTitle
+                ? ` · ${p.courseTitle}`
+                : p.purpose
+                  ? ` · ${p.purpose}`
+                  : ""}
             </p>
           </div>
         </div>
@@ -369,7 +475,9 @@ export function PaymentsClient({
               : (PAYMENT_PROVIDER_LABEL[p.provider] ?? p.provider)}
           </p>
           {p.accountName && (
-            <p className="text-muted-foreground truncate text-xs">{p.accountName}</p>
+            <p className="text-muted-foreground truncate text-xs">
+              {p.accountName}
+            </p>
           )}
         </div>
       ),
@@ -395,14 +503,24 @@ export function PaymentsClient({
     return (
       <div className="rounded-xl border p-4">
         <div className="flex items-start justify-between gap-2">
-          <button type="button" onClick={() => setDetailId(p.id)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+          <button
+            type="button"
+            onClick={() => setDetailId(p.id)}
+            className="flex min-w-0 flex-1 items-center gap-3 text-left"
+          >
             <Avatar className="size-9 shrink-0">
-              {p.studentAvatar && <AvatarImage src={p.studentAvatar} alt={p.studentName} />}
-              <AvatarFallback className="text-xs">{initials(p.studentName)}</AvatarFallback>
+              {p.studentAvatar && (
+                <AvatarImage src={p.studentAvatar} alt={p.studentName} />
+              )}
+              <AvatarFallback className="text-xs">
+                {initials(p.studentName)}
+              </AvatarFallback>
             </Avatar>
             <div className="min-w-0">
               <p className="truncate font-medium">{p.studentName}</p>
-              <p className="text-muted-foreground truncate text-xs">{p.invoiceNumber}</p>
+              <p className="text-muted-foreground truncate text-xs">
+                {p.invoiceNumber}
+              </p>
             </div>
           </button>
           {rowActions(p)}
@@ -435,21 +553,10 @@ export function PaymentsClient({
       />
 
       {/* Summary */}
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-        {statCards.map((s) => (
-          <Card key={s.label}>
-            <CardContent className="flex items-center gap-3 py-4">
-              <div className="bg-muted grid size-10 shrink-0 place-items-center rounded-lg">
-                <s.icon className={`size-5 ${s.tone}`} />
-              </div>
-              <div className="min-w-0">
-                <p className="truncate text-2xl font-semibold leading-none tabular-nums">{s.value}</p>
-                <p className="text-muted-foreground mt-1 truncate text-xs">{s.label}</p>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      <StatCards
+        cards={statCards}
+        className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4"
+      />
 
       <DataTable
         columns={columns}
@@ -459,7 +566,9 @@ export function PaymentsClient({
         emptyIcon={Receipt}
         emptyTitle={hasFilters ? "No matching payments" : "No payments yet"}
         emptyDescription={
-          hasFilters ? "Try adjusting your search or filters." : "Record your first payment to get started."
+          hasFilters
+            ? "Try adjusting your search or filters."
+            : "Record your first payment to get started."
         }
         toolbar={
           <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
@@ -479,11 +588,20 @@ export function PaymentsClient({
             <div className="flex flex-wrap gap-2">
               <Select
                 value={query.status ?? ALL}
-                onValueChange={(v) => setParams({ status: !v || v === ALL ? undefined : v, page: 1 })}
+                onValueChange={(v) =>
+                  setParams({
+                    status: !v || v === ALL ? undefined : v,
+                    page: 1,
+                  })
+                }
               >
                 <SelectTrigger className="w-36">
                   <SelectValue>
-                    {(v) => (!v || v === ALL ? "All statuses" : PAYMENT_STATUS_LABEL[String(v)])}
+                    {(v) =>
+                      !v || v === ALL
+                        ? "All statuses"
+                        : PAYMENT_STATUS_LABEL[String(v)]
+                    }
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
@@ -497,11 +615,20 @@ export function PaymentsClient({
               </Select>
               <Select
                 value={query.provider ?? ALL}
-                onValueChange={(v) => setParams({ provider: !v || v === ALL ? undefined : v, page: 1 })}
+                onValueChange={(v) =>
+                  setParams({
+                    provider: !v || v === ALL ? undefined : v,
+                    page: 1,
+                  })
+                }
               >
                 <SelectTrigger className="w-32">
                   <SelectValue>
-                    {(v) => (!v || v === ALL ? "Provider" : PAYMENT_PROVIDER_LABEL[String(v)])}
+                    {(v) =>
+                      !v || v === ALL
+                        ? "Provider"
+                        : PAYMENT_PROVIDER_LABEL[String(v)]
+                    }
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
@@ -515,11 +642,20 @@ export function PaymentsClient({
               </Select>
               <Select
                 value={query.method ?? ALL}
-                onValueChange={(v) => setParams({ method: !v || v === ALL ? undefined : v, page: 1 })}
+                onValueChange={(v) =>
+                  setParams({
+                    method: !v || v === ALL ? undefined : v,
+                    page: 1,
+                  })
+                }
               >
                 <SelectTrigger className="w-32">
                   <SelectValue>
-                    {(v) => (!v || v === ALL ? "Method" : PAYMENT_METHOD_LABEL[String(v)])}
+                    {(v) =>
+                      !v || v === ALL
+                        ? "Method"
+                        : PAYMENT_METHOD_LABEL[String(v)]
+                    }
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
@@ -532,7 +668,12 @@ export function PaymentsClient({
                 </SelectContent>
               </Select>
               {hasFilters && (
-                <Button variant="ghost" size="sm" onClick={clearFilters} className="text-muted-foreground">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearFilters}
+                  className="text-muted-foreground"
+                >
                   <X className="size-4" /> Clear
                 </Button>
               )}
@@ -545,13 +686,23 @@ export function PaymentsClient({
               {total} {total === 1 ? "payment" : "payments"}
             </p>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" disabled={query.page <= 1} onClick={() => setParams({ page: query.page - 1 })}>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={query.page <= 1}
+                onClick={() => setParams({ page: query.page - 1 })}
+              >
                 Previous
               </Button>
               <span className="text-muted-foreground text-sm">
                 Page {query.page} of {totalPages}
               </span>
-              <Button variant="outline" size="sm" disabled={query.page >= totalPages} onClick={() => setParams({ page: query.page + 1 })}>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={query.page >= totalPages}
+                onClick={() => setParams({ page: query.page + 1 })}
+              >
                 Next
               </Button>
             </div>
@@ -564,7 +715,9 @@ export function PaymentsClient({
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Record payment</DialogTitle>
-            <DialogDescription>Log a payment (e.g. manual / bank transfer) for a learner.</DialogDescription>
+            <DialogDescription>
+              Log a payment (e.g. manual / bank transfer) for a learner.
+            </DialogDescription>
           </DialogHeader>
           <form onSubmit={onRecord} className="space-y-4">
             <div className="space-y-1.5">
@@ -574,7 +727,11 @@ export function PaymentsClient({
                   since two learners often share a name. */}
               <SearchSelect
                 ariaLabel="Learner"
-                options={users.map((u) => ({ id: u.id, label: u.name, hint: u.email }))}
+                options={users.map((u) => ({
+                  id: u.id,
+                  label: u.name,
+                  hint: u.email,
+                }))}
                 value={form.userId || null}
                 onChange={(id) => set("userId", id ?? "")}
                 placeholder="Choose a learner"
@@ -609,12 +766,19 @@ export function PaymentsClient({
               </div>
               <div className="space-y-1.5">
                 <Label>Status</Label>
-                <Select value={form.status} onValueChange={(v) => v && set("status", v)}>
+                <Select
+                  value={form.status}
+                  onValueChange={(v) => v && set("status", v)}
+                >
                   <SelectTrigger className="w-full">
-                    <SelectValue>{(v) => PAYMENT_STATUS_LABEL[String(v)]}</SelectValue>
+                    <SelectValue>
+                      {(v) => PAYMENT_STATUS_LABEL[String(v)]}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    {PAYMENT_STATUSES.filter((s) => s !== "REFUNDED" && s !== "PARTIALLY_REFUNDED").map((s) => (
+                    {PAYMENT_STATUSES.filter(
+                      (s) => s !== "REFUNDED" && s !== "PARTIALLY_REFUNDED",
+                    ).map((s) => (
                       <SelectItem key={s} value={s}>
                         {PAYMENT_STATUS_LABEL[s]}
                       </SelectItem>
@@ -626,9 +790,14 @@ export function PaymentsClient({
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label>Payment method</Label>
-                <Select value={form.method} onValueChange={(v) => v && set("method", v)}>
+                <Select
+                  value={form.method}
+                  onValueChange={(v) => v && set("method", v)}
+                >
                   <SelectTrigger className="w-full">
-                    <SelectValue>{(v) => PAYMENT_METHOD_LABEL[String(v)]}</SelectValue>
+                    <SelectValue>
+                      {(v) => PAYMENT_METHOD_LABEL[String(v)]}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {PAYMENT_METHODS.map((m) => (
@@ -641,13 +810,19 @@ export function PaymentsClient({
               </div>
               <div className="space-y-1.5">
                 <Label>Received in</Label>
-                <Select value={form.accountId || NONE} onValueChange={(v) => set("accountId", v === NONE ? "" : (v ?? ""))}>
+                <Select
+                  value={form.accountId || NONE}
+                  onValueChange={(v) =>
+                    set("accountId", v === NONE ? "" : (v ?? ""))
+                  }
+                >
                   <SelectTrigger className="w-full">
                     <SelectValue>
                       {(v) =>
                         !v || v === NONE
                           ? "Not specified"
-                          : (accounts.find((a) => a.id === v)?.name ?? "Not specified")
+                          : (accounts.find((a) => a.id === v)?.name ??
+                            "Not specified")
                       }
                     </SelectValue>
                   </SelectTrigger>
@@ -673,7 +848,9 @@ export function PaymentsClient({
                   value={form.paidAt}
                   onChange={(e) => set("paidAt", e.target.value)}
                 />
-                <p className="text-muted-foreground text-xs">Leave blank to use the current time.</p>
+                <p className="text-muted-foreground text-xs">
+                  Leave blank to use the current time.
+                </p>
               </div>
             )}
 
@@ -691,13 +868,23 @@ export function PaymentsClient({
                   placeholder="Code"
                   className="font-mono"
                 />
-                <Button type="button" variant="outline" onClick={applyCoupon} disabled={applying || !form.couponCode.trim()}>
-                  {applying ? <Loader2 className="size-4 animate-spin" /> : "Apply"}
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={applyCoupon}
+                  disabled={applying || !form.couponCode.trim()}
+                >
+                  {applying ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    "Apply"
+                  )}
                 </Button>
               </div>
               {coupon && (
                 <p className="text-xs text-emerald-600 dark:text-emerald-400">
-                  −₹{coupon.discount.toLocaleString("en-IN")} · Net payable ₹{coupon.net.toLocaleString("en-IN")}
+                  −₹{coupon.discount.toLocaleString("en-IN")} · Net payable ₹
+                  {coupon.net.toLocaleString("en-IN")}
                 </p>
               )}
             </div>
@@ -706,7 +893,10 @@ export function PaymentsClient({
             {form.method === "EMI" && (
               <div className="space-y-1.5">
                 <Label htmlFor="pay-emi">Installments</Label>
-                <Select value={form.installments} onValueChange={(v) => v && set("installments", v)}>
+                <Select
+                  value={form.installments}
+                  onValueChange={(v) => v && set("installments", v)}
+                >
                   <SelectTrigger className="w-full">
                     <SelectValue>{(v) => `${v} months`}</SelectValue>
                   </SelectTrigger>
@@ -719,13 +909,18 @@ export function PaymentsClient({
                   </SelectContent>
                 </Select>
                 <p className="text-muted-foreground text-xs">
-                  A monthly installment schedule is generated over the net amount.
+                  A monthly installment schedule is generated over the net
+                  amount.
                 </p>
               </div>
             )}
 
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setRecordOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setRecordOpen(false)}
+              >
                 Cancel
               </Button>
               <Button type="submit" disabled={!canRecord || recording}>
@@ -737,21 +932,36 @@ export function PaymentsClient({
         </DialogContent>
       </Dialog>
 
-      <PaymentDetailSheet paymentId={detailId} onOpenChange={(o) => !o && setDetailId(null)} />
+      <PaymentDetailSheet
+        paymentId={detailId}
+        onOpenChange={(o) => !o && setDetailId(null)}
+      />
 
-      <PaymentAccountsDialog open={accountsOpen} onOpenChange={setAccountsOpen} />
+      <PaymentAccountsDialog
+        open={accountsOpen}
+        onOpenChange={setAccountsOpen}
+      />
 
-      <AlertDialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>
+      <AlertDialog
+        open={!!deleting}
+        onOpenChange={(o) => !o && setDeleting(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete payment {deleting?.invoiceNumber}?</AlertDialogTitle>
+            <AlertDialogTitle>
+              Delete payment {deleting?.invoiceNumber}?
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              This permanently removes the payment and its refunds. This can&apos;t be undone.
+              This permanently removes the payment and its refunds. This
+              can&apos;t be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete} className="bg-destructive hover:bg-destructive/90 text-white">
+            <AlertDialogAction
+              onClick={confirmDelete}
+              className="bg-destructive hover:bg-destructive/90 text-white"
+            >
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>

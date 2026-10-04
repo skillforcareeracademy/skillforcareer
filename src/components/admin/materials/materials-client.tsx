@@ -29,12 +29,16 @@ import {
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
-import type { MaterialRow, MaterialStats } from "@/server/services/study-material-service";
+import type {
+  MaterialRow,
+  MaterialStats,
+} from "@/server/services/study-material-service";
 import type { GroupOption } from "@/server/services/content-group-service";
 import { GroupPicker } from "@/components/admin/groups/group-picker";
 import { MultiPicker } from "@/components/admin/groups/multi-picker";
 import { FolderSelect } from "@/components/admin/groups/folder-select";
 import { PageHeader } from "@/components/shared/page-header";
+import { StatCards } from "@/components/shared/stat-cards";
 import { ExportDialog } from "@/components/shared/export-dialog";
 import { ImportButton } from "@/components/shared/import-button";
 import type { ImportMode } from "@/lib/validations/import-mode";
@@ -45,7 +49,6 @@ import {
   MATERIAL_SAMPLE_LABEL,
 } from "@/lib/validations/study-material";
 import { DataTable, type Column } from "@/components/shared/data-table";
-import { StatCard } from "@/components/dashboard/stat-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -170,7 +173,28 @@ export function MaterialsClient({
   const [course, setCourse] = useState(ALL);
   const [batch, setBatch] = useState(ALL);
   const [published, setPublished] = useState(ALL);
-  const [sort, setSort] = useState<"sequence" | "newest" | "title" | "reads">("sequence");
+  /** Behind the Documents figure: material with a file attached. */
+  const [kindFilter, setKindFilter] = useState(ALL);
+
+  const hasFilters =
+    Boolean(search) ||
+    category !== ALL ||
+    course !== ALL ||
+    batch !== ALL ||
+    published !== ALL ||
+    kindFilter !== ALL;
+
+  function clearFilters() {
+    setSearch("");
+    setCategory(ALL);
+    setCourse(ALL);
+    setBatch(ALL);
+    setPublished(ALL);
+    setKindFilter(ALL);
+  }
+  const [sort, setSort] = useState<"sequence" | "newest" | "title" | "reads">(
+    "sequence",
+  );
   /** "Content should be visible in folder format", beside the plain table. */
   const [view, setView] = useState<"folders" | "table">("folders");
   const [openFolders, setOpenFolders] = useState<Set<string>>(new Set());
@@ -182,12 +206,20 @@ export function MaterialsClient({
   const [moving, setMoving] = useState(false);
   const [readersOf, setReadersOf] = useState<MaterialRow | null>(null);
   const [readers, setReaders] = useState<
-    { userId: string; name: string; email: string; opens: number; seconds: number; downloads: number }[]
+    {
+      userId: string;
+      name: string;
+      email: string;
+      opens: number;
+      seconds: number;
+      downloads: number;
+    }[]
   >([]);
   const [importing, setImporting] = useState(false);
 
   const groupPath = useCallback(
-    (id: string | undefined | null) => groups.find((g) => g.id === id)?.path ?? "",
+    (id: string | undefined | null) =>
+      groups.find((g) => g.id === id)?.path ?? "",
     [groups],
   );
   const courseLabel = (id: string | undefined | null) =>
@@ -212,22 +244,45 @@ export function MaterialsClient({
       // A folder shows what is filed in it and in anything beneath it.
       const under = new Set(
         groups
-          .filter((g) => g.id === category || g.path.startsWith(`${groupPath(category)} → `))
+          .filter(
+            (g) =>
+              g.id === category ||
+              g.path.startsWith(`${groupPath(category)} → `),
+          )
           .map((g) => g.id),
       );
       list = list.filter((m) => m.groupIds.some((id) => under.has(id)));
     }
     if (course !== ALL) list = list.filter((m) => m.courseIds.includes(course));
     if (batch !== ALL) list = list.filter((m) => m.batchIds.includes(batch));
+    if (kindFilter === "file") {
+      list = list.filter((m) => Boolean(m.fileUrl) || m.assets.length > 0);
+    }
     if (published !== ALL) {
-      list = list.filter((m) => (published === "yes" ? m.isPublished : !m.isPublished));
+      list = list.filter((m) =>
+        published === "yes" ? m.isPublished : !m.isPublished,
+      );
     }
     const sorted = [...list];
-    if (sort === "newest") sorted.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-    else if (sort === "title") sorted.sort((a, b) => a.title.localeCompare(b.title));
-    else if (sort === "reads") sorted.sort((a, b) => b.readSeconds - a.readSeconds);
+    if (sort === "newest")
+      sorted.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    else if (sort === "title")
+      sorted.sort((a, b) => a.title.localeCompare(b.title));
+    else if (sort === "reads")
+      sorted.sort((a, b) => b.readSeconds - a.readSeconds);
     return sorted;
-  }, [materials, search, category, course, batch, published, sort, groups, groupPath]);
+  }, [
+    materials,
+    search,
+    category,
+    course,
+    batch,
+    published,
+    kindFilter,
+    sort,
+    groups,
+    groupPath,
+  ]);
 
   /** The filtered rows, gathered under the folders they are filed in. */
   const folders = useMemo(() => {
@@ -279,7 +334,9 @@ export function MaterialsClient({
         const res = await fetch("/api/upload", { method: "POST", body: fd });
         const json = await res.json().catch(() => null);
         if (!res.ok || !json?.success) {
-          toast.error(`${file.name}: ${json?.error?.message ?? "upload failed"}`);
+          toast.error(
+            `${file.name}: ${json?.error?.message ?? "upload failed"}`,
+          );
           continue;
         }
         added.push({
@@ -299,7 +356,9 @@ export function MaterialsClient({
               }
             : f,
         );
-        toast.success(`${added.length} file${added.length === 1 ? "" : "s"} attached.`);
+        toast.success(
+          `${added.length} file${added.length === 1 ? "" : "s"} attached.`,
+        );
       }
     } finally {
       setUploading(false);
@@ -315,14 +374,18 @@ export function MaterialsClient({
       return;
     }
     const name = window.prompt("What should it be called?")?.trim() || url;
-    setForm((f) => (f ? { ...f, assets: [...f.assets, { kind: "LINK", url, name }] } : f));
+    setForm((f) =>
+      f ? { ...f, assets: [...f.assets, { kind: "LINK", url, name }] } : f,
+    );
   }
 
   async function save(e: FormEvent) {
     e.preventDefault();
     if (!form) return;
     if (form.assets.length === 0 && !form.body.trim()) {
-      toast.error("Attach a file or a link, or write the reading in the panel.");
+      toast.error(
+        "Attach a file or a link, or write the reading in the panel.",
+      );
       return;
     }
     setSaving(true);
@@ -361,7 +424,9 @@ export function MaterialsClient({
       setForm(null);
       router.refresh();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Couldn't save that.");
+      toast.error(
+        err instanceof ApiError ? err.message : "Couldn't save that.",
+      );
     } finally {
       setSaving(false);
     }
@@ -369,7 +434,9 @@ export function MaterialsClient({
 
   async function togglePublished(m: MaterialRow) {
     try {
-      await api.patch(`/api/materials/${m.id}/publish`, { isPublished: !m.isPublished });
+      await api.patch(`/api/materials/${m.id}/publish`, {
+        isPublished: !m.isPublished,
+      });
       toast.success(m.isPublished ? "Hidden from learners." : "Published.");
       router.refresh();
     } catch (err) {
@@ -416,7 +483,9 @@ export function MaterialsClient({
     setReadersOf(m);
     setReaders([]);
     try {
-      const res = await api.get<{ readers: typeof readers }>(`/api/materials/${m.id}/readers`);
+      const res = await api.get<{ readers: typeof readers }>(
+        `/api/materials/${m.id}/readers`,
+      );
       setReaders(res.readers);
     } catch {
       toast.error("Couldn't load who has read it.");
@@ -434,7 +503,8 @@ export function MaterialsClient({
         body: fd,
       });
       const json = await res.json().catch(() => null);
-      if (!res.ok || !json?.success) throw new Error(json?.error?.message ?? "Import failed.");
+      if (!res.ok || !json?.success)
+        throw new Error(json?.error?.message ?? "Import failed.");
       toast.success(json.data.message as string);
       router.refresh();
     } catch (err) {
@@ -449,7 +519,11 @@ export function MaterialsClient({
       key: "number",
       header: "No.",
       className: "w-16",
-      cell: (m) => <span className="text-muted-foreground text-sm tabular-nums">{m.number}</span>,
+      cell: (m) => (
+        <span className="text-muted-foreground text-sm tabular-nums">
+          {m.number}
+        </span>
+      ),
     },
     {
       key: "sequence",
@@ -459,7 +533,9 @@ export function MaterialsClient({
         const i = rows.indexOf(m);
         return (
           <div className="flex items-center gap-0.5">
-            <span className="text-muted-foreground w-5 text-sm tabular-nums">{m.sequence}</span>
+            <span className="text-muted-foreground w-5 text-sm tabular-nums">
+              {m.sequence}
+            </span>
             {bySequence && (
               <>
                 <Button
@@ -474,7 +550,9 @@ export function MaterialsClient({
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  disabled={moving || i + 1 >= rows.length || !sameGroup(m, rows[i + 1])}
+                  disabled={
+                    moving || i + 1 >= rows.length || !sameGroup(m, rows[i + 1])
+                  }
                   onClick={() => move(i, 1)}
                   aria-label={`Move ${m.title} down`}
                 >
@@ -506,7 +584,9 @@ export function MaterialsClient({
       className: "w-28",
       cell: (m) => (
         <Badge variant="secondary" className="text-[10px]">
-          {m.fileUrl ? (m.fileName?.split(".").pop()?.toUpperCase() ?? "File") : "Written"}
+          {m.fileUrl
+            ? (m.fileName?.split(".").pop()?.toUpperCase() ?? "File")
+            : "Written"}
         </Badge>
       ),
     },
@@ -524,7 +604,9 @@ export function MaterialsClient({
           <span className="text-muted-foreground text-xs">
             {m.readers === 1 ? "learner" : "learners"}
           </span>
-          <span className="text-muted-foreground block text-xs">{readable(m.readSeconds)}</span>
+          <span className="text-muted-foreground block text-xs">
+            {readable(m.readSeconds)}
+          </span>
         </button>
       ),
     },
@@ -712,12 +794,47 @@ export function MaterialsClient({
         ]}
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Material" value={String(stats.total)} icon={FileText} tint="from-rose-500 to-pink-600" />
-        <StatCard label="Published" value={String(stats.published)} icon={Eye} tint="from-emerald-500 to-teal-600" />
-        <StatCard label="Documents" value={String(stats.withFile)} icon={BookOpen} tint="from-violet-500 to-purple-600" />
-        <StatCard label="Reading records" value={String(stats.readers)} icon={Users} tint="from-sky-500 to-blue-600" />
-      </div>
+      {/* Each figure narrows the list below to what it counts; tapping it
+          again clears that. */}
+      <StatCards
+        className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
+        cards={[
+          {
+            label: "Material",
+            value: stats.total,
+            icon: FileText,
+            tone: "text-rose-500",
+            hint: "Everything filed. Tap to clear the filters.",
+            active: !hasFilters,
+            onClick: clearFilters,
+          },
+          {
+            label: "Published",
+            value: stats.published,
+            icon: Eye,
+            tone: "text-emerald-500",
+            hint: "Reading learners can open.",
+            active: published === "yes",
+            onClick: () => setPublished(published === "yes" ? ALL : "yes"),
+          },
+          {
+            label: "Documents",
+            value: stats.withFile,
+            icon: BookOpen,
+            tone: "text-violet-500",
+            hint: "Material with a file attached.",
+            active: kindFilter === "file",
+            onClick: () => setKindFilter(kindFilter === "file" ? ALL : "file"),
+          },
+          {
+            label: "Reading records",
+            value: stats.readers,
+            icon: Users,
+            tone: "text-sky-500",
+            hint: "How many times learners have opened the reading.",
+          },
+        ]}
+      />
 
       {/* Folder view: the academy's own tree, each folder opening to what is
           filed in it. The table is still a tap away for a flat list. */}
@@ -751,7 +868,9 @@ export function MaterialsClient({
                       )}
                     />
                     <FolderTree className="text-muted-foreground size-4 shrink-0" />
-                    <span className="min-w-0 flex-1 truncate font-medium">{path}</span>
+                    <span className="min-w-0 flex-1 truncate font-medium">
+                      {path}
+                    </span>
                     <Badge variant="secondary" className="shrink-0 text-[10px]">
                       {list.length} {list.length === 1 ? "item" : "items"}
                     </Badge>
@@ -767,13 +886,20 @@ export function MaterialsClient({
                             {m.number}
                           </span>
                           <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-medium">{m.title}</p>
+                            <p className="truncate text-sm font-medium">
+                              {m.title}
+                            </p>
                             <p className="text-muted-foreground truncate text-xs">
                               {m.courseTitles.join(", ") || "Any course"}
-                              {m.batchNames.length ? ` · ${m.batchNames.join(", ")}` : ""}
+                              {m.batchNames.length
+                                ? ` · ${m.batchNames.join(", ")}`
+                                : ""}
                             </p>
                           </div>
-                          <Badge variant="secondary" className="shrink-0 text-[10px]">
+                          <Badge
+                            variant="secondary"
+                            className="shrink-0 text-[10px]"
+                          >
                             {m.fileUrl || m.assets.length ? "File" : "Written"}
                           </Badge>
                           <Badge
@@ -825,7 +951,9 @@ export function MaterialsClient({
             <Select value={course} onValueChange={(v) => setCourse(String(v))}>
               <SelectTrigger className="w-full sm:w-56">
                 <SelectValue placeholder="Any course">
-                  {(v) => (!v || v === ALL ? "Any course" : courseLabel(String(v)))}
+                  {(v) =>
+                    !v || v === ALL ? "Any course" : courseLabel(String(v))
+                  }
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
@@ -840,7 +968,9 @@ export function MaterialsClient({
             <Select value={batch} onValueChange={(v) => setBatch(String(v))}>
               <SelectTrigger className="w-full sm:w-52">
                 <SelectValue placeholder="Any batch">
-                  {(v) => (!v || v === ALL ? "Any batch" : batchLabel(String(v)))}
+                  {(v) =>
+                    !v || v === ALL ? "Any batch" : batchLabel(String(v))
+                  }
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
@@ -852,11 +982,18 @@ export function MaterialsClient({
                 ))}
               </SelectContent>
             </Select>
-            <Select value={published} onValueChange={(v) => setPublished(String(v))}>
+            <Select
+              value={published}
+              onValueChange={(v) => setPublished(String(v))}
+            >
               <SelectTrigger className="w-full sm:w-36">
                 <SelectValue placeholder="Any status">
                   {(v) =>
-                    !v || v === ALL ? "Any status" : v === "yes" ? "Published" : "Draft"
+                    !v || v === ALL
+                      ? "Any status"
+                      : v === "yes"
+                        ? "Published"
+                        : "Draft"
                   }
                 </SelectValue>
               </SelectTrigger>
@@ -882,7 +1019,10 @@ export function MaterialsClient({
                 </>
               )}
             </Button>
-            <Select value={sort} onValueChange={(v) => setSort(String(v) as typeof sort)}>
+            <Select
+              value={sort}
+              onValueChange={(v) => setSort(String(v) as typeof sort)}
+            >
               <SelectTrigger className="w-full sm:w-44">
                 <SelectValue placeholder="Sort">
                   {(v) =>
@@ -910,10 +1050,12 @@ export function MaterialsClient({
       <Dialog open={form !== null} onOpenChange={(o) => !o && setForm(null)}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{form?.id ? "Edit material" : "Add material"}</DialogTitle>
+            <DialogTitle>
+              {form?.id ? "Edit material" : "Add material"}
+            </DialogTitle>
             <DialogDescription>
-              A document, a spreadsheet, a PDF — or reading written here, which learners can
-              highlight.
+              A document, a spreadsheet, a PDF — or reading written here, which
+              learners can highlight.
             </DialogDescription>
           </DialogHeader>
           {form && (
@@ -933,7 +1075,9 @@ export function MaterialsClient({
                   id="m-desc"
                   rows={2}
                   value={form.description}
-                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, description: e.target.value })
+                  }
                 />
               </div>
 
@@ -972,7 +1116,10 @@ export function MaterialsClient({
                 {form.assets.length > 0 && (
                   <ul className="divide-y rounded-lg border">
                     {form.assets.map((a, i) => (
-                      <li key={`${a.url}-${i}`} className="flex items-center gap-2 px-3 py-2">
+                      <li
+                        key={`${a.url}-${i}`}
+                        className="flex items-center gap-2 px-3 py-2"
+                      >
                         <span className="text-muted-foreground shrink-0">
                           {a.kind === "LINK" ? (
                             <LinkIcon className="size-4" />
@@ -993,7 +1140,10 @@ export function MaterialsClient({
                           {a.name || a.url}
                         </a>
                         {i === 0 && (
-                          <Badge variant="secondary" className="shrink-0 text-[10px]">
+                          <Badge
+                            variant="secondary"
+                            className="shrink-0 text-[10px]"
+                          >
                             Main
                           </Badge>
                         )}
@@ -1023,7 +1173,9 @@ export function MaterialsClient({
                       <Upload className="text-muted-foreground size-4" />
                     )}
                     <span className="text-muted-foreground">
-                      {uploading ? "Uploading…" : "Add files — documents, images or video"}
+                      {uploading
+                        ? "Uploading…"
+                        : "Add files — documents, images or video"}
                     </span>
                     <input
                       type="file"
@@ -1032,12 +1184,18 @@ export function MaterialsClient({
                       onChange={(e) => void upload(e.target.files)}
                     />
                   </label>
-                  <Button type="button" variant="outline" size="sm" onClick={addLink}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={addLink}
+                  >
                     <LinkIcon className="size-4" /> Add a link
                   </Button>
                 </div>
                 <p className="text-muted-foreground text-xs">
-                  The first one is what a learner downloads; the rest sit beneath it.
+                  The first one is what a learner downloads; the rest sit
+                  beneath it.
                 </p>
               </div>
 
@@ -1061,7 +1219,8 @@ export function MaterialsClient({
                   the same rule quizzes follow, and worth saying out loud. */}
               {form.courseIds.length === 0 && form.batchIds.length === 0 && (
                 <p className="rounded-xl border border-amber-300/60 bg-amber-50/60 p-3 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
-                  Pick a course or a batch — material with neither reaches no learners.
+                  Pick a course or a batch — material with neither reaches no
+                  learners.
                 </p>
               )}
 
@@ -1075,23 +1234,33 @@ export function MaterialsClient({
                   </div>
                   <Switch
                     checked={form.downloadsEnabled}
-                    onCheckedChange={(v) => setForm({ ...form, downloadsEnabled: Boolean(v) })}
+                    onCheckedChange={(v) =>
+                      setForm({ ...form, downloadsEnabled: Boolean(v) })
+                    }
                   />
                 </div>
                 <div className="flex items-center justify-between gap-3 rounded-xl border p-3">
                   <div className="min-w-0">
                     <p className="text-sm font-medium">Published</p>
-                    <p className="text-muted-foreground text-xs">Visible to its learners.</p>
+                    <p className="text-muted-foreground text-xs">
+                      Visible to its learners.
+                    </p>
                   </div>
                   <Switch
                     checked={form.isPublished}
-                    onCheckedChange={(v) => setForm({ ...form, isPublished: Boolean(v) })}
+                    onCheckedChange={(v) =>
+                      setForm({ ...form, isPublished: Boolean(v) })
+                    }
                   />
                 </div>
               </div>
 
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setForm(null)}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setForm(null)}
+                >
                   Cancel
                 </Button>
                 <Button type="submit" disabled={saving}>
@@ -1105,7 +1274,10 @@ export function MaterialsClient({
       </Dialog>
 
       {/* ── Who has read it ─────────────────────────────────────────────── */}
-      <Sheet open={readersOf !== null} onOpenChange={(o) => !o && setReadersOf(null)}>
+      <Sheet
+        open={readersOf !== null}
+        onOpenChange={(o) => !o && setReadersOf(null)}
+      >
         <SheetContent className="w-full overflow-y-auto sm:max-w-md">
           <SheetHeader>
             <SheetTitle>{readersOf?.title}</SheetTitle>
@@ -1120,13 +1292,17 @@ export function MaterialsClient({
               <li key={r.userId} className="flex items-center gap-3 py-3">
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{r.name}</p>
-                  <p className="text-muted-foreground truncate text-xs">{r.email}</p>
+                  <p className="text-muted-foreground truncate text-xs">
+                    {r.email}
+                  </p>
                 </div>
                 <div className="shrink-0 text-right">
                   <p className="text-sm tabular-nums">{readable(r.seconds)}</p>
                   <p className="text-muted-foreground text-xs">
                     {r.opens} open{r.opens === 1 ? "" : "s"}
-                    {r.downloads > 0 ? ` · ${r.downloads} download${r.downloads === 1 ? "" : "s"}` : ""}
+                    {r.downloads > 0
+                      ? ` · ${r.downloads} download${r.downloads === 1 ? "" : "s"}`
+                      : ""}
                   </p>
                 </div>
               </li>
@@ -1136,13 +1312,16 @@ export function MaterialsClient({
       </Sheet>
 
       {/* ── Delete ──────────────────────────────────────────────────────── */}
-      <Dialog open={deleting !== null} onOpenChange={(o) => !o && setDeleting(null)}>
+      <Dialog
+        open={deleting !== null}
+        onOpenChange={(o) => !o && setDeleting(null)}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Delete this material?</DialogTitle>
             <DialogDescription>
-              &ldquo;{deleting?.title}&rdquo; and every learner&apos;s reading record and
-              highlights on it go with it. This cannot be undone.
+              &ldquo;{deleting?.title}&rdquo; and every learner&apos;s reading
+              record and highlights on it go with it. This cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

@@ -41,7 +41,7 @@ export interface QuizListQuery {
   difficulty?: string;
   /** Scope to quizzes an instructor created or owns via the course. */
   ownerId?: string;
-  /** "sequence" (the academy's own order) or "recent". */
+  /** "sequence" (the academy's own order), "recent", or "attempts". */
   sort?: string;
 }
 
@@ -66,7 +66,11 @@ export async function listQuizzesAdmin(q: QuizListQuery) {
   const orderBy: Prisma.QuizOrderByWithRelationInput[] =
     q.sort === "recent"
       ? [{ updatedAt: "desc" }]
-      : [{ sequence: "asc" }, { createdAt: "asc" }];
+      : // Behind the Attempts card: the most-sat papers first, which is the
+        // question that number asks.
+        q.sort === "attempts"
+        ? [{ attempts: { _count: "desc" } }, { sequence: "asc" }]
+        : [{ sequence: "asc" }, { createdAt: "asc" }];
 
   const [total, rows] = await Promise.all([
     prisma.quiz.count({ where }),

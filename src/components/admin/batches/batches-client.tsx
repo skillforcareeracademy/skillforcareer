@@ -30,11 +30,11 @@ import {
 } from "@/lib/validations/batch";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
+import { StatCards, type StatCard } from "@/components/shared/stat-cards";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -470,24 +470,51 @@ export function BatchesClient({
     }
   }
 
-  const statCards = [
+  const statCards: StatCard[] = [
     {
       label: "Total batches",
       value: stats.total,
       icon: Layers,
       tone: "text-rose-500",
+      hint: "Every batch. Tap to clear the filters.",
+      active: !hasFilters,
+      onClick: () =>
+        setParams({
+          status: undefined,
+          course: undefined,
+          search: undefined,
+          createdFrom: undefined,
+          createdTo: undefined,
+          timeFrom: undefined,
+          timeTo: undefined,
+          page: 1,
+        }),
     },
     {
       label: "Upcoming",
       value: stats.upcoming,
       icon: CalendarClock,
       tone: "text-sky-500",
+      hint: "Batches that have not started yet.",
+      active: query.status === "UPCOMING",
+      onClick: () =>
+        setParams({
+          status: query.status === "UPCOMING" ? undefined : "UPCOMING",
+          page: 1,
+        }),
     },
     {
       label: "Ongoing",
       value: stats.ongoing,
       icon: Radio,
       tone: "text-emerald-500",
+      hint: "Batches running now.",
+      active: query.status === "ONGOING",
+      onClick: () =>
+        setParams({
+          status: query.status === "ONGOING" ? undefined : "ONGOING",
+          page: 1,
+        }),
     },
     {
       label: "Learners",
@@ -705,7 +732,9 @@ export function BatchesClient({
               {b.endDate ? ` – ${fmtDate(b.endDate)}` : ""}
             </span>
           )}
-          <span className="flex items-center gap-1">Created {fmtDate(b.createdAt)}</span>
+          <span className="flex items-center gap-1">
+            Created {fmtDate(b.createdAt)}
+          </span>
         </div>
 
         <div className="mt-3 flex items-center gap-3">
@@ -755,25 +784,10 @@ export function BatchesClient({
       />
 
       {/* Summary */}
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-        {statCards.map((s) => (
-          <Card key={s.label}>
-            <CardContent className="flex items-center gap-3 py-4">
-              <div className="bg-muted grid size-10 shrink-0 place-items-center rounded-lg">
-                <s.icon className={`size-5 ${s.tone}`} />
-              </div>
-              <div className="min-w-0">
-                <p className="text-2xl leading-none font-semibold tabular-nums">
-                  {s.value.toLocaleString("en-IN")}
-                </p>
-                <p className="text-muted-foreground mt-1 truncate text-xs">
-                  {s.label}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      <StatCards
+        cards={statCards}
+        className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4"
+      />
 
       <DataTable
         columns={columns}

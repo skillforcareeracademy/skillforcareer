@@ -28,6 +28,11 @@ export interface AssignmentListQuery {
   batchId?: string;
   /** Due-date window, as `yyyy-MM-dd` from a date input. */
   dueFrom?: string;
+  /**
+   * Only papers with work still to mark — what the "Needs grading" figure
+   * counts, so tapping it narrows to exactly those.
+   */
+  needsGrading?: boolean;
   dueTo?: string;
   type?: string;
   /** Scope to assignments in one instructor's courses. */
@@ -52,6 +57,9 @@ export async function listAssignmentsAdmin(q: AssignmentListQuery) {
   const to = dayEnd(q.dueTo);
   if (from || to) {
     and.push({ dueDate: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } });
+  }
+  if (q.needsGrading) {
+    and.push({ submissions: { some: { status: { in: ["SUBMITTED", "LATE"] } } } });
   }
   if (q.instructorId) and.push({ course: { instructorId: q.instructorId } });
   const where: Prisma.AssignmentWhereInput = and.length ? { AND: and } : {};

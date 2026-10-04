@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import type { ScheduleEvent, ScheduleEventType, ScheduleStats } from "@/server/services/schedule-service";
 import { PageHeader } from "@/components/shared/page-header";
+import { StatCards, type StatCard } from "@/components/shared/stat-cards";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -121,12 +122,31 @@ export function ScheduleClient({
     return groups;
   }, [filtered, selected]);
 
-  const statCards = [
-    { label: "This week", value: stats.thisWeek, icon: CalendarClock, tone: "text-rose-500" },
-    { label: "Live classes", value: stats.liveClasses, icon: Radio, tone: "text-emerald-500" },
-    { label: "Offline classes", value: stats.offlineClasses, icon: School, tone: "text-sky-500" },
-    { label: "Assignments due", value: stats.assignmentsDue, icon: ClipboardList, tone: "text-amber-500" },
-    { label: "Batches running", value: stats.batchesOngoing, icon: Layers, tone: "text-violet-500" },
+  const statCards: StatCard[] = [
+    { label: "This week", value: stats.thisWeek, icon: CalendarClock, tone: "text-rose-500",
+      hint: "Everything this week. Tap to show every kind.",
+      active: type === "all",
+      onClick: () => setType("all"),
+    },
+    { label: "Live classes", value: stats.liveClasses, icon: Radio, tone: "text-emerald-500",
+      hint: "Only the live classes.",
+      active: type === "LIVE",
+      onClick: () => setType(type === "LIVE" ? "all" : "LIVE"),
+    },
+    { label: "Offline classes", value: stats.offlineClasses, icon: School, tone: "text-sky-500",
+      hint: "Only the offline classes.",
+      active: type === "OFFLINE",
+      onClick: () => setType(type === "OFFLINE" ? "all" : "OFFLINE"),
+    },
+    { label: "Assignments due", value: stats.assignmentsDue, icon: ClipboardList, tone: "text-amber-500",
+      hint: "Only the assignments due.",
+      active: type === "ASSIGNMENT",
+      onClick: () => setType(type === "ASSIGNMENT" ? "all" : "ASSIGNMENT"),
+    },
+    { label: "Batches running", value: stats.batchesOngoing, icon: Layers, tone: "text-violet-500",
+      hint: "The batches running now.",
+      href: "/admin/batches?status=ONGOING",
+    },
   ];
 
   const dotClass =
@@ -156,23 +176,7 @@ export function ScheduleClient({
       />
 
       {/* Summary */}
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
-        {statCards.map((s) => (
-          <Card key={s.label}>
-            <CardContent className="flex items-center gap-3 py-4">
-              <div className="bg-muted grid size-10 shrink-0 place-items-center rounded-lg">
-                <s.icon className={`size-5 ${s.tone}`} />
-              </div>
-              <div className="min-w-0">
-                <p className="text-2xl font-semibold leading-none tabular-nums">
-                  {s.value.toLocaleString("en-IN")}
-                </p>
-                <p className="text-muted-foreground mt-1 truncate text-xs">{s.label}</p>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      <StatCards cards={statCards} className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5" />
 
       {batchProgress}
 

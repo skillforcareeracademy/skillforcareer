@@ -19,11 +19,11 @@ import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
+import { StatCards, type StatCard } from "@/components/shared/stat-cards";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -99,9 +99,11 @@ interface Query {
 }
 
 const STATUS_BADGE: Record<string, string> = {
-  PUBLISHED: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
+  PUBLISHED:
+    "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
   DRAFT: "bg-muted text-muted-foreground",
-  PENDING_REVIEW: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
+  PENDING_REVIEW:
+    "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
   ARCHIVED: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300",
 };
 const STATUS_OPTIONS = ["DRAFT", "PENDING_REVIEW", "PUBLISHED", "ARCHIVED"];
@@ -157,12 +159,12 @@ export function CoursesClient({
   const totalPages = Math.max(1, Math.ceil(total / query.pageSize));
   const hasFilters = Boolean(
     query.search ||
-      query.status ||
-      query.categoryId ||
-      query.deliveryMode ||
-      query.instructorId ||
-      query.from ||
-      query.to,
+    query.status ||
+    query.categoryId ||
+    query.deliveryMode ||
+    query.instructorId ||
+    query.from ||
+    query.to,
   );
 
   const setParams = useCallback(
@@ -186,7 +188,8 @@ export function CoursesClient({
       if (merged.instructor) p.set("instructor", String(merged.instructor));
       if (merged.from) p.set("from", String(merged.from));
       if (merged.to) p.set("to", String(merged.to));
-      if (merged.page && Number(merged.page) > 1) p.set("page", String(merged.page));
+      if (merged.page && Number(merged.page) > 1)
+        p.set("page", String(merged.page));
       const qs = p.toString();
       router.push(qs ? `${pathname}?${qs}` : pathname);
     },
@@ -218,7 +221,9 @@ export function CoursesClient({
       toast.success("Course created.");
       router.push(`${basePath}/${id}`);
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Couldn't create course.");
+      toast.error(
+        err instanceof ApiError ? err.message : "Couldn't create course.",
+      );
       setCreating(false);
     }
   }
@@ -246,16 +251,58 @@ export function CoursesClient({
     }
   }
 
-  const statCards = [
-    { label: "Total courses", value: stats.total, icon: BookOpen, tone: "text-rose-500" },
-    { label: "Published", value: stats.published, icon: Send, tone: "text-emerald-500" },
+  const statCards: StatCard[] = [
+    {
+      label: "Total courses",
+      value: stats.total,
+      icon: BookOpen,
+      tone: "text-rose-500",
+      hint: "Every course. Tap to clear the filters.",
+      active: !hasFilters,
+      onClick: () =>
+        setParams({
+          status: undefined,
+          category: undefined,
+          mode: undefined,
+          instructor: undefined,
+          search: undefined,
+          from: undefined,
+          to: undefined,
+          page: 1,
+        }),
+    },
+    {
+      label: "Published",
+      value: stats.published,
+      icon: Send,
+      tone: "text-emerald-500",
+      hint: "Courses learners can enrol on.",
+      active: query.status === "PUBLISHED",
+      onClick: () =>
+        setParams({
+          status: query.status === "PUBLISHED" ? undefined : "PUBLISHED",
+          page: 1,
+        }),
+    },
     {
       label: "Drafts & review",
       value: stats.draft + stats.pendingReview,
       icon: Pencil,
       tone: "text-amber-500",
+      hint: "Still being written, or waiting to be looked at.",
+      active: query.status === "DRAFT",
+      onClick: () =>
+        setParams({
+          status: query.status === "DRAFT" ? undefined : "DRAFT",
+          page: 1,
+        }),
     },
-    { label: "Enrolments", value: stats.enrollments, icon: Users, tone: "text-sky-500" },
+    {
+      label: "Enrolments",
+      value: stats.enrollments,
+      icon: Users,
+      tone: "text-sky-500",
+    },
   ];
 
   const columns: Column<CourseRow>[] = [
@@ -315,21 +362,36 @@ export function CoursesClient({
         </span>
       ),
     },
-    { key: "chapters", header: "Chapters", cell: (c) => c.chapters, className: "tabular-nums" },
-    { key: "enrollments", header: "Enrolments", cell: (c) => c.enrollments, className: "tabular-nums" },
+    {
+      key: "chapters",
+      header: "Chapters",
+      cell: (c) => c.chapters,
+      className: "tabular-nums",
+    },
+    {
+      key: "enrollments",
+      header: "Enrolments",
+      cell: (c) => c.enrollments,
+      className: "tabular-nums",
+    },
     {
       key: "price",
       header: "Price",
       className: "tabular-nums",
       cell: (c) =>
         c.pricingType === "FREE" ? (
-          <Badge variant="secondary" className="bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
+          <Badge
+            variant="secondary"
+            className="bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
+          >
             Free
           </Badge>
         ) : c.discountPrice != null ? (
           <div className="leading-tight">
             <span className="font-medium">{inr(c.discountPrice)}</span>{" "}
-            <span className="text-muted-foreground text-xs line-through">{inr(c.price)}</span>
+            <span className="text-muted-foreground text-xs line-through">
+              {inr(c.price)}
+            </span>
           </div>
         ) : (
           inr(c.price)
@@ -341,11 +403,16 @@ export function CoursesClient({
       headerClassName: "w-10",
       cell: (c) => (
         <DropdownMenu>
-          <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" />} aria-label="Actions">
+          <DropdownMenuTrigger
+            render={<Button variant="ghost" size="icon-sm" />}
+            aria-label="Actions"
+          >
             <MoreHorizontal className="size-4" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => router.push(`${basePath}/${c.id}`)}>
+            <DropdownMenuItem
+              onClick={() => router.push(`${basePath}/${c.id}`)}
+            >
               <Pencil className="size-4" /> Edit
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => togglePublish(c)}>
@@ -386,23 +453,10 @@ export function CoursesClient({
       />
 
       {/* Summary */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {statCards.map((s) => (
-          <Card key={s.label}>
-            <CardContent className="flex items-center gap-3 py-4">
-              <div className="bg-muted grid size-10 shrink-0 place-items-center rounded-lg">
-                <s.icon className={`size-5 ${s.tone}`} />
-              </div>
-              <div>
-                <p className="text-2xl font-semibold leading-none tabular-nums">
-                  {s.value.toLocaleString("en-IN")}
-                </p>
-                <p className="text-muted-foreground mt-1 text-xs">{s.label}</p>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      <StatCards
+        cards={statCards}
+        className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
+      />
 
       <DataTable
         columns={columns}
@@ -432,11 +486,15 @@ export function CoursesClient({
             </form>
             <Select
               value={query.status ?? ALL}
-              onValueChange={(v) => setParams({ status: !v || v === ALL ? undefined : v, page: 1 })}
+              onValueChange={(v) =>
+                setParams({ status: !v || v === ALL ? undefined : v, page: 1 })
+              }
             >
               <SelectTrigger className="w-40">
                 <SelectValue>
-                  {(v) => (!v || v === ALL ? "All statuses" : pretty(String(v)))}
+                  {(v) =>
+                    !v || v === ALL ? "All statuses" : pretty(String(v))
+                  }
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
@@ -450,7 +508,12 @@ export function CoursesClient({
             </Select>
             <Select
               value={query.categoryId ?? ALL}
-              onValueChange={(v) => setParams({ category: !v || v === ALL ? undefined : v, page: 1 })}
+              onValueChange={(v) =>
+                setParams({
+                  category: !v || v === ALL ? undefined : v,
+                  page: 1,
+                })
+              }
             >
               <SelectTrigger className="w-44">
                 <SelectValue>
@@ -474,12 +537,16 @@ export function CoursesClient({
                 them apart in this list. */}
             <Select
               value={query.deliveryMode ?? ALL}
-              onValueChange={(v) => setParams({ mode: !v || v === ALL ? undefined : v, page: 1 })}
+              onValueChange={(v) =>
+                setParams({ mode: !v || v === ALL ? undefined : v, page: 1 })
+              }
             >
               <SelectTrigger className="flex-1 sm:w-40">
                 <SelectValue>
                   {(v) =>
-                    !v || v === ALL ? "All types" : (DELIVERY_MODE_LABEL[String(v)] ?? "Type")
+                    !v || v === ALL
+                      ? "All types"
+                      : (DELIVERY_MODE_LABEL[String(v)] ?? "Type")
                   }
                 </SelectValue>
               </SelectTrigger>
@@ -496,7 +563,10 @@ export function CoursesClient({
               <Select
                 value={query.instructorId ?? ALL}
                 onValueChange={(v) =>
-                  setParams({ instructor: !v || v === ALL ? undefined : v, page: 1 })
+                  setParams({
+                    instructor: !v || v === ALL ? undefined : v,
+                    page: 1,
+                  })
                 }
               >
                 <SelectTrigger className="flex-1 sm:w-44">
@@ -504,7 +574,8 @@ export function CoursesClient({
                     {(v) =>
                       !v || v === ALL
                         ? "All instructors"
-                        : (instructors.find((i) => i.id === v)?.name ?? "Instructor")
+                        : (instructors.find((i) => i.id === v)?.name ??
+                          "Instructor")
                     }
                   </SelectValue>
                 </SelectTrigger>
@@ -523,7 +594,9 @@ export function CoursesClient({
                 type="date"
                 aria-label="Created from"
                 value={query.from ?? ""}
-                onChange={(e) => setParams({ from: e.target.value || undefined, page: 1 })}
+                onChange={(e) =>
+                  setParams({ from: e.target.value || undefined, page: 1 })
+                }
                 className="w-[9.5rem]"
               />
               <span className="text-muted-foreground text-xs">to</span>
@@ -531,12 +604,19 @@ export function CoursesClient({
                 type="date"
                 aria-label="Created to"
                 value={query.to ?? ""}
-                onChange={(e) => setParams({ to: e.target.value || undefined, page: 1 })}
+                onChange={(e) =>
+                  setParams({ to: e.target.value || undefined, page: 1 })
+                }
                 className="w-[9.5rem]"
               />
             </div>
             {hasFilters && (
-              <Button variant="ghost" size="sm" onClick={clearFilters} className="text-muted-foreground">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearFilters}
+                className="text-muted-foreground"
+              >
                 <X className="size-4" /> Clear
               </Button>
             )}
@@ -548,13 +628,23 @@ export function CoursesClient({
               {total} {total === 1 ? "course" : "courses"}
             </p>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" disabled={query.page <= 1} onClick={() => setParams({ page: query.page - 1 })}>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={query.page <= 1}
+                onClick={() => setParams({ page: query.page - 1 })}
+              >
                 Previous
               </Button>
               <span className="text-muted-foreground text-sm">
                 Page {query.page} of {totalPages}
               </span>
-              <Button variant="outline" size="sm" disabled={query.page >= totalPages} onClick={() => setParams({ page: query.page + 1 })}>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={query.page >= totalPages}
+                onClick={() => setParams({ page: query.page + 1 })}
+              >
                 Next
               </Button>
             </div>
@@ -583,10 +673,16 @@ export function CoursesClient({
             </div>
             <div className="space-y-1.5">
               <Label>Category</Label>
-              <Select value={newCategory} onValueChange={(v) => setNewCategory(v ?? "")}>
+              <Select
+                value={newCategory}
+                onValueChange={(v) => setNewCategory(v ?? "")}
+              >
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Choose a category">
-                    {(v) => categories.find((c) => c.id === v)?.name ?? "Choose a category"}
+                    {(v) =>
+                      categories.find((c) => c.id === v)?.name ??
+                      "Choose a category"
+                    }
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
@@ -599,10 +695,17 @@ export function CoursesClient({
               </Select>
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setCreateOpen(false)}
+              >
                 Cancel
               </Button>
-              <Button type="submit" disabled={creating || newTitle.length < 3 || !newCategory}>
+              <Button
+                type="submit"
+                disabled={creating || newTitle.length < 3 || !newCategory}
+              >
                 {creating && <Loader2 className="size-4 animate-spin" />}
                 Create &amp; edit
               </Button>
@@ -611,18 +714,24 @@ export function CoursesClient({
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>
+      <AlertDialog
+        open={!!deleting}
+        onOpenChange={(o) => !o && setDeleting(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete “{deleting?.title}”?</AlertDialogTitle>
             <AlertDialogDescription>
-              This permanently removes the course and its curriculum. Courses with
-              enrolments can&apos;t be deleted.
+              This permanently removes the course and its curriculum. Courses
+              with enrolments can&apos;t be deleted.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete} className="bg-destructive hover:bg-destructive/90 text-white">
+            <AlertDialogAction
+              onClick={confirmDelete}
+              className="bg-destructive hover:bg-destructive/90 text-white"
+            >
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>

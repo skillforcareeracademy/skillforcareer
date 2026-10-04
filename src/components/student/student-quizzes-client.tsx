@@ -14,9 +14,10 @@ import {
 import type { StudentQuiz } from "@/server/services/student-quiz-service";
 import { QUIZ_DIFFICULTY_LABEL } from "@/lib/validations/quiz";
 import { PageHeader } from "@/components/shared/page-header";
+import { StatCards, type StatCard } from "@/components/shared/stat-cards";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ButtonLink } from "@/components/shared/button-link";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { QuizBookmarkToggle } from "./quiz-bookmark-toggle";
@@ -28,43 +29,60 @@ export function StudentQuizzesClient({ quizzes }: { quizzes: StudentQuiz[] }) {
   /** Which quiz's attempts are open, if any. */
   const [historyFor, setHistoryFor] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  /** Behind the figures above: all, only sat, or only passed. */
+  const [only, setOnly] = useState<"all" | "attempted" | "passed">("all");
 
   // Searching cuts across every group; without one, the groups lead.
   const matches = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return quizzes;
-    return quizzes.filter(
+    const narrowed =
+      only === "attempted"
+        ? quizzes.filter((z) => z.attemptsUsed > 0)
+        : only === "passed"
+          ? quizzes.filter((z) => z.passed)
+          : quizzes;
+    if (!q) return narrowed;
+    return narrowed.filter(
       (z) =>
         z.title.toLowerCase().includes(q) ||
         (z.categoryName ?? "").toLowerCase().includes(q) ||
         (z.subCategoryName ?? "").toLowerCase().includes(q) ||
         (z.courseTitle ?? "").toLowerCase().includes(q),
     );
-  }, [quizzes, search]);
+  }, [quizzes, search, only]);
 
   const stats = {
     total: quizzes.length,
     attempted: quizzes.filter((q) => q.attemptsUsed > 0).length,
     passed: quizzes.filter((q) => q.passed).length,
   };
-  const statCards = [
+  const statCards: StatCard[] = [
     {
       label: "Quizzes",
       value: stats.total,
       icon: FileQuestion,
       tone: "text-rose-500",
+      hint: "Every quiz set for you. Tap to show them all.",
+      active: only === "all",
+      onClick: () => setOnly("all"),
     },
     {
       label: "Attempted",
       value: stats.attempted,
       icon: ListChecks,
       tone: "text-sky-500",
+      hint: "Quizzes you have sat at least once.",
+      active: only === "attempted",
+      onClick: () => setOnly(only === "attempted" ? "all" : "attempted"),
     },
     {
       label: "Passed",
       value: stats.passed,
       icon: Award,
       tone: "text-emerald-500",
+      hint: "Quizzes you have passed.",
+      active: only === "passed",
+      onClick: () => setOnly(only === "passed" ? "all" : "passed"),
     },
   ];
 
@@ -84,25 +102,10 @@ export function StudentQuizzesClient({ quizzes }: { quizzes: StudentQuiz[] }) {
         />
       ) : (
         <>
-          <div className="grid grid-cols-3 gap-3 sm:gap-4">
-            {statCards.map((s) => (
-              <Card key={s.label}>
-                <CardContent className="flex items-center gap-3 py-4">
-                  <div className="bg-muted grid size-10 shrink-0 place-items-center rounded-lg">
-                    <s.icon className={`size-5 ${s.tone}`} />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-2xl leading-none font-semibold tabular-nums">
-                      {s.value}
-                    </p>
-                    <p className="text-muted-foreground mt-1 truncate text-xs">
-                      {s.label}
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+          <StatCards
+            cards={statCards}
+            className="grid grid-cols-3 gap-3 sm:gap-4"
+          />
 
           <div className="relative max-w-sm">
             <Search className="text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2" />

@@ -18,15 +18,19 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
-import { COUPON_TYPES, COUPON_TYPE_LABELS, type CouponType } from "@/lib/validations/coupon";
+import {
+  COUPON_TYPES,
+  COUPON_TYPE_LABELS,
+  type CouponType,
+} from "@/lib/validations/coupon";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
+import { StatCards, type StatCard } from "@/components/shared/stat-cards";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -112,7 +116,9 @@ const blankForm = {
 type FormState = typeof blankForm;
 
 function discountLabel(c: CouponRow): string {
-  return c.type === "PERCENTAGE" ? `${c.value}% off` : `₹${c.value.toLocaleString("en-IN")} off`;
+  return c.type === "PERCENTAGE"
+    ? `${c.value}% off`
+    : `₹${c.value.toLocaleString("en-IN")} off`;
 }
 
 export function CouponsClient({
@@ -142,11 +148,17 @@ export function CouponsClient({
 
   const setParams = useCallback(
     (next: Record<string, string | number | undefined>) => {
-      const merged = { search: query.search, status: query.status, page: query.page, ...next };
+      const merged = {
+        search: query.search,
+        status: query.status,
+        page: query.page,
+        ...next,
+      };
       const p = new URLSearchParams();
       if (merged.search) p.set("search", String(merged.search));
       if (merged.status) p.set("status", String(merged.status));
-      if (merged.page && Number(merged.page) > 1) p.set("page", String(merged.page));
+      if (merged.page && Number(merged.page) > 1)
+        p.set("page", String(merged.page));
       const qs = p.toString();
       router.push(qs ? `${pathname}?${qs}` : pathname);
     },
@@ -201,8 +213,14 @@ export function CouponsClient({
       setDialogOpen(false);
       router.refresh();
     } catch (err) {
-      const d = err instanceof ApiError ? (err.details as { issues?: { message: string }[] }) : undefined;
-      toast.error(d?.issues?.[0]?.message ?? (err instanceof ApiError ? err.message : "Couldn't save."));
+      const d =
+        err instanceof ApiError
+          ? (err.details as { issues?: { message: string }[] })
+          : undefined;
+      toast.error(
+        d?.issues?.[0]?.message ??
+          (err instanceof ApiError ? err.message : "Couldn't save."),
+      );
     } finally {
       setSaving(false);
     }
@@ -230,27 +248,70 @@ export function CouponsClient({
     }
   }
 
-  const statCards = [
-    { label: "Coupons", value: stats.total, icon: Ticket, tone: "text-rose-500" },
-    { label: "Active", value: stats.active, icon: Power, tone: "text-emerald-500" },
-    { label: "Redemptions", value: stats.redemptions, icon: BadgePercent, tone: "text-violet-500" },
+  const statCards: StatCard[] = [
+    {
+      label: "Coupons",
+      value: stats.total,
+      icon: Ticket,
+      tone: "text-rose-500",
+      hint: "Every coupon. Tap to clear the filters.",
+      active: !hasFilters,
+      onClick: () =>
+        setParams({
+          status: undefined,
+          search: undefined,
+          page: 1,
+        }),
+    },
+    {
+      label: "Active",
+      value: stats.active,
+      icon: Power,
+      tone: "text-emerald-500",
+      hint: "Coupons that can be used right now.",
+      active: query.status === "ACTIVE",
+      onClick: () =>
+        setParams({
+          status: query.status === "ACTIVE" ? undefined : "ACTIVE",
+          page: 1,
+        }),
+    },
+    {
+      label: "Redemptions",
+      value: stats.redemptions,
+      icon: BadgePercent,
+      tone: "text-violet-500",
+    },
   ];
 
   function statusBadge(c: CouponRow) {
-    if (c.isExpired) return <Badge variant="secondary" className="bg-muted text-muted-foreground">Expired</Badge>;
+    if (c.isExpired)
+      return (
+        <Badge variant="secondary" className="bg-muted text-muted-foreground">
+          Expired
+        </Badge>
+      );
     return c.isActive ? (
-      <Badge variant="secondary" className="bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
+      <Badge
+        variant="secondary"
+        className="bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
+      >
         Active
       </Badge>
     ) : (
-      <Badge variant="secondary" className="bg-muted text-muted-foreground">Inactive</Badge>
+      <Badge variant="secondary" className="bg-muted text-muted-foreground">
+        Inactive
+      </Badge>
     );
   }
 
   function rowActions(c: CouponRow) {
     return (
       <DropdownMenu>
-        <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" />} aria-label="Actions">
+        <DropdownMenuTrigger
+          render={<Button variant="ghost" size="icon-sm" />}
+          aria-label="Actions"
+        >
           <MoreHorizontal className="size-4" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
@@ -258,10 +319,17 @@ export function CouponsClient({
             <Pencil className="size-4" /> Edit
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => toggle(c)}>
-            {c.isActive ? <PowerOff className="size-4" /> : <Power className="size-4" />}
+            {c.isActive ? (
+              <PowerOff className="size-4" />
+            ) : (
+              <Power className="size-4" />
+            )}
             {c.isActive ? "Deactivate" : "Activate"}
           </DropdownMenuItem>
-          <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setDeleting(c)}>
+          <DropdownMenuItem
+            className="text-destructive focus:text-destructive"
+            onClick={() => setDeleting(c)}
+          >
             <Trash2 className="size-4" /> Delete
           </DropdownMenuItem>
         </DropdownMenuContent>
@@ -276,7 +344,11 @@ export function CouponsClient({
       cell: (c) => (
         <div className="min-w-0">
           <span className="flex items-center gap-1.5">
-            <button type="button" onClick={() => openEdit(c)} className="hover:text-primary font-mono font-semibold">
+            <button
+              type="button"
+              onClick={() => openEdit(c)}
+              className="hover:text-primary font-mono font-semibold"
+            >
               {c.code}
             </button>
             {c.showInBanner && (
@@ -294,7 +366,13 @@ export function CouponsClient({
         </div>
       ),
     },
-    { key: "discount", header: "Discount", cell: (c) => <span className="text-sm font-medium">{discountLabel(c)}</span> },
+    {
+      key: "discount",
+      header: "Discount",
+      cell: (c) => (
+        <span className="text-sm font-medium">{discountLabel(c)}</span>
+      ),
+    },
     {
       key: "usage",
       header: "Used",
@@ -316,16 +394,27 @@ export function CouponsClient({
       ),
     },
     { key: "status", header: "Status", cell: statusBadge },
-    { key: "actions", header: <span className="sr-only">Actions</span>, headerClassName: "w-10", cell: rowActions },
+    {
+      key: "actions",
+      header: <span className="sr-only">Actions</span>,
+      headerClassName: "w-10",
+      cell: rowActions,
+    },
   ];
 
   function renderCard(c: CouponRow) {
     return (
       <div className="rounded-xl border p-4">
         <div className="flex items-start justify-between gap-2">
-          <button type="button" onClick={() => openEdit(c)} className="min-w-0 text-left">
+          <button
+            type="button"
+            onClick={() => openEdit(c)}
+            className="min-w-0 text-left"
+          >
             <p className="font-mono font-semibold">{c.code}</p>
-            <p className="text-muted-foreground truncate text-xs">{c.courseTitle ?? "All courses"}</p>
+            <p className="text-muted-foreground truncate text-xs">
+              {c.courseTitle ?? "All courses"}
+            </p>
           </button>
           {rowActions(c)}
         </div>
@@ -355,21 +444,10 @@ export function CouponsClient({
         }
       />
 
-      <div className="grid grid-cols-3 gap-3 sm:gap-4">
-        {statCards.map((s) => (
-          <Card key={s.label}>
-            <CardContent className="flex items-center gap-3 py-4">
-              <div className="bg-muted grid size-10 shrink-0 place-items-center rounded-lg">
-                <s.icon className={`size-5 ${s.tone}`} />
-              </div>
-              <div className="min-w-0">
-                <p className="text-2xl font-semibold leading-none tabular-nums">{s.value}</p>
-                <p className="text-muted-foreground mt-1 truncate text-xs">{s.label}</p>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      <StatCards
+        cards={statCards}
+        className="grid grid-cols-3 gap-3 sm:gap-4"
+      />
 
       <DataTable
         data={coupons}
@@ -381,13 +459,39 @@ export function CouponsClient({
         emptyDescription="Create a discount code to offer on the website or in payments."
         toolbar={
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <form onSubmit={(e) => { e.preventDefault(); setParams({ search: search || undefined, page: 1 }); }} className="relative flex-1">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                setParams({ search: search || undefined, page: 1 });
+              }}
+              className="relative flex-1"
+            >
               <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
-              <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search code…" className="pl-9" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search code…"
+                className="pl-9"
+              />
             </form>
-            <Select value={query.status ?? ALL} onValueChange={(v) => setParams({ status: !v || v === ALL ? undefined : v, page: 1 })}>
+            <Select
+              value={query.status ?? ALL}
+              onValueChange={(v) =>
+                setParams({ status: !v || v === ALL ? undefined : v, page: 1 })
+              }
+            >
               <SelectTrigger className="w-full sm:w-40">
-                <SelectValue>{(v) => (!v || v === ALL ? "All statuses" : v === "ACTIVE" ? "Active" : v === "INACTIVE" ? "Inactive" : "Expired")}</SelectValue>
+                <SelectValue>
+                  {(v) =>
+                    !v || v === ALL
+                      ? "All statuses"
+                      : v === "ACTIVE"
+                        ? "Active"
+                        : v === "INACTIVE"
+                          ? "Inactive"
+                          : "Expired"
+                  }
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={ALL}>All statuses</SelectItem>
@@ -397,7 +501,13 @@ export function CouponsClient({
               </SelectContent>
             </Select>
             {hasFilters && (
-              <Button variant="ghost" onClick={() => { setSearch(""); setParams({ search: undefined, status: undefined, page: 1 }); }}>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setSearch("");
+                  setParams({ search: undefined, status: undefined, page: 1 });
+                }}
+              >
                 Clear
               </Button>
             )}
@@ -405,11 +515,29 @@ export function CouponsClient({
         }
         footer={
           <div className="flex items-center justify-between">
-            <span className="text-muted-foreground text-sm">{total} coupons</span>
+            <span className="text-muted-foreground text-sm">
+              {total} coupons
+            </span>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" disabled={query.page <= 1} onClick={() => setParams({ page: query.page - 1 })}>Previous</Button>
-              <span className="text-muted-foreground text-sm">Page {query.page} of {totalPages}</span>
-              <Button variant="outline" size="sm" disabled={query.page >= totalPages} onClick={() => setParams({ page: query.page + 1 })}>Next</Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={query.page <= 1}
+                onClick={() => setParams({ page: query.page - 1 })}
+              >
+                Previous
+              </Button>
+              <span className="text-muted-foreground text-sm">
+                Page {query.page} of {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={query.page >= totalPages}
+                onClick={() => setParams({ page: query.page + 1 })}
+              >
+                Next
+              </Button>
             </div>
           </div>
         }
@@ -420,72 +548,176 @@ export function CouponsClient({
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{editing ? "Edit coupon" : "New coupon"}</DialogTitle>
-            <DialogDescription>Set the discount, limits and validity.</DialogDescription>
+            <DialogDescription>
+              Set the discount, limits and validity.
+            </DialogDescription>
           </DialogHeader>
           <form onSubmit={onSave} className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="c-code">Code</Label>
-                <Input id="c-code" value={form.code} onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))} placeholder="WELCOME20" className="font-mono" />
+                <Input
+                  id="c-code"
+                  value={form.code}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      code: e.target.value.toUpperCase(),
+                    }))
+                  }
+                  placeholder="WELCOME20"
+                  className="font-mono"
+                />
               </div>
               <div className="space-y-1.5">
                 <Label>Type</Label>
-                <Select value={form.type} onValueChange={(v) => setForm((f) => ({ ...f, type: (v as CouponType) ?? "PERCENTAGE" }))}>
-                  <SelectTrigger className="w-full"><SelectValue>{(v) => COUPON_TYPE_LABELS[(v as CouponType) ?? "PERCENTAGE"]}</SelectValue></SelectTrigger>
+                <Select
+                  value={form.type}
+                  onValueChange={(v) =>
+                    setForm((f) => ({
+                      ...f,
+                      type: (v as CouponType) ?? "PERCENTAGE",
+                    }))
+                  }
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue>
+                      {(v) =>
+                        COUPON_TYPE_LABELS[(v as CouponType) ?? "PERCENTAGE"]
+                      }
+                    </SelectValue>
+                  </SelectTrigger>
                   <SelectContent>
-                    {COUPON_TYPES.map((t) => <SelectItem key={t} value={t}>{COUPON_TYPE_LABELS[t]}</SelectItem>)}
+                    {COUPON_TYPES.map((t) => (
+                      <SelectItem key={t} value={t}>
+                        {COUPON_TYPE_LABELS[t]}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <Label htmlFor="c-value">{form.type === "PERCENTAGE" ? "Percent off" : "Amount off (₹)"}</Label>
-                <Input id="c-value" type="number" value={form.value} onChange={(e) => setForm((f) => ({ ...f, value: e.target.value }))} placeholder={form.type === "PERCENTAGE" ? "20" : "500"} />
+                <Label htmlFor="c-value">
+                  {form.type === "PERCENTAGE"
+                    ? "Percent off"
+                    : "Amount off (₹)"}
+                </Label>
+                <Input
+                  id="c-value"
+                  type="number"
+                  value={form.value}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, value: e.target.value }))
+                  }
+                  placeholder={form.type === "PERCENTAGE" ? "20" : "500"}
+                />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="c-maxdisc">Max discount ₹ (optional)</Label>
-                <Input id="c-maxdisc" type="number" value={form.maxDiscount} onChange={(e) => setForm((f) => ({ ...f, maxDiscount: e.target.value }))} placeholder="e.g. 2000" disabled={form.type === "FIXED"} />
+                <Input
+                  id="c-maxdisc"
+                  type="number"
+                  value={form.maxDiscount}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, maxDiscount: e.target.value }))
+                  }
+                  placeholder="e.g. 2000"
+                  disabled={form.type === "FIXED"}
+                />
               </div>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="c-min">Min order ₹ (optional)</Label>
-                <Input id="c-min" type="number" value={form.minAmount} onChange={(e) => setForm((f) => ({ ...f, minAmount: e.target.value }))} />
+                <Input
+                  id="c-min"
+                  type="number"
+                  value={form.minAmount}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, minAmount: e.target.value }))
+                  }
+                />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="c-uses">Max uses (optional)</Label>
-                <Input id="c-uses" type="number" value={form.maxUses} onChange={(e) => setForm((f) => ({ ...f, maxUses: e.target.value }))} placeholder="Unlimited" />
+                <Input
+                  id="c-uses"
+                  type="number"
+                  value={form.maxUses}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, maxUses: e.target.value }))
+                  }
+                  placeholder="Unlimited"
+                />
               </div>
             </div>
             <div className="space-y-1.5">
               <Label>Applies to</Label>
-              <Select value={form.courseId || NONE} onValueChange={(v) => setForm((f) => ({ ...f, courseId: v === NONE ? "" : (v ?? "") }))}>
+              <Select
+                value={form.courseId || NONE}
+                onValueChange={(v) =>
+                  setForm((f) => ({
+                    ...f,
+                    courseId: v === NONE ? "" : (v ?? ""),
+                  }))
+                }
+              >
                 <SelectTrigger className="w-full">
-                  <SelectValue>{(v) => (!v || v === NONE ? "All courses" : (courses.find((c) => c.id === v)?.title ?? "Course"))}</SelectValue>
+                  <SelectValue>
+                    {(v) =>
+                      !v || v === NONE
+                        ? "All courses"
+                        : (courses.find((c) => c.id === v)?.title ?? "Course")
+                    }
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={NONE}>All courses</SelectItem>
-                  {courses.map((c) => <SelectItem key={c.id} value={c.id}>{c.title}</SelectItem>)}
+                  {courses.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.title}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="c-start">Starts (optional)</Label>
-                <Input id="c-start" type="date" value={form.startsAt} onChange={(e) => setForm((f) => ({ ...f, startsAt: e.target.value }))} />
+                <Input
+                  id="c-start"
+                  type="date"
+                  value={form.startsAt}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, startsAt: e.target.value }))
+                  }
+                />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="c-exp">Expires (optional)</Label>
-                <Input id="c-exp" type="date" value={form.expiresAt} onChange={(e) => setForm((f) => ({ ...f, expiresAt: e.target.value }))} />
+                <Input
+                  id="c-exp"
+                  type="date"
+                  value={form.expiresAt}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, expiresAt: e.target.value }))
+                  }
+                />
               </div>
             </div>
             <div className="flex items-center justify-between rounded-lg border p-3">
               <div>
                 <p className="text-sm font-medium">Active</p>
-                <p className="text-muted-foreground text-xs">Inactive coupons can&apos;t be redeemed.</p>
+                <p className="text-muted-foreground text-xs">
+                  Inactive coupons can&apos;t be redeemed.
+                </p>
               </div>
-              <Switch checked={form.isActive} onCheckedChange={(v) => setForm((f) => ({ ...f, isActive: v }))} />
+              <Switch
+                checked={form.isActive}
+                onCheckedChange={(v) => setForm((f) => ({ ...f, isActive: v }))}
+              />
             </div>
 
             {/* Promotion — what the public announcement bar shows. */}
@@ -494,13 +726,15 @@ export function CouponsClient({
                 <div>
                   <p className="text-sm font-medium">Show in site banner</p>
                   <p className="text-muted-foreground text-xs">
-                    Advertises this code in the strip at the top of the public site, until it
-                    expires or is used up.
+                    Advertises this code in the strip at the top of the public
+                    site, until it expires or is used up.
                   </p>
                 </div>
                 <Switch
                   checked={form.showInBanner}
-                  onCheckedChange={(v) => setForm((f) => ({ ...f, showInBanner: v }))}
+                  onCheckedChange={(v) =>
+                    setForm((f) => ({ ...f, showInBanner: v }))
+                  }
                 />
               </div>
 
@@ -510,12 +744,15 @@ export function CouponsClient({
                   <Input
                     id="c-banner"
                     value={form.bannerText}
-                    onChange={(e) => setForm((f) => ({ ...f, bannerText: e.target.value }))}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, bannerText: e.target.value }))
+                    }
                     placeholder="New year, new skills"
                     maxLength={120}
                   />
                   <p className="text-muted-foreground text-xs">
-                    Shown before the discount, e.g. &ldquo;New year, new skills —{" "}
+                    Shown before the discount, e.g. &ldquo;New year, new skills
+                    —{" "}
                     {form.type === "PERCENTAGE"
                       ? `${form.value || "40"}% off`
                       : `₹${form.value || "500"} off`}
@@ -525,7 +762,13 @@ export function CouponsClient({
               )}
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setDialogOpen(false)}
+              >
+                Cancel
+              </Button>
               <Button type="submit" disabled={saving || !canSave}>
                 {saving && <Loader2 className="size-4 animate-spin" />}
                 {editing ? "Save" : "Create"}
@@ -535,15 +778,22 @@ export function CouponsClient({
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={deleting != null} onOpenChange={(o) => !o && setDeleting(null)}>
+      <AlertDialog
+        open={deleting != null}
+        onOpenChange={(o) => !o && setDeleting(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete coupon {deleting?.code}?</AlertDialogTitle>
-            <AlertDialogDescription>This can&apos;t be undone.</AlertDialogDescription>
+            <AlertDialogDescription>
+              This can&apos;t be undone.
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete}>Delete</AlertDialogAction>
+            <AlertDialogAction onClick={confirmDelete}>
+              Delete
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

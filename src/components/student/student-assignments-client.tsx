@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
 import type { StudentAssignment } from "@/server/services/student-assignment-service";
 import { PageHeader } from "@/components/shared/page-header";
+import { StatCards, type StatCard } from "@/components/shared/stat-cards";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ButtonLink } from "@/components/shared/button-link";
 import { Button } from "@/components/ui/button";
@@ -25,7 +26,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -41,30 +42,108 @@ type A = StudentAssignment;
 
 function statusOf(a: A): { label: string; cls: string } {
   const s = a.submission;
-  if (s?.status === "GRADED") return { label: "Graded", cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300" };
-  if (s?.status === "RESUBMIT_REQUESTED") return { label: "Resubmit", cls: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300" };
-  if (s?.status === "LATE") return { label: "Submitted late", cls: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300" };
-  if (s?.status === "SUBMITTED") return { label: "Submitted", cls: "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300" };
-  if (a.isOverdue && !a.allowLate) return { label: "Missed", cls: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300" };
+  if (s?.status === "GRADED")
+    return {
+      label: "Graded",
+      cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
+    };
+  if (s?.status === "RESUBMIT_REQUESTED")
+    return {
+      label: "Resubmit",
+      cls: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
+    };
+  if (s?.status === "LATE")
+    return {
+      label: "Submitted late",
+      cls: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
+    };
+  if (s?.status === "SUBMITTED")
+    return {
+      label: "Submitted",
+      cls: "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300",
+    };
+  if (a.isOverdue && !a.allowLate)
+    return {
+      label: "Missed",
+      cls: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300",
+    };
   return { label: "Not submitted", cls: "bg-muted text-muted-foreground" };
 }
 
-export function StudentAssignmentsClient({ assignments }: { assignments: A[] }) {
+export function StudentAssignmentsClient({
+  assignments,
+}: {
+  assignments: A[];
+}) {
   const [active, setActive] = useState<A | null>(null);
   /** Which assignment's attempts are open, if any. */
   const [historyFor, setHistoryFor] = useState<string | null>(null);
+  /** Behind the figures above: all, still to do, sent, or marked. */
+  const [only, setOnly] = useState<"all" | "todo" | "submitted" | "graded">(
+    "all",
+  );
 
   const stats = {
     total: assignments.length,
-    submitted: assignments.filter((a) => a.submission && a.submission.status !== "GRADED").length,
+    submitted: assignments.filter(
+      (a) => a.submission && a.submission.status !== "GRADED",
+    ).length,
     graded: assignments.filter((a) => a.submission?.status === "GRADED").length,
-    todo: assignments.filter((a) => !a.submission && !(a.isOverdue && !a.allowLate)).length,
+    todo: assignments.filter(
+      (a) => !a.submission && !(a.isOverdue && !a.allowLate),
+    ).length,
   };
-  const statCards = [
-    { label: "Assignments", value: stats.total, icon: ClipboardList, tone: "text-rose-500" },
-    { label: "To do", value: stats.todo, icon: Hourglass, tone: "text-amber-500" },
-    { label: "Submitted", value: stats.submitted, icon: CheckCircle2, tone: "text-sky-500" },
-    { label: "Graded", value: stats.graded, icon: Award, tone: "text-emerald-500" },
+  /** The list the figures narrow to. */
+  const shown =
+    only === "todo"
+      ? assignments.filter(
+          (a) => !a.submission && !(a.isOverdue && !a.allowLate),
+        )
+      : only === "submitted"
+        ? assignments.filter(
+            (a) => a.submission && a.submission.status !== "GRADED",
+          )
+        : only === "graded"
+          ? assignments.filter((a) => a.submission?.status === "GRADED")
+          : assignments;
+
+  const statCards: StatCard[] = [
+    {
+      label: "Assignments",
+      value: stats.total,
+      icon: ClipboardList,
+      tone: "text-rose-500",
+      hint: "Everything set for you. Tap to show them all.",
+      active: only === "all",
+      onClick: () => setOnly("all"),
+    },
+    {
+      label: "To do",
+      value: stats.todo,
+      icon: Hourglass,
+      tone: "text-amber-500",
+      hint: "Not sent yet.",
+      active: only === "todo",
+      onClick: () => setOnly(only === "todo" ? "all" : "todo"),
+    },
+    {
+      label: "Submitted",
+      value: stats.submitted,
+      icon: CheckCircle2,
+      tone: "text-sky-500",
+      hint: "Sent, waiting to be marked.",
+      active: only === "submitted",
+      onClick: () => setOnly(only === "submitted" ? "all" : "submitted"),
+    },
+    {
+      label: "Graded",
+      value: stats.graded,
+      icon: Award,
+      tone: "text-emerald-500",
+      hint: "Marked and returned.",
+      active: only === "graded",
+      onClick: () => setOnly(only === "graded" ? "all" : "graded"),
+    },
   ];
 
   return (
@@ -83,24 +162,13 @@ export function StudentAssignmentsClient({ assignments }: { assignments: A[] }) 
         />
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-            {statCards.map((s) => (
-              <Card key={s.label}>
-                <CardContent className="flex items-center gap-3 py-4">
-                  <div className="bg-muted grid size-10 shrink-0 place-items-center rounded-lg">
-                    <s.icon className={`size-5 ${s.tone}`} />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-2xl font-semibold leading-none tabular-nums">{s.value}</p>
-                    <p className="text-muted-foreground mt-1 truncate text-xs">{s.label}</p>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+          <StatCards
+            cards={statCards}
+            className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4"
+          />
 
           <div className="grid gap-4 lg:grid-cols-2">
-            {assignments.map((a) => {
+            {shown.map((a) => {
               const st = statusOf(a);
               const graded = a.submission?.status === "GRADED";
               return (
@@ -108,17 +176,29 @@ export function StudentAssignmentsClient({ assignments }: { assignments: A[] }) 
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <h3 className="font-semibold">{a.title}</h3>
-                      <p className="text-muted-foreground truncate text-xs">{a.courseTitle}</p>
+                      <p className="text-muted-foreground truncate text-xs">
+                        {a.courseTitle}
+                      </p>
                     </div>
-                    <Badge variant="secondary" className={cn("shrink-0", st.cls)}>
+                    <Badge
+                      variant="secondary"
+                      className={cn("shrink-0", st.cls)}
+                    >
                       {st.label}
                     </Badge>
                   </div>
 
                   <div className="text-muted-foreground mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-                    <span className={cn("flex items-center gap-1", a.isOverdue && !a.submission && "text-rose-600")}>
+                    <span
+                      className={cn(
+                        "flex items-center gap-1",
+                        a.isOverdue && !a.submission && "text-rose-600",
+                      )}
+                    >
                       <CalendarClock className="size-3.5" />
-                      {a.dueDate ? `Due ${format(new Date(a.dueDate), "d MMM yyyy")}` : "No due date"}
+                      {a.dueDate
+                        ? `Due ${format(new Date(a.dueDate), "d MMM yyyy")}`
+                        : "No due date"}
                     </span>
                     <span className="flex items-center gap-1">
                       <Award className="size-3.5" /> {a.maxScore} pts
@@ -131,7 +211,9 @@ export function StudentAssignmentsClient({ assignments }: { assignments: A[] }) 
                         Score: {a.submission!.score}/{a.maxScore}
                       </p>
                       {a.submission!.feedback && (
-                        <p className="text-muted-foreground mt-1 text-xs">{a.submission!.feedback}</p>
+                        <p className="text-muted-foreground mt-1 text-xs">
+                          {a.submission!.feedback}
+                        </p>
                       )}
                     </div>
                   )}
@@ -142,7 +224,11 @@ export function StudentAssignmentsClient({ assignments }: { assignments: A[] }) 
                       size="sm"
                       onClick={() => setActive(a)}
                     >
-                      {graded ? "View" : a.submission ? "View / resubmit" : "Submit"}
+                      {graded
+                        ? "View"
+                        : a.submission
+                          ? "View / resubmit"
+                          : "Submit"}
                     </Button>
                     {/* Every time this was sent, not just the last one. */}
                     {a.submission && (
@@ -162,7 +248,10 @@ export function StudentAssignmentsClient({ assignments }: { assignments: A[] }) 
         </>
       )}
 
-      <SubmitDialog assignment={active} onOpenChange={(o) => !o && setActive(null)} />
+      <SubmitDialog
+        assignment={active}
+        onOpenChange={(o) => !o && setActive(null)}
+      />
 
       <AttemptHistorySheet
         open={historyFor !== null}
@@ -281,9 +370,11 @@ function SubmitDialog({
         {assignment.instructions && (
           <div className="rounded-xl border p-3">
             <p className="mb-1 flex items-center gap-1.5 text-sm font-medium">
-              <FileText className="size-4 text-muted-foreground" /> Instructions
+              <FileText className="text-muted-foreground size-4" /> Instructions
             </p>
-            <p className="text-muted-foreground text-sm whitespace-pre-wrap">{assignment.instructions}</p>
+            <p className="text-muted-foreground text-sm whitespace-pre-wrap">
+              {assignment.instructions}
+            </p>
           </div>
         )}
 
@@ -293,7 +384,9 @@ function SubmitDialog({
               Graded: {assignment.submission!.score}/{assignment.maxScore}
             </p>
             {assignment.submission!.feedback && (
-              <p className="text-muted-foreground mt-1 text-sm">{assignment.submission!.feedback}</p>
+              <p className="text-muted-foreground mt-1 text-sm">
+                {assignment.submission!.feedback}
+              </p>
             )}
           </div>
         )}
@@ -323,7 +416,11 @@ function SubmitDialog({
                             }
                           >
                             <input
-                              type={q.type === "MULTIPLE_CHOICE" ? "checkbox" : "radio"}
+                              type={
+                                q.type === "MULTIPLE_CHOICE"
+                                  ? "checkbox"
+                                  : "radio"
+                              }
                               name={`q-${q.id}`}
                               checked={on}
                               onChange={() => choose(q, o.id)}
@@ -341,7 +438,10 @@ function SubmitDialog({
                       rows={4}
                       value={written[q.id] ?? ""}
                       onChange={(e) =>
-                        setWritten((prev) => ({ ...prev, [q.id]: e.target.value }))
+                        setWritten((prev) => ({
+                          ...prev,
+                          [q.id]: e.target.value,
+                        }))
                       }
                       placeholder="Write your answer…"
                       disabled={locked}
@@ -374,21 +474,31 @@ function SubmitDialog({
               disabled={locked}
             />
             {fileUrl && locked && (
-              <a href={fileUrl} target="_blank" rel="noopener" className="text-primary inline-flex items-center gap-1 text-xs hover:underline">
+              <a
+                href={fileUrl}
+                target="_blank"
+                rel="noopener"
+                className="text-primary inline-flex items-center gap-1 text-xs hover:underline"
+              >
                 <ExternalLink className="size-3.5" /> Open submitted link
               </a>
             )}
           </div>
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+            >
               Close
             </Button>
             {!locked && (
               <Button
                 type="submit"
                 disabled={
-                  saving || (isPaper ? !paperComplete : content.trim().length === 0)
+                  saving ||
+                  (isPaper ? !paperComplete : content.trim().length === 0)
                 }
               >
                 {saving && <Loader2 className="size-4 animate-spin" />}

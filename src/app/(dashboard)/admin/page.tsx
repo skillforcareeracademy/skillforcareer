@@ -45,12 +45,13 @@ export default async function AdminHome() {
       />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <StatCard label="Total users" value={stats.users} icon={Users} tint="from-rose-500 to-pink-600" />
-        <StatCard label="Courses" value={stats.courses} icon={BookOpen} tint="from-violet-500 to-purple-600" />
-        <StatCard label="Batches" value={stats.batches} icon={Layers} tint="from-sky-500 to-blue-600" />
-        <StatCard label="Enrollments" value={stats.enrollments} icon={GraduationCap} tint="from-fuchsia-500 to-pink-600" />
-        <StatCard label="Revenue" value={inr(stats.revenue)} icon={IndianRupee} tint="from-emerald-500 to-teal-600" />
-        <StatCard label="Live classes" value={stats.liveClasses} icon={Radio} tint="from-amber-500 to-orange-600" />
+        {/* Each figure leads to the list it counts. */}
+        <StatCard label="Total users" value={stats.users} icon={Users} tint="from-rose-500 to-pink-600" href="/admin/users" />
+        <StatCard label="Courses" value={stats.courses} icon={BookOpen} tint="from-violet-500 to-purple-600" href="/admin/courses" />
+        <StatCard label="Batches" value={stats.batches} icon={Layers} tint="from-sky-500 to-blue-600" href="/admin/batches" />
+        <StatCard label="Enrollments" value={stats.enrollments} icon={GraduationCap} tint="from-fuchsia-500 to-pink-600" href="/admin/users?role=STUDENT" />
+        <StatCard label="Revenue" value={inr(stats.revenue)} icon={IndianRupee} tint="from-emerald-500 to-teal-600" href="/admin/payments?status=PAID" />
+        <StatCard label="Live classes" value={stats.liveClasses} icon={Radio} tint="from-amber-500 to-orange-600" href="/admin/live" />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">

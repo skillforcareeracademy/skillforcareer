@@ -28,6 +28,7 @@ import {
 } from "@/lib/validations/certificate";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
+import { StatCards, type StatCard } from "@/components/shared/stat-cards";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -35,7 +36,6 @@ import { cn } from "@/lib/utils";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -243,24 +243,48 @@ export function CertificatesClient({
     }
   }
 
-  const statCards = [
+  const statCards: StatCard[] = [
     {
       label: "Certificates",
       value: stats.total,
       icon: Award,
       tone: "text-rose-500",
+      hint: "Every award. Tap to clear the filters.",
+      active: !hasFilters,
+      onClick: () =>
+        setParams({
+          status: undefined,
+          course: undefined,
+          type: undefined,
+          search: undefined,
+          page: 1,
+        }),
     },
     {
       label: "Active",
       value: stats.active,
       icon: BadgeCheck,
       tone: "text-emerald-500",
+      hint: "Awards that still stand.",
+      active: query.status === "ISSUED",
+      onClick: () =>
+        setParams({
+          status: query.status === "ISSUED" ? undefined : "ISSUED",
+          page: 1,
+        }),
     },
     {
       label: "Revoked",
       value: stats.revoked,
       icon: Ban,
       tone: "text-amber-500",
+      hint: "Awards that have been taken back.",
+      active: query.status === "REVOKED",
+      onClick: () =>
+        setParams({
+          status: query.status === "REVOKED" ? undefined : "REVOKED",
+          page: 1,
+        }),
     },
     {
       label: "Recipients",
@@ -452,25 +476,10 @@ export function CertificatesClient({
       />
 
       {/* Summary */}
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-        {statCards.map((s) => (
-          <Card key={s.label}>
-            <CardContent className="flex items-center gap-3 py-4">
-              <div className="bg-muted grid size-10 shrink-0 place-items-center rounded-lg">
-                <s.icon className={`size-5 ${s.tone}`} />
-              </div>
-              <div className="min-w-0">
-                <p className="text-2xl leading-none font-semibold tabular-nums">
-                  {s.value.toLocaleString("en-IN")}
-                </p>
-                <p className="text-muted-foreground mt-1 truncate text-xs">
-                  {s.label}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      <StatCards
+        cards={statCards}
+        className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4"
+      />
 
       <DataTable
         columns={columns}

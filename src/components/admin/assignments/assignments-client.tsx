@@ -27,6 +27,7 @@ import { GroupField } from "@/components/admin/groups/group-field";
 import { api, ApiError } from "@/lib/api-client";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
+import { StatCards, type StatCard } from "@/components/shared/stat-cards";
 import { AssignmentImportDialog } from "./assignment-import-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,7 +35,6 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -114,6 +114,7 @@ interface Query {
   type?: string;
   dueFrom?: string;
   dueTo?: string;
+  needsGrading?: boolean;
 }
 interface Opt {
   id: string;
@@ -237,7 +238,13 @@ export function AssignmentsClient({
 
   const totalPages = Math.max(1, Math.ceil(total / query.pageSize));
   const hasFilters = Boolean(
-    query.search || query.courseId || query.batchId || query.type || query.dueFrom || query.dueTo,
+    query.search ||
+    query.courseId ||
+    query.batchId ||
+    query.type ||
+    query.dueFrom ||
+    query.dueTo ||
+    query.needsGrading,
   );
   /** Picking a course narrows the batch filter to that course's cohorts. */
   const batchOptions = query.courseId
@@ -253,6 +260,7 @@ export function AssignmentsClient({
         type: query.type,
         from: query.dueFrom,
         to: query.dueTo,
+        grading: query.needsGrading ? "pending" : undefined,
         page: query.page,
         ...next,
       };
@@ -263,7 +271,9 @@ export function AssignmentsClient({
       if (merged.type) p.set("type", String(merged.type));
       if (merged.from) p.set("from", String(merged.from));
       if (merged.to) p.set("to", String(merged.to));
-      if (merged.page && Number(merged.page) > 1) p.set("page", String(merged.page));
+      if (merged.grading) p.set("grading", String(merged.grading));
+      if (merged.page && Number(merged.page) > 1)
+        p.set("page", String(merged.page));
       const qs = p.toString();
       router.push(qs ? `${pathname}?${qs}` : pathname);
     },
@@ -383,17 +393,70 @@ export function AssignmentsClient({
     }
   }
 
-  const statCards = [
-    { label: "Assignments", value: stats.total, icon: ClipboardList, tone: "text-rose-500" },
-    { label: "Upcoming due", value: stats.upcoming, icon: CalendarClock, tone: "text-sky-500" },
-    { label: "Submissions", value: stats.submissions, icon: FileCheck2, tone: "text-violet-500" },
-    { label: "Needs grading", value: stats.needsGrading, icon: Hourglass, tone: "text-amber-500" },
+  const statCards: StatCard[] = [
+    {
+      label: "Assignments",
+      value: stats.total,
+      icon: ClipboardList,
+      tone: "text-rose-500",
+      hint: "Every assignment. Tap to clear the filters.",
+      active: !hasFilters,
+      onClick: () =>
+        setParams({
+          course: undefined,
+          batch: undefined,
+          type: undefined,
+          from: undefined,
+          to: undefined,
+          grading: undefined,
+          search: undefined,
+          page: 1,
+        }),
+    },
+    {
+      label: "Upcoming due",
+      value: stats.upcoming,
+      icon: CalendarClock,
+      tone: "text-sky-500",
+      hint: "Due today or later.",
+      active: Boolean(query.dueFrom) && !query.dueTo,
+      onClick: () =>
+        setParams({
+          from: query.dueFrom
+            ? undefined
+            : new Date().toISOString().slice(0, 10),
+          to: undefined,
+          page: 1,
+        }),
+    },
+    {
+      label: "Submissions",
+      value: stats.submissions,
+      icon: FileCheck2,
+      tone: "text-violet-500",
+    },
+    {
+      label: "Needs grading",
+      value: stats.needsGrading,
+      icon: Hourglass,
+      tone: "text-amber-500",
+      hint: "Papers with work still to mark.",
+      active: Boolean(query.needsGrading),
+      onClick: () =>
+        setParams({
+          grading: query.needsGrading ? undefined : "pending",
+          page: 1,
+        }),
+    },
   ];
 
   function rowActions(a: AssignmentRow) {
     return (
       <DropdownMenu>
-        <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" />} aria-label="Actions">
+        <DropdownMenuTrigger
+          render={<Button variant="ghost" size="icon-sm" />}
+          aria-label="Actions"
+        >
           <MoreHorizontal className="size-4" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
@@ -423,10 +486,13 @@ export function AssignmentsClient({
     return (
       <span className="flex items-center gap-2 text-sm">
         <span className="flex items-center gap-1 tabular-nums">
-          <Users className="size-3.5 text-muted-foreground" /> {a.submissions}
+          <Users className="text-muted-foreground size-3.5" /> {a.submissions}
         </span>
         {a.needsGrading > 0 && (
-          <Badge variant="secondary" className="bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
+          <Badge
+            variant="secondary"
+            className="bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300"
+          >
             {a.needsGrading} to grade
           </Badge>
         )}
@@ -455,7 +521,8 @@ export function AssignmentsClient({
           </p>
           <p className="text-muted-foreground truncate text-xs">
             {a.courseTitle ?? "No course"}
-            {a.sequence > 0 && ` · no. ${a.sequence} on the course`} · {a.createdByName}
+            {a.sequence > 0 && ` · no. ${a.sequence} on the course`} ·{" "}
+            {a.createdByName}
           </p>
         </div>
       ),
@@ -503,7 +570,12 @@ export function AssignmentsClient({
         </span>
       ),
     },
-    { key: "maxScore", header: "Max", cell: (a) => a.maxScore, className: "tabular-nums" },
+    {
+      key: "maxScore",
+      header: "Max",
+      cell: (a) => a.maxScore,
+      className: "tabular-nums",
+    },
     { key: "submissions", header: "Submissions", cell: submissionsCell },
     {
       key: "actions",
@@ -557,7 +629,11 @@ export function AssignmentsClient({
             <Button
               variant="outline"
               nativeButton={false}
-              render={<Link href={`${basePath.replace("/assignments", "")}/groups/assignment`} />}
+              render={
+                <Link
+                  href={`${basePath.replace("/assignments", "")}/groups/assignment`}
+                />
+              }
             >
               <FolderTree className="size-4" /> Groups
             </Button>
@@ -574,23 +650,10 @@ export function AssignmentsClient({
       <AssignmentImportDialog open={importOpen} onOpenChange={setImportOpen} />
 
       {/* Summary */}
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-        {statCards.map((s) => (
-          <Card key={s.label}>
-            <CardContent className="flex items-center gap-3 py-4">
-              <div className="bg-muted grid size-10 shrink-0 place-items-center rounded-lg">
-                <s.icon className={`size-5 ${s.tone}`} />
-              </div>
-              <div className="min-w-0">
-                <p className="text-2xl font-semibold leading-none tabular-nums">
-                  {s.value.toLocaleString("en-IN")}
-                </p>
-                <p className="text-muted-foreground mt-1 truncate text-xs">{s.label}</p>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      <StatCards
+        cards={statCards}
+        className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4"
+      />
 
       <DataTable
         columns={columns}
@@ -598,9 +661,13 @@ export function AssignmentsClient({
         rowKey={(a) => a.id}
         renderCard={renderCard}
         emptyIcon={ClipboardList}
-        emptyTitle={hasFilters ? "No matching assignments" : "No assignments yet"}
+        emptyTitle={
+          hasFilters ? "No matching assignments" : "No assignments yet"
+        }
         emptyDescription={
-          hasFilters ? "Try adjusting your search or filters." : "Create your first assignment to get started."
+          hasFilters
+            ? "Try adjusting your search or filters."
+            : "Create your first assignment to get started."
         }
         toolbar={
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -649,7 +716,9 @@ export function AssignmentsClient({
               </Select>
               <Select
                 value={query.batchId ?? ALL}
-                onValueChange={(v) => setParams({ batch: !v || v === ALL ? undefined : v, page: 1 })}
+                onValueChange={(v) =>
+                  setParams({ batch: !v || v === ALL ? undefined : v, page: 1 })
+                }
               >
                 <SelectTrigger className="w-40">
                   <SelectValue>
@@ -671,11 +740,17 @@ export function AssignmentsClient({
               </Select>
               <Select
                 value={query.type ?? ALL}
-                onValueChange={(v) => setParams({ type: !v || v === ALL ? undefined : v, page: 1 })}
+                onValueChange={(v) =>
+                  setParams({ type: !v || v === ALL ? undefined : v, page: 1 })
+                }
               >
                 <SelectTrigger className="w-36">
                   <SelectValue>
-                    {(v) => (!v || v === ALL ? "All types" : ASSIGNMENT_TYPE_LABEL[String(v)])}
+                    {(v) =>
+                      !v || v === ALL
+                        ? "All types"
+                        : ASSIGNMENT_TYPE_LABEL[String(v)]
+                    }
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
@@ -695,7 +770,9 @@ export function AssignmentsClient({
                   aria-label="Due on or after"
                   className="w-[9.5rem]"
                   value={query.dueFrom ?? ""}
-                  onChange={(e) => setParams({ from: e.target.value || undefined, page: 1 })}
+                  onChange={(e) =>
+                    setParams({ from: e.target.value || undefined, page: 1 })
+                  }
                 />
                 <span className="text-muted-foreground text-sm">to</span>
                 <Input
@@ -703,11 +780,18 @@ export function AssignmentsClient({
                   aria-label="Due on or before"
                   className="w-[9.5rem]"
                   value={query.dueTo ?? ""}
-                  onChange={(e) => setParams({ to: e.target.value || undefined, page: 1 })}
+                  onChange={(e) =>
+                    setParams({ to: e.target.value || undefined, page: 1 })
+                  }
                 />
               </div>
               {hasFilters && (
-                <Button variant="ghost" size="sm" onClick={clearFilters} className="text-muted-foreground">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearFilters}
+                  className="text-muted-foreground"
+                >
                   <X className="size-4" /> Clear
                 </Button>
               )}
@@ -720,13 +804,23 @@ export function AssignmentsClient({
               {total} {total === 1 ? "assignment" : "assignments"}
             </p>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" disabled={query.page <= 1} onClick={() => setParams({ page: query.page - 1 })}>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={query.page <= 1}
+                onClick={() => setParams({ page: query.page - 1 })}
+              >
                 Previous
               </Button>
               <span className="text-muted-foreground text-sm">
                 Page {query.page} of {totalPages}
               </span>
-              <Button variant="outline" size="sm" disabled={query.page >= totalPages} onClick={() => setParams({ page: query.page + 1 })}>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={query.page >= totalPages}
+                onClick={() => setParams({ page: query.page + 1 })}
+              >
                 Next
               </Button>
             </div>
@@ -738,9 +832,13 @@ export function AssignmentsClient({
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>{editing ? "Edit assignment" : "New assignment"}</DialogTitle>
+            <DialogTitle>
+              {editing ? "Edit assignment" : "New assignment"}
+            </DialogTitle>
             <DialogDescription>
-              {editing ? "Update this assignment." : "Create an assignment for a course."}
+              {editing
+                ? "Update this assignment."
+                : "Create an assignment for a course."}
               {loadingDetail && (
                 <span className="text-muted-foreground ml-2 inline-flex items-center gap-1">
                   <Loader2 className="size-3 animate-spin" /> loading details…
@@ -782,12 +880,16 @@ export function AssignmentsClient({
               <Label>Course</Label>
               <Select
                 value={form.courseId || NONE}
-                onValueChange={(v) => set("courseId", v === NONE ? "" : (v ?? ""))}
+                onValueChange={(v) =>
+                  set("courseId", v === NONE ? "" : (v ?? ""))
+                }
               >
                 <SelectTrigger className="w-full">
                   <SelectValue>
                     {(v) =>
-                      !v || v === NONE ? "None" : (courses.find((c) => c.id === v)?.title ?? "None")
+                      !v || v === NONE
+                        ? "None"
+                        : (courses.find((c) => c.id === v)?.title ?? "None")
                     }
                   </SelectValue>
                 </SelectTrigger>
@@ -810,7 +912,9 @@ export function AssignmentsClient({
                   onValueChange={(v) => v && set("type", v)}
                 >
                   <SelectTrigger className="w-full">
-                    <SelectValue>{(v) => ASSIGNMENT_TYPE_LABEL[String(v)]}</SelectValue>
+                    <SelectValue>
+                      {(v) => ASSIGNMENT_TYPE_LABEL[String(v)]}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {ASSIGNMENT_TYPES.map((t) => (
@@ -828,7 +932,9 @@ export function AssignmentsClient({
                   onValueChange={(v) => v && set("gradingMode", v)}
                 >
                   <SelectTrigger className="w-full">
-                    <SelectValue>{(v) => ASSIGNMENT_GRADING_MODE_LABEL[String(v)]}</SelectValue>
+                    <SelectValue>
+                      {(v) => ASSIGNMENT_GRADING_MODE_LABEL[String(v)]}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {ASSIGNMENT_GRADING_MODES.map((g) => (
@@ -859,7 +965,11 @@ export function AssignmentsClient({
                 which is what made grouping look missing. */}
             <div className="space-y-1.5">
               <Label>Groups</Label>
-              <GroupField kind="ASSIGNMENT" itemId={editing?.id ?? null} label="" />
+              <GroupField
+                kind="ASSIGNMENT"
+                itemId={editing?.id ?? null}
+                label=""
+              />
             </div>
 
             {/* Who it's set for. Nothing chosen = the whole course, which is how
@@ -882,7 +992,11 @@ export function AssignmentsClient({
               label="Additional students"
               emptyMeans="Nobody added individually."
               searchPlaceholder="Search learners…"
-              options={students.map((st) => ({ id: st.id, label: st.name, hint: st.email }))}
+              options={students.map((st) => ({
+                id: st.id,
+                label: st.name,
+                hint: st.email,
+              }))}
               selected={form.studentIds}
               onChange={(ids) => set("studentIds", ids)}
               maxHeight="12rem"
@@ -899,7 +1013,9 @@ export function AssignmentsClient({
                     <button
                       type="button"
                       className="text-primary text-xs font-medium hover:underline"
-                      onClick={() => set("maxScoreManual", !form.maxScoreManual)}
+                      onClick={() =>
+                        set("maxScoreManual", !form.maxScoreManual)
+                      }
                     >
                       {form.maxScoreManual ? "Use questions’ total" : "Edit"}
                     </button>
@@ -1000,7 +1116,11 @@ export function AssignmentsClient({
             </label>
 
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setDialogOpen(false)}
+              >
                 Cancel
               </Button>
               <Button type="submit" disabled={!canSave || saving}>
@@ -1012,7 +1132,10 @@ export function AssignmentsClient({
         </DialogContent>
       </Dialog>
 
-      <AssignmentDetailSheet assignmentId={detailId} onOpenChange={(o) => !o && setDetailId(null)} />
+      <AssignmentDetailSheet
+        assignmentId={detailId}
+        onOpenChange={(o) => !o && setDetailId(null)}
+      />
 
       <AssignmentQuestionsSheet
         assignment={questionsFor}
@@ -1020,17 +1143,24 @@ export function AssignmentsClient({
         onOpenChange={(o) => !o && setQuestionsFor(null)}
       />
 
-      <AlertDialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>
+      <AlertDialog
+        open={!!deleting}
+        onOpenChange={(o) => !o && setDeleting(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete “{deleting?.title}”?</AlertDialogTitle>
             <AlertDialogDescription>
-              This permanently removes the assignment and all its submissions. This can&apos;t be undone.
+              This permanently removes the assignment and all its submissions.
+              This can&apos;t be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete} className="bg-destructive hover:bg-destructive/90 text-white">
+            <AlertDialogAction
+              onClick={confirmDelete}
+              className="bg-destructive hover:bg-destructive/90 text-white"
+            >
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>

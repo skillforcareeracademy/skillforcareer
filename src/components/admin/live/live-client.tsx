@@ -24,19 +24,16 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
-import {
-  MEETING_STATUSES,
-  MEETING_STATUS_LABEL,
-} from "@/lib/validations/live";
+import { MEETING_STATUSES, MEETING_STATUS_LABEL } from "@/lib/validations/live";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
+import { StatCards, type StatCard } from "@/components/shared/stat-cards";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -206,7 +203,11 @@ export function LiveClient({
   const [detailId, setDetailId] = useState<string | null>(null);
   const [attendId, setAttendId] = useState<string | null>(null);
   const [rescheduling, setRescheduling] = useState<MeetingRow | null>(null);
-  const [reForm, setReForm] = useState({ scheduledStart: "", scheduledEnd: "", reason: "" });
+  const [reForm, setReForm] = useState({
+    scheduledStart: "",
+    scheduledEnd: "",
+    reason: "",
+  });
   const [reSaving, setReSaving] = useState(false);
 
   function openReschedule(m: MeetingRow) {
@@ -222,16 +223,25 @@ export function LiveClient({
     if (!rescheduling) return;
     setReSaving(true);
     try {
-      const res = await api.post<{ notified: number }>(`/api/meetings/${rescheduling.id}/reschedule`, {
-        scheduledStart: reForm.scheduledStart,
-        scheduledEnd: reForm.scheduledEnd || undefined,
-        reason: reForm.reason || undefined,
-      });
-      toast.success(res.notified > 0 ? `Rescheduled — ${res.notified} learner${res.notified === 1 ? "" : "s"} notified.` : "Rescheduled.");
+      const res = await api.post<{ notified: number }>(
+        `/api/meetings/${rescheduling.id}/reschedule`,
+        {
+          scheduledStart: reForm.scheduledStart,
+          scheduledEnd: reForm.scheduledEnd || undefined,
+          reason: reForm.reason || undefined,
+        },
+      );
+      toast.success(
+        res.notified > 0
+          ? `Rescheduled — ${res.notified} learner${res.notified === 1 ? "" : "s"} notified.`
+          : "Rescheduled.",
+      );
       setRescheduling(null);
       router.refresh();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Couldn't reschedule.");
+      toast.error(
+        err instanceof ApiError ? err.message : "Couldn't reschedule.",
+      );
     } finally {
       setReSaving(false);
     }
@@ -239,7 +249,12 @@ export function LiveClient({
 
   const totalPages = Math.max(1, Math.ceil(total / query.pageSize));
   const hasFilters = Boolean(
-    query.search || query.status || query.courseId || query.batchId || query.from || query.to,
+    query.search ||
+    query.status ||
+    query.courseId ||
+    query.batchId ||
+    query.from ||
+    query.to,
   );
   /** Once a course is picked the batch list narrows to that course's cohorts. */
   const batchOptions = query.courseId
@@ -265,7 +280,8 @@ export function LiveClient({
       if (merged.batch) p.set("batch", String(merged.batch));
       if (merged.from) p.set("from", String(merged.from));
       if (merged.to) p.set("to", String(merged.to));
-      if (merged.page && Number(merged.page) > 1) p.set("page", String(merged.page));
+      if (merged.page && Number(merged.page) > 1)
+        p.set("page", String(merged.page));
       const qs = p.toString();
       router.push(qs ? `${pathname}?${qs}` : pathname);
     },
@@ -323,7 +339,9 @@ export function LiveClient({
       status: form.status,
       scheduledStart: form.scheduledStart,
       scheduledEnd: form.scheduledEnd || undefined,
-      maxParticipants: form.maxParticipants ? Number(form.maxParticipants) : undefined,
+      maxParticipants: form.maxParticipants
+        ? Number(form.maxParticipants)
+        : undefined,
       isRecordingEnabled: form.isRecordingEnabled,
     };
     try {
@@ -358,17 +376,72 @@ export function LiveClient({
     }
   }
 
-  const statCards = [
-    { label: "Total classes", value: stats.total, icon: Video, tone: "text-rose-500" },
-    { label: "Scheduled", value: stats.scheduled, icon: CalendarClock, tone: "text-sky-500" },
-    { label: "Live now", value: stats.live, icon: Radio, tone: "text-emerald-500" },
-    { label: "Ended", value: stats.ended, icon: CheckCircle2, tone: "text-violet-500" },
+  const statCards: StatCard[] = [
+    {
+      label: "Total classes",
+      value: stats.total,
+      icon: Video,
+      tone: "text-rose-500",
+      hint: "Every class. Tap to clear the filters.",
+      active: !hasFilters,
+      onClick: () =>
+        setParams({
+          status: undefined,
+          course: undefined,
+          batch: undefined,
+          search: undefined,
+          from: undefined,
+          to: undefined,
+          page: 1,
+        }),
+    },
+    {
+      label: "Scheduled",
+      value: stats.scheduled,
+      icon: CalendarClock,
+      tone: "text-sky-500",
+      hint: "Classes still to come.",
+      active: query.status === "SCHEDULED",
+      onClick: () =>
+        setParams({
+          status: query.status === "SCHEDULED" ? undefined : "SCHEDULED",
+          page: 1,
+        }),
+    },
+    {
+      label: "Live now",
+      value: stats.live,
+      icon: Radio,
+      tone: "text-emerald-500",
+      hint: "Classes running at this moment.",
+      active: query.status === "LIVE",
+      onClick: () =>
+        setParams({
+          status: query.status === "LIVE" ? undefined : "LIVE",
+          page: 1,
+        }),
+    },
+    {
+      label: "Ended",
+      value: stats.ended,
+      icon: CheckCircle2,
+      tone: "text-violet-500",
+      hint: "Classes that have finished.",
+      active: query.status === "ENDED",
+      onClick: () =>
+        setParams({
+          status: query.status === "ENDED" ? undefined : "ENDED",
+          page: 1,
+        }),
+    },
   ];
 
   function statusBadge(status: string) {
     return (
       <Badge variant="secondary" className={cn("gap-1", STATUS_BADGE[status])}>
-        {status === "LIVE" && <Circle className="size-2 animate-pulse fill-current" />}
+        {status === "LIVE" && (
+          <Circle className="size-2 animate-pulse fill-current" />
+        )}
         {MEETING_STATUS_LABEL[status] ?? status}
       </Badge>
     );
@@ -379,7 +452,10 @@ export function LiveClient({
   }
   async function changeStatus(m: MeetingRow, status: string, alsoOpen = false) {
     try {
-      const res = await api.post<{ notified: number }>(`/api/meetings/${m.id}/status`, { status });
+      const res = await api.post<{ notified: number }>(
+        `/api/meetings/${m.id}/status`,
+        { status },
+      );
       toast.success(
         status === "LIVE"
           ? `Class started${res?.notified ? ` · ${res.notified} learner${res.notified === 1 ? "" : "s"} notified` : ""}.`
@@ -397,7 +473,10 @@ export function LiveClient({
   function rowActions(m: MeetingRow) {
     return (
       <DropdownMenu>
-        <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" />} aria-label="Actions">
+        <DropdownMenuTrigger
+          render={<Button variant="ghost" size="icon-sm" />}
+          aria-label="Actions"
+        >
           <MoreHorizontal className="size-4" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
@@ -459,7 +538,9 @@ export function LiveClient({
       key: "course",
       header: "Course",
       cell: (m) => (
-        <span className="block max-w-[14rem] truncate text-sm">{m.courseTitle ?? "—"}</span>
+        <span className="block max-w-[14rem] truncate text-sm">
+          {m.courseTitle ?? "—"}
+        </span>
       ),
     },
     {
@@ -469,7 +550,9 @@ export function LiveClient({
         m.batchName ? (
           <button
             type="button"
-            onClick={() => setParams({ batch: m.batchId ?? undefined, page: 1 })}
+            onClick={() =>
+              setParams({ batch: m.batchId ?? undefined, page: 1 })
+            }
             className="hover:text-primary block max-w-[12rem] truncate text-left text-sm transition-colors"
             title={`Show only ${m.batchName}`}
           >
@@ -482,7 +565,11 @@ export function LiveClient({
     {
       key: "when",
       header: "When",
-      cell: (m) => <span className="text-sm whitespace-nowrap">{fmtWhen(m.scheduledStart)}</span>,
+      cell: (m) => (
+        <span className="text-sm whitespace-nowrap">
+          {fmtWhen(m.scheduledStart)}
+        </span>
+      ),
     },
     {
       key: "participants",
@@ -491,7 +578,14 @@ export function LiveClient({
       cell: (m) => (
         <span className="text-sm">
           {m.participants}
-          {m.maxParticipants ? <span className="text-muted-foreground"> / {m.maxParticipants}</span> : ""}
+          {m.maxParticipants ? (
+            <span className="text-muted-foreground">
+              {" "}
+              / {m.maxParticipants}
+            </span>
+          ) : (
+            ""
+          )}
         </span>
       ),
     },
@@ -544,7 +638,9 @@ export function LiveClient({
   }
 
   const canSave =
-    form.title.trim().length >= 3 && Boolean(form.hostId) && Boolean(form.scheduledStart);
+    form.title.trim().length >= 3 &&
+    Boolean(form.hostId) &&
+    Boolean(form.scheduledStart);
 
   return (
     <div className="space-y-6">
@@ -559,23 +655,10 @@ export function LiveClient({
       />
 
       {/* Summary */}
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-        {statCards.map((s) => (
-          <Card key={s.label}>
-            <CardContent className="flex items-center gap-3 py-4">
-              <div className="bg-muted grid size-10 shrink-0 place-items-center rounded-lg">
-                <s.icon className={`size-5 ${s.tone}`} />
-              </div>
-              <div className="min-w-0">
-                <p className="text-2xl font-semibold leading-none tabular-nums">
-                  {s.value.toLocaleString("en-IN")}
-                </p>
-                <p className="text-muted-foreground mt-1 truncate text-xs">{s.label}</p>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      <StatCards
+        cards={statCards}
+        className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4"
+      />
 
       <DataTable
         columns={columns}
@@ -583,9 +666,13 @@ export function LiveClient({
         rowKey={(m) => m.id}
         renderCard={renderCard}
         emptyIcon={Video}
-        emptyTitle={hasFilters ? "No matching live classes" : "No live classes yet"}
+        emptyTitle={
+          hasFilters ? "No matching live classes" : "No live classes yet"
+        }
         emptyDescription={
-          hasFilters ? "Try adjusting your search or filters." : "Schedule your first live class to get started."
+          hasFilters
+            ? "Try adjusting your search or filters."
+            : "Schedule your first live class to get started."
         }
         toolbar={
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -605,11 +692,20 @@ export function LiveClient({
             <div className="flex gap-2">
               <Select
                 value={query.status ?? ALL}
-                onValueChange={(v) => setParams({ status: !v || v === ALL ? undefined : v, page: 1 })}
+                onValueChange={(v) =>
+                  setParams({
+                    status: !v || v === ALL ? undefined : v,
+                    page: 1,
+                  })
+                }
               >
                 <SelectTrigger className="flex-1 sm:w-40">
                   <SelectValue>
-                    {(v) => (!v || v === ALL ? "All statuses" : MEETING_STATUS_LABEL[String(v)])}
+                    {(v) =>
+                      !v || v === ALL
+                        ? "All statuses"
+                        : MEETING_STATUS_LABEL[String(v)]
+                    }
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
@@ -623,7 +719,12 @@ export function LiveClient({
               </Select>
               <Select
                 value={query.courseId ?? ALL}
-                onValueChange={(v) => setParams({ course: !v || v === ALL ? undefined : v, page: 1 })}
+                onValueChange={(v) =>
+                  setParams({
+                    course: !v || v === ALL ? undefined : v,
+                    page: 1,
+                  })
+                }
               >
                 <SelectTrigger className="flex-1 sm:w-48">
                   <SelectValue>
@@ -645,7 +746,9 @@ export function LiveClient({
               </Select>
               <Select
                 value={query.batchId ?? ALL}
-                onValueChange={(v) => setParams({ batch: !v || v === ALL ? undefined : v, page: 1 })}
+                onValueChange={(v) =>
+                  setParams({ batch: !v || v === ALL ? undefined : v, page: 1 })
+                }
               >
                 <SelectTrigger className="flex-1 sm:w-48">
                   <SelectValue>
@@ -672,7 +775,9 @@ export function LiveClient({
                   type="date"
                   aria-label="Classes from"
                   value={query.from ?? ""}
-                  onChange={(e) => setParams({ from: e.target.value || undefined, page: 1 })}
+                  onChange={(e) =>
+                    setParams({ from: e.target.value || undefined, page: 1 })
+                  }
                   className="w-[9.5rem]"
                 />
                 <span className="text-muted-foreground text-xs">to</span>
@@ -680,12 +785,19 @@ export function LiveClient({
                   type="date"
                   aria-label="Classes to"
                   value={query.to ?? ""}
-                  onChange={(e) => setParams({ to: e.target.value || undefined, page: 1 })}
+                  onChange={(e) =>
+                    setParams({ to: e.target.value || undefined, page: 1 })
+                  }
                   className="w-[9.5rem]"
                 />
               </div>
               {hasFilters && (
-                <Button variant="ghost" size="sm" onClick={clearFilters} className="text-muted-foreground">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearFilters}
+                  className="text-muted-foreground"
+                >
                   <X className="size-4" /> Clear
                 </Button>
               )}
@@ -698,13 +810,23 @@ export function LiveClient({
               {total} {total === 1 ? "class" : "classes"}
             </p>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" disabled={query.page <= 1} onClick={() => setParams({ page: query.page - 1 })}>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={query.page <= 1}
+                onClick={() => setParams({ page: query.page - 1 })}
+              >
                 Previous
               </Button>
               <span className="text-muted-foreground text-sm">
                 Page {query.page} of {totalPages}
               </span>
-              <Button variant="outline" size="sm" disabled={query.page >= totalPages} onClick={() => setParams({ page: query.page + 1 })}>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={query.page >= totalPages}
+                onClick={() => setParams({ page: query.page + 1 })}
+              >
                 Next
               </Button>
             </div>
@@ -716,9 +838,13 @@ export function LiveClient({
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>{editing ? "Edit live class" : "Schedule live class"}</DialogTitle>
+            <DialogTitle>
+              {editing ? "Edit live class" : "Schedule live class"}
+            </DialogTitle>
             <DialogDescription>
-              {editing ? "Update this live session." : "Set up a new live session for a course or batch."}
+              {editing
+                ? "Update this live session."
+                : "Set up a new live session for a course or batch."}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={onSubmit} className="space-y-4">
@@ -745,10 +871,15 @@ export function LiveClient({
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label>Host</Label>
-                <Select value={form.hostId} onValueChange={(v) => v && set("hostId", v)}>
+                <Select
+                  value={form.hostId}
+                  onValueChange={(v) => v && set("hostId", v)}
+                >
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Choose host">
-                      {(v) => hosts.find((h) => h.id === v)?.name ?? "Choose host"}
+                      {(v) =>
+                        hosts.find((h) => h.id === v)?.name ?? "Choose host"
+                      }
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
@@ -762,9 +893,14 @@ export function LiveClient({
               </div>
               <div className="space-y-1.5">
                 <Label>Status</Label>
-                <Select value={form.status} onValueChange={(v) => v && set("status", v)}>
+                <Select
+                  value={form.status}
+                  onValueChange={(v) => v && set("status", v)}
+                >
                   <SelectTrigger className="w-full">
-                    <SelectValue>{(v) => MEETING_STATUS_LABEL[String(v)]}</SelectValue>
+                    <SelectValue>
+                      {(v) => MEETING_STATUS_LABEL[String(v)]}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {MEETING_STATUSES.map((s) => (
@@ -782,12 +918,16 @@ export function LiveClient({
                 <Label>Course</Label>
                 <Select
                   value={form.courseId || NONE}
-                  onValueChange={(v) => set("courseId", v === NONE ? "" : (v ?? ""))}
+                  onValueChange={(v) =>
+                    set("courseId", v === NONE ? "" : (v ?? ""))
+                  }
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue>
                       {(v) =>
-                        !v || v === NONE ? "None" : (courses.find((c) => c.id === v)?.title ?? "None")
+                        !v || v === NONE
+                          ? "None"
+                          : (courses.find((c) => c.id === v)?.title ?? "None")
                       }
                     </SelectValue>
                   </SelectTrigger>
@@ -805,12 +945,16 @@ export function LiveClient({
                 <Label>Batch</Label>
                 <Select
                   value={form.batchId || NONE}
-                  onValueChange={(v) => set("batchId", v === NONE ? "" : (v ?? ""))}
+                  onValueChange={(v) =>
+                    set("batchId", v === NONE ? "" : (v ?? ""))
+                  }
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue>
                       {(v) =>
-                        !v || v === NONE ? "None" : (batches.find((b) => b.id === v)?.name ?? "None")
+                        !v || v === NONE
+                          ? "None"
+                          : (batches.find((b) => b.id === v)?.name ?? "None")
                       }
                     </SelectValue>
                   </SelectTrigger>
@@ -870,7 +1014,11 @@ export function LiveClient({
             </div>
 
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setDialogOpen(false)}
+              >
                 Cancel
               </Button>
               <Button type="submit" disabled={!canSave || saving}>
@@ -882,17 +1030,27 @@ export function LiveClient({
         </DialogContent>
       </Dialog>
 
-      <LiveDetailSheet meetingId={detailId} onOpenChange={(o) => !o && setDetailId(null)} />
+      <LiveDetailSheet
+        meetingId={detailId}
+        onOpenChange={(o) => !o && setDetailId(null)}
+      />
 
-      <AttendanceSheet meetingId={attendId} onOpenChange={(o) => !o && setAttendId(null)} />
+      <AttendanceSheet
+        meetingId={attendId}
+        onOpenChange={(o) => !o && setAttendId(null)}
+      />
 
       {/* Reschedule */}
-      <Dialog open={rescheduling != null} onOpenChange={(o) => !o && setRescheduling(null)}>
+      <Dialog
+        open={rescheduling != null}
+        onOpenChange={(o) => !o && setRescheduling(null)}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Reschedule class</DialogTitle>
             <DialogDescription>
-              Move &ldquo;{rescheduling?.title}&rdquo; — enrolled learners are notified automatically.
+              Move &ldquo;{rescheduling?.title}&rdquo; — enrolled learners are
+              notified automatically.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={onReschedule} className="space-y-4">
@@ -903,7 +1061,9 @@ export function LiveClient({
                   id="re-start"
                   type="datetime-local"
                   value={reForm.scheduledStart}
-                  onChange={(e) => setReForm((f) => ({ ...f, scheduledStart: e.target.value }))}
+                  onChange={(e) =>
+                    setReForm((f) => ({ ...f, scheduledStart: e.target.value }))
+                  }
                 />
               </div>
               <div className="space-y-1.5">
@@ -912,7 +1072,9 @@ export function LiveClient({
                   id="re-end"
                   type="datetime-local"
                   value={reForm.scheduledEnd}
-                  onChange={(e) => setReForm((f) => ({ ...f, scheduledEnd: e.target.value }))}
+                  onChange={(e) =>
+                    setReForm((f) => ({ ...f, scheduledEnd: e.target.value }))
+                  }
                 />
               </div>
             </div>
@@ -922,15 +1084,24 @@ export function LiveClient({
                 id="re-reason"
                 rows={2}
                 value={reForm.reason}
-                onChange={(e) => setReForm((f) => ({ ...f, reason: e.target.value }))}
+                onChange={(e) =>
+                  setReForm((f) => ({ ...f, reason: e.target.value }))
+                }
                 placeholder="e.g. Instructor unavailable — moved to Friday."
               />
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setRescheduling(null)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setRescheduling(null)}
+              >
                 Cancel
               </Button>
-              <Button type="submit" disabled={reSaving || !reForm.scheduledStart}>
+              <Button
+                type="submit"
+                disabled={reSaving || !reForm.scheduledStart}
+              >
                 {reSaving && <Loader2 className="size-4 animate-spin" />}
                 Reschedule &amp; notify
               </Button>
@@ -939,17 +1110,24 @@ export function LiveClient({
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>
+      <AlertDialog
+        open={!!deleting}
+        onOpenChange={(o) => !o && setDeleting(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete “{deleting?.title}”?</AlertDialogTitle>
             <AlertDialogDescription>
-              This permanently removes the live class and its room. This can&apos;t be undone.
+              This permanently removes the live class and its room. This
+              can&apos;t be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete} className="bg-destructive hover:bg-destructive/90 text-white">
+            <AlertDialogAction
+              onClick={confirmDelete}
+              className="bg-destructive hover:bg-destructive/90 text-white"
+            >
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>

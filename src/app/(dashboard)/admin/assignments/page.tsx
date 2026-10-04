@@ -33,6 +33,7 @@ export default async function AssignmentsPage({
     type: str(sp.type),
     dueFrom: str(sp.from),
     dueTo: str(sp.to),
+    needsGrading: str(sp.grading) === "pending",
   };
 
   // Number anything made before numbering existed, so what an admin sees in the

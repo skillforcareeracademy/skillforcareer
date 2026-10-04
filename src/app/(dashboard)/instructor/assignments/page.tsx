@@ -34,6 +34,7 @@ export default async function InstructorAssignmentsPage({
     type: str(sp.type),
     dueFrom: str(sp.from),
     dueTo: str(sp.to),
+    needsGrading: str(sp.grading) === "pending",
     instructorId: user.id,
   };
 
