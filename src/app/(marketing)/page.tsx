@@ -12,6 +12,8 @@ import { PlacementStories } from "@/components/marketing/placement-stories";
 import { LearnerVideos } from "@/components/marketing/learner-videos";
 import { FaqSection } from "@/components/marketing/faq-section";
 import { EnquiryForm } from "@/components/marketing/enquiry-form";
+import { ArticlesSection } from "@/components/marketing/articles-section";
+import { PartnersSection } from "@/components/marketing/partners-section";
 import { isGlobalSection } from "@/lib/validations/homepage";
 import {
   getHomeSections,
@@ -36,7 +38,9 @@ function renderSection(section: HomeSection): ReactNode {
     case "whyUs":
       return <WhyUs data={section.data} />;
     case "process":
-      return <ProcessSection data={section.data} className="bg-muted/30 border-y" />;
+      return (
+        <ProcessSection data={section.data} className="bg-muted/30 border-y" />
+      );
     case "placedStudents":
       return <PlacedStudents data={section.data} />;
     case "testimonials":
@@ -49,6 +53,10 @@ function renderSection(section: HomeSection): ReactNode {
       return <LearnerVideos data={section.data} />;
     case "faq":
       return <FaqSection data={section.data} />;
+    case "articles":
+      return <ArticlesSection data={section.data} />;
+    case "partners":
+      return <PartnersSection data={section.data} />;
     case "enquiry":
       return <EnquiryForm data={section.data} />;
     // The closing banner is drawn by the marketing layout, on every page.

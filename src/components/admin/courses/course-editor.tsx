@@ -17,10 +17,14 @@ import type { CourseEdit } from "@/server/services/course-service";
 export function CourseEditor({
   course,
   categories,
+  instructors = [],
   basePath = "/admin/courses",
 }: {
   course: CourseEdit;
   categories: { id: string; name: string }[];
+  /** Staff who may be put in front of this course. Empty hides the picker — an
+      instructor editing their own course must not hand it away by accident. */
+  instructors?: { id: string; name: string }[];
   /** Route prefix for the "back to courses" link — `/instructor/courses` in the instructor workspace. */
   basePath?: string;
 }) {
@@ -31,7 +35,9 @@ export function CourseEditor({
   async function togglePublish() {
     setPublishing(true);
     try {
-      await api.post(`/api/courses/${course.id}/publish`, { publish: !published });
+      await api.post(`/api/courses/${course.id}/publish`, {
+        publish: !published,
+      });
       toast.success(!published ? "Course published." : "Course unpublished.");
       router.refresh();
     } catch (e) {
@@ -65,7 +71,8 @@ export function CourseEditor({
             >
               {published
                 ? "Published"
-                : course.status.charAt(0) + course.status.slice(1).toLowerCase()}
+                : course.status.charAt(0) +
+                  course.status.slice(1).toLowerCase()}
             </Badge>
           </div>
         </div>
@@ -102,14 +109,21 @@ export function CourseEditor({
           <TabsTrigger value="details">Details</TabsTrigger>
           <TabsTrigger value="curriculum">
             Curriculum
-            <Badge variant="secondary" className="ml-1.5 h-5 px-1.5 text-[10px]">
+            <Badge
+              variant="secondary"
+              className="ml-1.5 h-5 px-1.5 text-[10px]"
+            >
               {course.chapters.reduce((n, c) => n + c.lessons.length, 0)}
             </Badge>
           </TabsTrigger>
           <TabsTrigger value="access">Content access</TabsTrigger>
         </TabsList>
         <TabsContent value="details" className="mt-6">
-          <CourseDetailsForm course={course} categories={categories} />
+          <CourseDetailsForm
+            course={course}
+            categories={categories}
+            instructors={instructors}
+          />
         </TabsContent>
         <TabsContent value="curriculum" className="mt-6">
           <CurriculumBuilder courseId={course.id} chapters={course.chapters} />

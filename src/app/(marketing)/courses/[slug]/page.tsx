@@ -89,21 +89,23 @@ export default async function CourseDetailPage({
   if (!c) notFound();
 
   const user = await getSessionUser();
-  const [enrolled, reviews, recommended, process, videos, faq] = await Promise.all([
-    user ? isEnrolled(user.id, c.id) : Promise.resolve(false),
-    listCourseReviews(c.id),
-    listRecommendedCourses(c.id, c.category.slug),
-    // Shared with the homepage: one edit updates both. All three resolve from
-    // the same cached read, so this costs no extra round-trip.
-    getHomeSection("process"),
-    getHomeSection("learnerVideos"),
-    getHomeSection("faq"),
-  ]);
+  const [enrolled, reviews, recommended, process, videos, faq] =
+    await Promise.all([
+      user ? isEnrolled(user.id, c.id) : Promise.resolve(false),
+      listCourseReviews(c.id),
+      listRecommendedCourses(c.id, c.category.slug),
+      // Shared with the homepage: one edit updates both. All three resolve from
+      // the same cached read, so this costs no extra round-trip.
+      getHomeSection("process"),
+      getHomeSection("learnerVideos"),
+      getHomeSection("faq"),
+    ]);
 
   const isFree = c.pricingType === "FREE";
   const effective = c.discountPrice ?? c.price;
   const priceLabel = isFree ? "Free" : `₹${effective.toLocaleString("en-IN")}`;
-  const hasDiscount = !isFree && c.discountPrice != null && c.discountPrice < c.price;
+  const hasDiscount =
+    !isFree && c.discountPrice != null && c.discountPrice < c.price;
   const discountPct = hasDiscount
     ? Math.round((1 - (c.discountPrice as number) / c.price) * 100)
     : 0;
@@ -117,27 +119,71 @@ export default async function CourseDetailPage({
     0,
   );
 
-  const meta = [
-    c.ratingCount > 0 && {
-      icon: Star,
-      node: (
-        <>
-          <span className="font-semibold text-amber-300">{c.ratingAvg.toFixed(1)}</span>{" "}
-          <span className="text-white/70">({c.ratingCount.toLocaleString("en-IN")})</span>
-        </>
-      ),
-      iconClass: "fill-amber-300 text-amber-300",
-    },
-    { icon: BookOpen, node: `${c.lessonCount} lessons` },
-    { icon: Users, node: `${c.enrollments.toLocaleString("en-IN")} enrolled` },
-    { icon: BarChart3, node: LEVEL_LABEL[c.level] ?? c.level },
-    totalSeconds > 0 && { icon: Clock, node: `${fmtDuration(totalSeconds)} of content` },
-    { icon: Globe, node: c.language.toUpperCase() },
-  ].filter(Boolean) as { icon: typeof Star; node: React.ReactNode; iconClass?: string }[];
+  // Every figure in this row is the academy's to show or hide, and any of them
+  // may be given a stand-in while the real number is still small — see
+  // "Course page display" in the editor.
+  const d = c.display;
+  const ratingValue =
+    d.ratingText || (c.ratingCount > 0 ? c.ratingAvg.toFixed(1) : "");
+  const ratingCount =
+    d.ratingCountText || c.ratingCount.toLocaleString("en-IN");
 
+  const meta = [
+    d.showRating &&
+      ratingValue && {
+        icon: Star,
+        node: (
+          <>
+            <span className="font-semibold text-amber-300">{ratingValue}</span>{" "}
+            {ratingCount && (
+              <span className="text-white/70">({ratingCount})</span>
+            )}
+          </>
+        ),
+        iconClass: "fill-amber-300 text-amber-300",
+      },
+    d.showLessons && {
+      icon: BookOpen,
+      node: d.lessonsText || `${c.lessonCount} lessons`,
+    },
+    d.showEnrollments && {
+      icon: Users,
+      node:
+        d.enrollmentsText ||
+        `${c.enrollments.toLocaleString("en-IN")} enrolled`,
+    },
+    d.showLevel && { icon: BarChart3, node: LEVEL_LABEL[c.level] ?? c.level },
+    d.showDuration &&
+      (d.durationText || totalSeconds > 0) && {
+        icon: Clock,
+        node: d.durationText || `${fmtDuration(totalSeconds)} of content`,
+      },
+    d.showLanguage && { icon: Globe, node: c.language.toUpperCase() },
+  ].filter(Boolean) as {
+    icon: typeof Star;
+    node: React.ReactNode;
+    iconClass?: string;
+  }[];
+
+  // The name and strapline the page credits — the real instructor unless the
+  // academy has typed something to stand in for them.
+  const teacher = {
+    name: d.instructorName || c.instructor.name,
+    headline: d.instructorHeadline || c.instructor.headline,
+    avatarUrl: d.instructorName ? null : c.instructor.avatarUrl,
+  };
+
+  // The sidebar repeats the same figures, so it follows the same stand-ins —
+  // otherwise the header would promise "60+ lessons" beside "1 on-demand lesson".
   const includes = [
-    { icon: PlayCircle, label: `${c.lessonCount} on-demand lessons` },
-    totalSeconds > 0 && { icon: Clock, label: `${fmtDuration(totalSeconds)} of video content` },
+    {
+      icon: PlayCircle,
+      label: d.lessonsText || `${c.lessonCount} on-demand lessons`,
+    },
+    (d.durationText || totalSeconds > 0) && {
+      icon: Clock,
+      label: d.durationText || `${fmtDuration(totalSeconds)} of video content`,
+    },
     { icon: BarChart3, label: `${LEVEL_LABEL[c.level] ?? c.level} level` },
     { icon: Smartphone, label: "Access on mobile and desktop" },
     { icon: InfinityIcon, label: "Full lifetime access" },
@@ -152,7 +198,7 @@ export default async function CourseDetailPage({
           aria-hidden
           className="pointer-events-none absolute inset-0 opacity-20 [background:radial-gradient(60rem_30rem_at_80%_-10%,white,transparent)]"
         />
-        <div className="container-page relative grid gap-8 py-12 lg:grid-cols-3 lg:pb-24 lg:pt-16">
+        <div className="container-page relative grid gap-8 py-12 lg:grid-cols-3 lg:pt-16 lg:pb-24">
           <div className="lg:col-span-2">
             <Badge className="mb-4 border-white/20 bg-white/15 text-white backdrop-blur">
               {c.category.name}
@@ -161,35 +207,47 @@ export default async function CourseDetailPage({
               {c.title}
             </h1>
             {c.subtitle && (
-              <p className="mt-4 max-w-2xl text-base text-white/85 sm:text-lg">{c.subtitle}</p>
+              <p className="mt-4 max-w-2xl text-base text-white/85 sm:text-lg">
+                {c.subtitle}
+              </p>
             )}
 
             <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-2.5 text-sm">
               {meta.map((m, i) => (
-                <span key={i} className="flex items-center gap-1.5 text-white/90">
-                  <m.icon className={`size-4 ${m.iconClass ?? "text-white/70"}`} />
+                <span
+                  key={i}
+                  className="flex items-center gap-1.5 text-white/90"
+                >
+                  <m.icon
+                    className={`size-4 ${m.iconClass ?? "text-white/70"}`}
+                  />
                   {m.node}
                 </span>
               ))}
             </div>
 
-            <div className="mt-6 flex items-center gap-3">
-              <Avatar className="size-9 ring-2 ring-white/30">
-                {c.instructor.avatarUrl && (
-                  <AvatarImage src={c.instructor.avatarUrl} alt={c.instructor.name} />
-                )}
-                <AvatarFallback className="bg-white/20 text-xs text-white">
-                  {initials(c.instructor.name)}
-                </AvatarFallback>
-              </Avatar>
-              <p className="text-sm text-white/80">
-                Created by{" "}
-                <span className="font-medium text-white">{c.instructor.name}</span>
-                {c.instructor.headline ? (
-                  <span className="hidden sm:inline"> · {c.instructor.headline}</span>
-                ) : null}
-              </p>
-            </div>
+            {d.showInstructor && (
+              <div className="mt-6 flex items-center gap-3">
+                <Avatar className="size-9 ring-2 ring-white/30">
+                  {teacher.avatarUrl && (
+                    <AvatarImage src={teacher.avatarUrl} alt={teacher.name} />
+                  )}
+                  <AvatarFallback className="bg-white/20 text-xs text-white">
+                    {initials(teacher.name)}
+                  </AvatarFallback>
+                </Avatar>
+                <p className="text-sm text-white/80">
+                  Created by{" "}
+                  <span className="font-medium text-white">{teacher.name}</span>
+                  {teacher.headline ? (
+                    <span className="hidden sm:inline">
+                      {" "}
+                      · {teacher.headline}
+                    </span>
+                  ) : null}
+                </p>
+              </div>
+            )}
           </div>
         </div>
       </section>
@@ -204,7 +262,7 @@ export default async function CourseDetailPage({
           {/* `min-w-0`: a grid item refuses to shrink below its content by
               default, so one un-wrappable line inside the card used to set the
               width of the whole page on a phone. */}
-          <aside className="min-w-0 lg:col-start-3 lg:row-start-1 lg:-mt-56 lg:sticky lg:top-24 lg:self-start">
+          <aside className="min-w-0 lg:sticky lg:top-24 lg:col-start-3 lg:row-start-1 lg:-mt-56 lg:self-start">
             <Card className="gap-0 overflow-hidden p-0 shadow-xl">
               <CoursePreview
                 thumbnailUrl={c.thumbnailUrl}
@@ -242,13 +300,18 @@ export default async function CourseDetailPage({
 
                 <p className="text-muted-foreground flex flex-wrap items-center justify-center gap-1.5 text-xs">
                   <ShieldCheck className="size-3.5" /> Fees are non-refundable ·{" "}
-                  <Link href="/terms" className="text-primary font-medium underline-offset-2 hover:underline">
+                  <Link
+                    href="/terms"
+                    className="text-primary font-medium underline-offset-2 hover:underline"
+                  >
                     Terms &amp; Conditions
                   </Link>
                 </p>
 
                 <div className="border-t pt-4">
-                  <p className="mb-3 text-sm font-semibold">This course includes</p>
+                  <p className="mb-3 text-sm font-semibold">
+                    This course includes
+                  </p>
                   <ul className="text-muted-foreground space-y-2.5 text-sm">
                     {includes.map((it) => (
                       <li key={it.label} className="flex items-center gap-2.5">
@@ -266,7 +329,9 @@ export default async function CourseDetailPage({
           <div className="min-w-0 space-y-10 lg:col-span-2 lg:col-start-1 lg:row-start-1">
             {c.objectives.length > 0 && (
               <Card className="p-6">
-                <h2 className="mb-4 text-xl font-semibold">What you&apos;ll learn</h2>
+                <h2 className="mb-4 text-xl font-semibold">
+                  What you&apos;ll learn
+                </h2>
                 <ul className="grid gap-3 sm:grid-cols-2">
                   {c.objectives.map((o) => (
                     <li key={o} className="flex items-start gap-2.5 text-sm">
@@ -281,7 +346,11 @@ export default async function CourseDetailPage({
             {c.tags.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {c.tags.map((t) => (
-                  <Badge key={t} variant="secondary" className="rounded-full px-3 py-1 font-normal">
+                  <Badge
+                    key={t}
+                    variant="secondary"
+                    className="rounded-full px-3 py-1 font-normal"
+                  >
                     {t}
                   </Badge>
                 ))}
@@ -290,9 +359,11 @@ export default async function CourseDetailPage({
 
             {c.description && (
               <div>
-                <h2 className="mb-3 text-xl font-semibold">About this course</h2>
+                <h2 className="mb-3 text-xl font-semibold">
+                  About this course
+                </h2>
                 <div
-                  className="prose prose-sm dark:prose-invert max-w-none [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:font-semibold [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5"
+                  className="prose-blog prose-blog-sm max-w-none"
                   dangerouslySetInnerHTML={{ __html: c.description }}
                 />
               </div>
@@ -309,9 +380,16 @@ export default async function CourseDetailPage({
               <Card className="gap-0 overflow-hidden p-0">
                 <Accordion multiple defaultValue={["0"]} className="divide-y">
                   {c.chapters.map((ch, i) => {
-                    const secs = ch.lessons.reduce((s, l) => s + l.durationSeconds, 0);
+                    const secs = ch.lessons.reduce(
+                      (s, l) => s + l.durationSeconds,
+                      0,
+                    );
                     return (
-                      <AccordionItem key={ch.id} value={String(i)} className="border-b-0 px-4">
+                      <AccordionItem
+                        key={ch.id}
+                        value={String(i)}
+                        className="border-b-0 px-4"
+                      >
                         <AccordionTrigger className="hover:no-underline">
                           <span className="flex flex-1 items-center justify-between gap-3 pr-2">
                             <span className="font-medium">
@@ -335,9 +413,14 @@ export default async function CourseDetailPage({
                                 ) : (
                                   <Lock className="text-muted-foreground size-4 shrink-0" />
                                 )}
-                                <span className="flex-1 truncate">{l.title}</span>
+                                <span className="flex-1 truncate">
+                                  {l.title}
+                                </span>
                                 {l.isPreview && (
-                                  <Badge variant="secondary" className="h-5 text-[10px]">
+                                  <Badge
+                                    variant="secondary"
+                                    className="h-5 text-[10px]"
+                                  >
                                     Preview
                                   </Badge>
                                 )}
@@ -377,28 +460,32 @@ export default async function CourseDetailPage({
             )}
 
             {/* Instructor */}
-            <div>
-              <h2 className="mb-3 text-xl font-semibold">Instructor</h2>
-              <Card className="flex-row items-center gap-4 p-5">
-                <Avatar className="size-16">
-                  {c.instructor.avatarUrl && (
-                    <AvatarImage src={c.instructor.avatarUrl} alt={c.instructor.name} />
-                  )}
-                  <AvatarFallback className="bg-gradient-to-br from-rose-500 to-pink-600 text-lg text-white">
-                    {initials(c.instructor.name)}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="min-w-0">
-                  <p className="font-semibold">{c.instructor.name}</p>
-                  {c.instructor.headline && (
-                    <p className="text-muted-foreground text-sm">{c.instructor.headline}</p>
-                  )}
-                  <p className="text-muted-foreground mt-1 text-xs">
-                    Instructor at SkillForCareer
-                  </p>
-                </div>
-              </Card>
-            </div>
+            {d.showInstructor && (
+              <div>
+                <h2 className="mb-3 text-xl font-semibold">Instructor</h2>
+                <Card className="flex-row items-center gap-4 p-5">
+                  <Avatar className="size-16">
+                    {teacher.avatarUrl && (
+                      <AvatarImage src={teacher.avatarUrl} alt={teacher.name} />
+                    )}
+                    <AvatarFallback className="bg-gradient-to-br from-rose-500 to-pink-600 text-lg text-white">
+                      {initials(teacher.name)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0">
+                    <p className="font-semibold">{teacher.name}</p>
+                    {teacher.headline && (
+                      <p className="text-muted-foreground text-sm">
+                        {teacher.headline}
+                      </p>
+                    )}
+                    <p className="text-muted-foreground mt-1 text-xs">
+                      Instructor at SkillForCareer
+                    </p>
+                  </div>
+                </Card>
+              </div>
+            )}
 
             <CourseReviews
               reviews={reviews}

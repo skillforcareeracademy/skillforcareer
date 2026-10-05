@@ -66,7 +66,11 @@ export interface PlayerData {
   id: string;
   title: string;
   slug: string;
-  instructor: { name: string; avatarUrl: string | null; headline: string | null };
+  instructor: {
+    name: string;
+    avatarUrl: string | null;
+    headline: string | null;
+  };
   chapters: Chapter[];
   totalLessons: number;
   completedLessons: number;
@@ -93,7 +97,12 @@ function fmt(seconds: number): string {
   return `${m}:${String(r).padStart(2, "0")}`;
 }
 function initials(name: string): string {
-  return name.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase();
+  return name
+    .split(" ")
+    .map((p) => p[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
 }
 
 export function CoursePlayer({
@@ -103,7 +112,10 @@ export function CoursePlayer({
   player: PlayerData;
   viewerLabel?: string;
 }) {
-  const allLessons = useMemo(() => player.chapters.flatMap((c) => c.lessons), [player]);
+  const allLessons = useMemo(
+    () => player.chapters.flatMap((c) => c.lessons),
+    [player],
+  );
   const videoRef = useRef<HTMLVideoElement>(null);
   const lastSave = useRef(0);
 
@@ -112,7 +124,8 @@ export function CoursePlayer({
   // no longer in the course falls back to the normal resume behaviour.
   const requestedId = useSearchParams().get("lesson");
   const startId =
-    (requestedId && allLessons.some((l) => l.id === requestedId && !l.lock.locked)
+    (requestedId &&
+    allLessons.some((l) => l.id === requestedId && !l.lock.locked)
       ? requestedId
       : null) ??
     player.resumeLessonId ??
@@ -156,8 +169,14 @@ export function CoursePlayer({
   useEffect(() => {
     if (!currentId) return;
     let alive = true;
-    api.get<NoteItem[]>(`/api/lessons/${currentId}/notes`).then((n) => alive && setNotes(n)).catch(() => {});
-    api.get<BookmarkItem[]>(`/api/lessons/${currentId}/bookmarks`).then((bm) => alive && setBookmarks(bm)).catch(() => {});
+    api
+      .get<NoteItem[]>(`/api/lessons/${currentId}/notes`)
+      .then((n) => alive && setNotes(n))
+      .catch(() => {});
+    api
+      .get<BookmarkItem[]>(`/api/lessons/${currentId}/bookmarks`)
+      .then((bm) => alive && setBookmarks(bm))
+      .catch(() => {});
     return () => {
       alive = false;
     };
@@ -181,7 +200,8 @@ export function CoursePlayer({
         setLocks((prev) => ({ ...prev, [currentId]: next }));
         if (next.viewLimit != null && !next.locked) {
           const left = next.viewLimit - next.viewsUsed;
-          if (left === 0) toast.info("This was your last allowed view of this lesson.");
+          if (left === 0)
+            toast.info("This was your last allowed view of this lesson.");
           else if (left === 1) toast.info("1 view of this lesson left.");
         }
       },
@@ -192,8 +212,14 @@ export function CoursePlayer({
     };
   }, [currentId, allLessons]);
 
-  function saveProgress(body: { position?: number; watched?: number; completed?: boolean }) {
-    return api.post(`/api/lessons/${currentId}/progress`, body).catch(() => null);
+  function saveProgress(body: {
+    position?: number;
+    watched?: number;
+    completed?: boolean;
+  }) {
+    return api
+      .post(`/api/lessons/${currentId}/progress`, body)
+      .catch(() => null);
   }
 
   function onTimeUpdate() {
@@ -202,12 +228,20 @@ export function CoursePlayer({
     const now = Date.now();
     if (now - lastSave.current > 10000) {
       lastSave.current = now;
-      saveProgress({ position: Math.floor(v.currentTime), watched: Math.floor(v.currentTime) });
+      saveProgress({
+        position: Math.floor(v.currentTime),
+        watched: Math.floor(v.currentTime),
+      });
     }
   }
   function onLoadedMeta() {
     const v = videoRef.current;
-    if (v && current && current.lastPosition > 5 && current.lastPosition < v.duration - 5) {
+    if (
+      v &&
+      current &&
+      current.lastPosition > 5 &&
+      current.lastPosition < v.duration - 5
+    ) {
       v.currentTime = current.lastPosition;
     }
   }
@@ -216,7 +250,10 @@ export function CoursePlayer({
     if (!current) return;
     setMarking(true);
     const v = videoRef.current;
-    const res = await saveProgress({ completed: value, position: v ? Math.floor(v.currentTime) : undefined });
+    const res = await saveProgress({
+      completed: value,
+      position: v ? Math.floor(v.currentTime) : undefined,
+    });
     setCompleted((prev) => {
       const nextSet = new Set(prev);
       if (value) nextSet.add(current.id);
@@ -245,7 +282,8 @@ export function CoursePlayer({
       return;
     }
     const v = videoRef.current;
-    if (v && current?.videoUrl) saveProgress({ position: Math.floor(v.currentTime) });
+    if (v && current?.videoUrl)
+      saveProgress({ position: Math.floor(v.currentTime) });
     setNotes([]);
     setBookmarks([]);
     setCurrentId(id);
@@ -263,7 +301,10 @@ export function CoursePlayer({
     const tab = window.open("", "_blank", "noopener,noreferrer");
     setDownloading(true);
     try {
-      const next = await api.post<LessonLock>(`/api/lessons/${current.id}/download`, {});
+      const next = await api.post<LessonLock>(
+        `/api/lessons/${current.id}/download`,
+        {},
+      );
       setLocks((prev) => ({ ...prev, [current.id]: next }));
       // `window.location.href = …` trips the compiler's immutability rule;
       // assign() is the same navigation as a method call.
@@ -295,18 +336,29 @@ export function CoursePlayer({
       // Append the saved note straight from the create response. Previously we
       // re-fetched the whole list and fell back to a stale copy on failure —
       // so a hiccup on the refetch made a just-saved note vanish.
-      const res = await api.post<{ id: string }>(`/api/lessons/${currentId}/notes`, {
-        content,
-        timestampSeconds: ts,
-      });
+      const res = await api.post<{ id: string }>(
+        `/api/lessons/${currentId}/notes`,
+        {
+          content,
+          timestampSeconds: ts,
+        },
+      );
       setNoteDraft("");
       setNotes((prev) =>
-        [...prev, { id: res.id, content, timestampSeconds: ts, createdAt: new Date().toISOString() }].sort(
-          (a, b) => a.timestampSeconds - b.timestampSeconds,
-        ),
+        [
+          ...prev,
+          {
+            id: res.id,
+            content,
+            timestampSeconds: ts,
+            createdAt: new Date().toISOString(),
+          },
+        ].sort((a, b) => a.timestampSeconds - b.timestampSeconds),
       );
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Couldn't save note.");
+      toast.error(
+        err instanceof ApiError ? err.message : "Couldn't save note.",
+      );
     }
   }
   async function removeNote(id: string) {
@@ -317,18 +369,29 @@ export function CoursePlayer({
     const ts = videoRef.current ? Math.floor(videoRef.current.currentTime) : 0;
     const label = bmLabel.trim();
     try {
-      const res = await api.post<{ id: string }>(`/api/lessons/${currentId}/bookmarks`, {
-        timestampSeconds: ts,
-        label: label || undefined,
-      });
+      const res = await api.post<{ id: string }>(
+        `/api/lessons/${currentId}/bookmarks`,
+        {
+          timestampSeconds: ts,
+          label: label || undefined,
+        },
+      );
       setBmLabel("");
       setBookmarks((prev) =>
-        [...prev, { id: res.id, label: label || null, timestampSeconds: ts, createdAt: new Date().toISOString() }].sort(
-          (a, b) => a.timestampSeconds - b.timestampSeconds,
-        ),
+        [
+          ...prev,
+          {
+            id: res.id,
+            label: label || null,
+            timestampSeconds: ts,
+            createdAt: new Date().toISOString(),
+          },
+        ].sort((a, b) => a.timestampSeconds - b.timestampSeconds),
       );
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Couldn't save bookmark.");
+      toast.error(
+        err instanceof ApiError ? err.message : "Couldn't save bookmark.",
+      );
     }
   }
   async function removeBookmark(id: string) {
@@ -387,6 +450,19 @@ export function CoursePlayer({
               onTimeUpdate={onTimeUpdate}
               onEnded={() => markComplete(true)}
             />
+          ) : embed?.kind === "audio-file" ? (
+            <div className="bg-muted grid aspect-video place-items-center p-6">
+              <audio controls src={embed.src} className="w-full max-w-lg">
+                Your browser can&apos;t play this file.
+              </audio>
+            </div>
+          ) : embed?.kind === "image" ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={embed.src}
+              alt={current!.title}
+              className="aspect-video w-full bg-black object-contain"
+            />
           ) : embed?.kind === "iframe" || embed?.kind === "pdf" ? (
             // YouTube / Vimeo / Google Drive / a hosted PDF. Each of these needs
             // a frame rather than a <video>, which is why a pasted Drive link
@@ -414,7 +490,9 @@ export function CoursePlayer({
               <div>
                 <FileText className="text-muted-foreground mx-auto mb-2 size-8" />
                 <p className="text-sm font-medium">{current?.title}</p>
-                <p className="text-muted-foreground text-xs">No material for this lesson yet.</p>
+                <p className="text-muted-foreground text-xs">
+                  No material for this lesson yet.
+                </p>
               </div>
             </div>
           )}
@@ -423,7 +501,10 @@ export function CoursePlayer({
           {embed?.kind === "video-file" && viewerLabel && (
             <div className="pointer-events-none absolute inset-0 flex flex-wrap items-center justify-center gap-x-16 gap-y-12 overflow-hidden opacity-[0.09]">
               {Array.from({ length: 8 }).map((_, i) => (
-                <span key={i} className="rotate-[-20deg] text-[11px] font-medium whitespace-nowrap text-white">
+                <span
+                  key={i}
+                  className="rotate-[-20deg] text-[11px] font-medium whitespace-nowrap text-white"
+                >
                   {viewerLabel}
                 </span>
               ))}
@@ -437,7 +518,9 @@ export function CoursePlayer({
             <h1 className="truncate text-lg font-semibold">{current?.title}</h1>
             <p className="text-muted-foreground text-xs">
               Lesson {currentIndex + 1} of {allLessons.length}
-              {current?.durationSeconds ? ` · ${fmt(current.durationSeconds)}` : ""}
+              {current?.durationSeconds
+                ? ` · ${fmt(current.durationSeconds)}`
+                : ""}
               {lock?.viewLimit != null &&
                 ` · ${Math.min(lock.viewsUsed, lock.viewLimit)} of ${lock.viewLimit} views used`}
             </p>
@@ -475,8 +558,8 @@ export function CoursePlayer({
             "notes" mean anything. */}
         {embed && !isLocked && lock?.downloadsEnabled === false && (
           <p className="text-muted-foreground mt-3 text-sm">
-            {current?.attachmentName ?? "This material"} is for viewing in class — it can&apos;t be
-            downloaded.
+            {current?.attachmentName ?? "This material"} is for viewing in class
+            — it can&apos;t be downloaded.
           </p>
         )}
 
@@ -495,7 +578,8 @@ export function CoursePlayer({
             {current?.attachmentName ?? embedLabel(embed)}
             {lock?.downloadLimit != null && (
               <span className="text-xs">
-                ({Math.min(lock.downloadsUsed, lock.downloadLimit)}/{lock.downloadLimit})
+                ({Math.min(lock.downloadsUsed, lock.downloadLimit)}/
+                {lock.downloadLimit})
               </span>
             )}
           </button>
@@ -504,7 +588,7 @@ export function CoursePlayer({
         {/* Article content */}
         {!isLocked && !current?.videoUrl && current?.content && (
           <div
-            className="prose prose-sm dark:prose-invert mt-4 max-w-none"
+            className="prose-blog prose-blog-sm mt-4 max-w-none"
             dangerouslySetInnerHTML={{ __html: current.content }}
           />
         )}
@@ -512,8 +596,18 @@ export function CoursePlayer({
         {/* Notes / Bookmarks */}
         <div className="mt-6 rounded-2xl border">
           <div className="flex border-b">
-            <TabButton active={tab === "notes"} onClick={() => setTab("notes")} icon={StickyNote} label={`Notes (${notes.length})`} />
-            <TabButton active={tab === "bookmarks"} onClick={() => setTab("bookmarks")} icon={Bookmark} label={`Bookmarks (${bookmarks.length})`} />
+            <TabButton
+              active={tab === "notes"}
+              onClick={() => setTab("notes")}
+              icon={StickyNote}
+              label={`Notes (${notes.length})`}
+            />
+            <TabButton
+              active={tab === "bookmarks"}
+              onClick={() => setTab("bookmarks")}
+              icon={Bookmark}
+              label={`Bookmarks (${bookmarks.length})`}
+            />
           </div>
 
           {tab === "notes" ? (
@@ -526,7 +620,11 @@ export function CoursePlayer({
                   placeholder="Add a note at the current time…"
                   className="min-h-9 flex-1"
                 />
-                <Button size="sm" onClick={addNote} disabled={!noteDraft.trim()}>
+                <Button
+                  size="sm"
+                  onClick={addNote}
+                  disabled={!noteDraft.trim()}
+                >
                   <Plus className="size-4" /> Add
                 </Button>
               </div>
@@ -535,7 +633,10 @@ export function CoursePlayer({
               ) : (
                 <ul className="space-y-2">
                   {notes.map((n) => (
-                    <li key={n.id} className="flex items-start gap-3 rounded-lg border p-2.5">
+                    <li
+                      key={n.id}
+                      className="flex items-start gap-3 rounded-lg border p-2.5"
+                    >
                       <button
                         type="button"
                         onClick={() => seekTo(n.timestampSeconds)}
@@ -544,7 +645,13 @@ export function CoursePlayer({
                         {fmt(n.timestampSeconds)}
                       </button>
                       <p className="min-w-0 flex-1 text-sm">{n.content}</p>
-                      <Button variant="ghost" size="icon-sm" className="text-muted-foreground shrink-0" onClick={() => removeNote(n.id)} aria-label="Delete note">
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="text-muted-foreground shrink-0"
+                        onClick={() => removeNote(n.id)}
+                        aria-label="Delete note"
+                      >
                         <Trash2 className="size-4" />
                       </Button>
                     </li>
@@ -565,11 +672,16 @@ export function CoursePlayer({
                 </Button>
               </div>
               {bookmarks.length === 0 ? (
-                <p className="text-muted-foreground text-sm">No bookmarks yet.</p>
+                <p className="text-muted-foreground text-sm">
+                  No bookmarks yet.
+                </p>
               ) : (
                 <ul className="space-y-2">
                   {bookmarks.map((bm) => (
-                    <li key={bm.id} className="flex items-center gap-3 rounded-lg border p-2.5">
+                    <li
+                      key={bm.id}
+                      className="flex items-center gap-3 rounded-lg border p-2.5"
+                    >
                       <button
                         type="button"
                         onClick={() => seekTo(bm.timestampSeconds)}
@@ -577,8 +689,16 @@ export function CoursePlayer({
                       >
                         {fmt(bm.timestampSeconds)}
                       </button>
-                      <p className="min-w-0 flex-1 text-sm">{bm.label || "Bookmark"}</p>
-                      <Button variant="ghost" size="icon-sm" className="text-muted-foreground shrink-0" onClick={() => removeBookmark(bm.id)} aria-label="Remove bookmark">
+                      <p className="min-w-0 flex-1 text-sm">
+                        {bm.label || "Bookmark"}
+                      </p>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="text-muted-foreground shrink-0"
+                        onClick={() => removeBookmark(bm.id)}
+                        aria-label="Remove bookmark"
+                      >
                         <Trash2 className="size-4" />
                       </Button>
                     </li>
@@ -604,7 +724,10 @@ export function CoursePlayer({
           </div>
           <div className="bg-muted mt-1.5 h-1.5 overflow-hidden rounded-full">
             <div
-              className={cn("h-full rounded-full", pct >= 100 ? "bg-emerald-500" : "bg-primary")}
+              className={cn(
+                "h-full rounded-full",
+                pct >= 100 ? "bg-emerald-500" : "bg-primary",
+              )}
               style={{ width: `${pct}%` }}
             />
           </div>
@@ -627,11 +750,14 @@ export function CoursePlayer({
                       <button
                         type="button"
                         onClick={() => selectLesson(l.id)}
-                        title={rowLocked ? (rowLock.message ?? undefined) : undefined}
+                        title={
+                          rowLocked ? (rowLock.message ?? undefined) : undefined
+                        }
                         className={cn(
                           "hover:bg-accent flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors",
                           isCurrent && "bg-accent",
-                          rowLocked && "cursor-not-allowed opacity-60 hover:bg-transparent",
+                          rowLocked &&
+                            "cursor-not-allowed opacity-60 hover:bg-transparent",
                         )}
                       >
                         {rowLocked ? (
@@ -645,7 +771,10 @@ export function CoursePlayer({
                         )}
                         <span className="min-w-0 flex-1">
                           <span
-                            className={cn("block truncate", isCurrent && "font-medium")}
+                            className={cn(
+                              "block truncate",
+                              isCurrent && "font-medium",
+                            )}
                           >
                             {l.title}
                           </span>
@@ -671,15 +800,27 @@ export function CoursePlayer({
 
         <div className="flex items-center gap-3 border-t p-4">
           <Avatar className="size-9">
-            {player.instructor.avatarUrl && <AvatarImage src={player.instructor.avatarUrl} alt={player.instructor.name} />}
-            <AvatarFallback className="text-xs">{initials(player.instructor.name)}</AvatarFallback>
+            {player.instructor.avatarUrl && (
+              <AvatarImage
+                src={player.instructor.avatarUrl}
+                alt={player.instructor.name}
+              />
+            )}
+            <AvatarFallback className="text-xs">
+              {initials(player.instructor.name)}
+            </AvatarFallback>
           </Avatar>
           <div className="min-w-0">
             <p className="text-muted-foreground text-xs">Instructor</p>
-            <p className="truncate text-sm font-medium">{player.instructor.name}</p>
+            <p className="truncate text-sm font-medium">
+              {player.instructor.name}
+            </p>
           </div>
           {pct >= 100 && (
-            <Badge variant="secondary" className="ml-auto bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
+            <Badge
+              variant="secondary"
+              className="ml-auto bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
+            >
               Done
             </Badge>
           )}
@@ -706,7 +847,9 @@ function TabButton({
       onClick={onClick}
       className={cn(
         "flex flex-1 items-center justify-center gap-1.5 border-b-2 px-4 py-3 text-sm font-medium transition-colors",
-        active ? "border-primary text-foreground" : "text-muted-foreground border-transparent hover:text-foreground",
+        active
+          ? "border-primary text-foreground"
+          : "text-muted-foreground hover:text-foreground border-transparent",
       )}
     >
       <Icon className="size-4" /> {label}

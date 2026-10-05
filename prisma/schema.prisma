@@ -1115,6 +1115,16 @@ model Course {
   categoryId   String
   instructorId String
 
+  /// What the public course page prints, and what it prints instead.
+  ///
+  /// "Ye wala data mujhe website pr dikhana hai ya nhi iska ek toggle hona
+  /// chahiye on course details page… Agar mai live publish nhi krna chahta to
+  /// waha pr dummy data daalne ka option de do." Each figure in the hero — the
+  /// lesson count, the number enrolled, the level, the rating — can be switched
+  /// off, or given a stand-in to show while the real number is still small.
+  /// Shape in `coursePageDisplaySchema`; absent means "show everything live".
+  pageDisplay Json?
+
   category   Category @relation(fields: [categoryId], references: [id], onUpdate: NoAction)
   instructor User     @relation("CourseInstructor", fields: [instructorId], references: [id], onUpdate: NoAction)
 

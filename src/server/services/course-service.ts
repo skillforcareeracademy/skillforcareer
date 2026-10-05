@@ -1,7 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
-import type { CreateCourseInput, UpdateCourseInput } from "@/lib/validations/course";
+import {
+  readCoursePageDisplay,
+  type CreateCourseInput,
+  type UpdateCourseInput,
+} from "@/lib/validations/course";
 import { invalidateHeaderMenus } from "./header-menu-service";
 import { ensureCourseIdentity } from "./academy-ids-service";
 
@@ -15,24 +19,34 @@ function slugify(value: string): string {
 }
 
 function isUnique(e: unknown): boolean {
-  return e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002";
+  return (
+    e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002"
+  );
 }
 
 async function uniqueSlug(base: string, excludeId?: string): Promise<string> {
   const root = base || "course";
   let n = 1;
   let slug = root;
-  let clash = await prisma.course.findUnique({ where: { slug }, select: { id: true } });
+  let clash = await prisma.course.findUnique({
+    where: { slug },
+    select: { id: true },
+  });
   while (clash && clash.id !== excludeId) {
     n += 1;
     slug = `${root}-${n}`;
-    clash = await prisma.course.findUnique({ where: { slug }, select: { id: true } });
+    clash = await prisma.course.findUnique({
+      where: { slug },
+      select: { id: true },
+    });
   }
   return slug;
 }
 
 function toStringArray(json: Prisma.JsonValue | null): string[] {
-  return Array.isArray(json) ? (json.filter((v) => typeof v === "string") as string[]) : [];
+  return Array.isArray(json)
+    ? (json.filter((v) => typeof v === "string") as string[])
+    : [];
 }
 
 // ── Create / update / publish / delete ──────────────────────────────────────
@@ -75,11 +89,28 @@ export async function updateCourse(
     pricingType: input.pricingType,
     price: new Prisma.Decimal(input.pricingType === "FREE" ? 0 : input.price),
     discountPrice:
-      input.discountPrice != null ? new Prisma.Decimal(input.discountPrice) : null,
+      input.discountPrice != null
+        ? new Prisma.Decimal(input.discountPrice)
+        : null,
     tags: input.tags ?? [],
     requirements: input.requirements ?? [],
     objectives: input.objectives ?? [],
   };
+  // Who the page credits. "I can not change this, as an admin I should be able
+  // to manage this" — so the editor may hand a course to another instructor,
+  // which also moves it in that instructor's own workspace.
+  if (input.instructorId) {
+    const teacher = await prisma.user.findUnique({
+      where: { id: input.instructorId },
+      select: { id: true },
+    });
+    if (!teacher)
+      throw AppError.badRequest("That instructor no longer exists.");
+    data.instructorId = input.instructorId;
+  }
+  if (input.pageDisplay) {
+    data.pageDisplay = input.pageDisplay;
+  }
   if (input.slug) {
     data.slug = await uniqueSlug(slugify(input.slug), id);
   }
@@ -148,6 +179,7 @@ export async function getCourseForEdit(id: string) {
   return {
     id: c.id,
     instructorId: c.instructorId,
+    pageDisplay: readCoursePageDisplay(c.pageDisplay),
     title: c.title,
     subtitle: c.subtitle,
     slug: c.slug,
@@ -162,6 +194,13 @@ export async function getCourseForEdit(id: string) {
     price: c.price.toNumber(),
     discountPrice: c.discountPrice ? c.discountPrice.toNumber() : null,
     status: c.status,
+    // Shown beside each display switch so the editor can see what the live
+    // figure currently is before deciding to hide it or stand something in.
+    ratingAvg: c.ratingAvg,
+    ratingCount: c.ratingCount,
+    enrollmentCount: c.enrollmentCount,
+    durationMinutes: c.durationMinutes,
+    lessonCount: c.chapters.reduce((sum, ch) => sum + ch.lessons.length, 0),
     tags: toStringArray(c.tags),
     requirements: toStringArray(c.requirements),
     objectives: toStringArray(c.objectives),
@@ -185,7 +224,9 @@ export async function getCourseForEdit(id: string) {
   };
 }
 
-export type CourseEdit = NonNullable<Awaited<ReturnType<typeof getCourseForEdit>>>;
+export type CourseEdit = NonNullable<
+  Awaited<ReturnType<typeof getCourseForEdit>>
+>;
 
 // ── Reads: admin list ────────────────────────────────────────────────────────
 
@@ -207,17 +248,26 @@ export interface CourseListQuery {
 export async function listCoursesAdmin(q: CourseListQuery) {
   const and: Prisma.CourseWhereInput[] = [];
   if (q.search) and.push({ title: { contains: q.search } });
-  if (q.status) and.push({ status: q.status as Prisma.CourseWhereInput["status"] });
+  if (q.status)
+    and.push({ status: q.status as Prisma.CourseWhereInput["status"] });
   if (q.categoryId) and.push({ categoryId: q.categoryId });
   if (q.instructorId) and.push({ instructorId: q.instructorId });
   if (q.deliveryMode) {
-    and.push({ deliveryMode: q.deliveryMode as Prisma.CourseWhereInput["deliveryMode"] });
+    and.push({
+      deliveryMode: q.deliveryMode as Prisma.CourseWhereInput["deliveryMode"],
+    });
   }
   if (q.from || q.to) {
     and.push({
       createdAt: {
         ...(q.from ? { gte: new Date(`${q.from}T00:00:00+05:30`) } : {}),
-        ...(q.to ? { lt: new Date(new Date(`${q.to}T00:00:00+05:30`).getTime() + 86_400_000) } : {}),
+        ...(q.to
+          ? {
+              lt: new Date(
+                new Date(`${q.to}T00:00:00+05:30`).getTime() + 86_400_000,
+              ),
+            }
+          : {}),
       },
     });
   }
@@ -276,13 +326,14 @@ export async function courseStats(instructorId?: string): Promise<CourseStats> {
   const enrollmentScope: Prisma.EnrollmentWhereInput = instructorId
     ? { course: { instructorId } }
     : {};
-  const [total, published, draft, pendingReview, enrollments] = await Promise.all([
-    prisma.course.count({ where: scope }),
-    prisma.course.count({ where: { ...scope, status: "PUBLISHED" } }),
-    prisma.course.count({ where: { ...scope, status: "DRAFT" } }),
-    prisma.course.count({ where: { ...scope, status: "PENDING_REVIEW" } }),
-    prisma.enrollment.count({ where: enrollmentScope }),
-  ]);
+  const [total, published, draft, pendingReview, enrollments] =
+    await Promise.all([
+      prisma.course.count({ where: scope }),
+      prisma.course.count({ where: { ...scope, status: "PUBLISHED" } }),
+      prisma.course.count({ where: { ...scope, status: "DRAFT" } }),
+      prisma.course.count({ where: { ...scope, status: "PENDING_REVIEW" } }),
+      prisma.enrollment.count({ where: enrollmentScope }),
+    ]);
   return { total, published, draft, pendingReview, enrollments };
 }
 
@@ -299,7 +350,11 @@ export async function listPublicCourses(opts: {
 
   const rows = await prisma.course.findMany({
     where: { AND: and },
-    orderBy: [{ isFeatured: "desc" }, { enrollmentCount: "desc" }, { publishedAt: "desc" }],
+    orderBy: [
+      { isFeatured: "desc" },
+      { enrollmentCount: "desc" },
+      { publishedAt: "desc" },
+    ],
     take: opts.take ?? 24,
     include: {
       category: { select: { name: true, slug: true } },
@@ -357,7 +412,9 @@ const SUGGESTION_SELECT = {
   category: { select: { name: true } },
 } satisfies Prisma.CourseSelect;
 
-type SuggestionRow = Prisma.CourseGetPayload<{ select: typeof SUGGESTION_SELECT }>;
+type SuggestionRow = Prisma.CourseGetPayload<{
+  select: typeof SUGGESTION_SELECT;
+}>;
 
 function toSuggestion(c: SuggestionRow): CourseSuggestion {
   return {
@@ -416,10 +473,16 @@ export type TrendingProgram = {
   subtitle: string | null;
 };
 
-export async function listTrendingPrograms(take = 6): Promise<TrendingProgram[]> {
+export async function listTrendingPrograms(
+  take = 6,
+): Promise<TrendingProgram[]> {
   const rows = await prisma.course.findMany({
     where: { status: "PUBLISHED" },
-    orderBy: [{ isFeatured: "desc" }, { enrollmentCount: "desc" }, { publishedAt: "desc" }],
+    orderBy: [
+      { isFeatured: "desc" },
+      { enrollmentCount: "desc" },
+      { publishedAt: "desc" },
+    ],
     take,
     select: {
       id: true,
@@ -465,7 +528,9 @@ export async function listTrendingPrograms(take = 6): Promise<TrendingProgram[]>
 }
 
 /** The courses behind the "Popular:" chips under the hero search box. */
-export async function listPopularCourses(take = 6): Promise<CourseSuggestion[]> {
+export async function listPopularCourses(
+  take = 6,
+): Promise<CourseSuggestion[]> {
   const rows = await prisma.course.findMany({
     where: { status: "PUBLISHED" },
     orderBy: [{ enrollmentCount: "desc" }, { ratingAvg: "desc" }],
@@ -486,7 +551,13 @@ export async function getPublicCourseBySlug(slug: string) {
         include: {
           lessons: {
             orderBy: { order: "asc" },
-            select: { id: true, title: true, type: true, durationSeconds: true, isPreview: true },
+            select: {
+              id: true,
+              title: true,
+              type: true,
+              durationSeconds: true,
+              isPreview: true,
+            },
           },
         },
       },
@@ -495,7 +566,10 @@ export async function getPublicCourseBySlug(slug: string) {
   });
   if (!c) return null;
 
-  const lessonCount = c.chapters.reduce((sum, ch) => sum + ch.lessons.length, 0);
+  const lessonCount = c.chapters.reduce(
+    (sum, ch) => sum + ch.lessons.length,
+    0,
+  );
   return {
     id: c.id,
     title: c.title,
@@ -517,6 +591,7 @@ export async function getPublicCourseBySlug(slug: string) {
     objectives: toStringArray(c.objectives),
     category: c.category,
     instructor: c.instructor,
+    display: readCoursePageDisplay(c.pageDisplay),
     enrollments: c._count.enrollments,
     lessonCount,
     chapters: c.chapters.map((ch) => ({
@@ -613,7 +688,10 @@ export interface CourseReview {
 }
 
 /** Published learner reviews for the course detail page. */
-export async function listCourseReviews(courseId: string, take = 6): Promise<CourseReview[]> {
+export async function listCourseReviews(
+  courseId: string,
+  take = 6,
+): Promise<CourseReview[]> {
   const rows = await prisma.review.findMany({
     where: { courseId, isApproved: true },
     orderBy: [{ createdAt: "desc" }],

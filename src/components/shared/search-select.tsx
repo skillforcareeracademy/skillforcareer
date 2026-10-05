@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, ChevronsUpDown } from "lucide-react";
+import { Check, ChevronsUpDown, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -76,6 +76,16 @@ export function SearchSelect({
           />
         }
       >
+        {/* The magnifier is the whole point of the control being here rather
+            than a plain dropdown, and a closed field looked identical to one —
+            "ye wala change nhi hua h abhi tak". It shows until something is
+            picked, when the choice itself is the more useful thing to read. */}
+        {!chosen && (
+          <Search
+            className="text-muted-foreground size-4 shrink-0"
+            aria-hidden
+          />
+        )}
         <span
           className={cn(
             "min-w-0 flex-1 truncate text-left",

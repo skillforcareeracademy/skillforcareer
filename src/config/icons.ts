@@ -23,6 +23,8 @@ import {
   Headset,
   Heart,
   HeartHandshake,
+  Newspaper,
+  Handshake,
   Laptop,
   Layers,
   LifeBuoy,
@@ -117,6 +119,9 @@ export const ICONS = {
   School,
   Headset,
   FileText,
+  // Added for the Articles and Partners homepage bands.
+  Newspaper,
+  Handshake,
 } as const;
 
 export type IconName = keyof typeof ICONS;
@@ -124,7 +129,10 @@ export type IconName = keyof typeof ICONS;
 export const ICON_NAMES = Object.keys(ICONS) as IconName[];
 
 /** Resolve a stored icon name, falling back so a bad value can't blank a card. */
-export function iconFor(name: string | undefined, fallback: IconName = "Sparkles"): LucideIcon {
+export function iconFor(
+  name: string | undefined,
+  fallback: IconName = "Sparkles",
+): LucideIcon {
   return ICONS[name as IconName] ?? ICONS[fallback];
 }
 

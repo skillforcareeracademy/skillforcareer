@@ -85,7 +85,9 @@ const tint = z.enum(TINT_NAMES as [string, ...string[]]).catch("rose" as never);
 const tone = z.enum(TONE_NAMES as [string, ...string[]]).catch("rose" as never);
 const count = (max: number, fallback: number) =>
   z.coerce.number().int().min(1).max(max).catch(fallback);
-const social = z.enum(SOCIAL_NAMES as [string, ...string[]]).catch("instagram" as never);
+const social = z
+  .enum(SOCIAL_NAMES as [string, ...string[]])
+  .catch("instagram" as never);
 
 /** A navigation entry — used by the header, the footer columns and the legal row. */
 const linkItem = z.object({ label: text(60), href: link(300) });
@@ -98,7 +100,10 @@ const linkFields: Field[] = [
 
 const heroSchema = z.object({
   badgeText: text(80),
-  avatars: z.array(z.object({ url: link() })).max(6).default([]),
+  avatars: z
+    .array(z.object({ url: link() }))
+    .max(6)
+    .default([]),
   titleLead: text(60),
   titleHighlight: text(40),
   titleTail: text(60),
@@ -114,15 +119,40 @@ const heroSchema = z.object({
 });
 
 const heroFields: AnyField[] = [
-  { name: "badgeText", label: "Badge above the heading", type: "text", placeholder: "Trusted by 1,000+ learners" },
+  {
+    name: "badgeText",
+    label: "Badge above the heading",
+    type: "text",
+    placeholder: "Trusted by 1,000+ learners",
+  },
   { name: "searchPlaceholder", label: "Search box placeholder", type: "text" },
-  { name: "titleLead", label: "Heading — first part", type: "text", hint: "Shown in the normal text colour." },
-  { name: "titleHighlight", label: "Heading — highlighted word", type: "text", hint: "Drawn in the brand gradient." },
+  {
+    name: "titleLead",
+    label: "Heading — first part",
+    type: "text",
+    hint: "Shown in the normal text colour.",
+  },
+  {
+    name: "titleHighlight",
+    label: "Heading — highlighted word",
+    type: "text",
+    hint: "Drawn in the brand gradient.",
+  },
   { name: "titleTail", label: "Heading — last part", type: "text" },
   { name: "subtitle", label: "Sub-heading", type: "textarea", wide: true },
-  { name: "showPopular", label: "Show popular course chips", type: "switch", hint: "Pulled live from the catalogue's most-enrolled courses." },
+  {
+    name: "showPopular",
+    label: "Show popular course chips",
+    type: "switch",
+    hint: "Pulled live from the catalogue's most-enrolled courses.",
+  },
   { name: "popularLimit", label: "How many chips", type: "number" },
-  { name: "popularLabel", label: "Chips label", type: "text", placeholder: "Popular:" },
+  {
+    name: "popularLabel",
+    label: "Chips label",
+    type: "text",
+    placeholder: "Popular:",
+  },
   {
     name: "avatars",
     label: "Badge avatars",
@@ -152,10 +182,18 @@ const heroFields: AnyField[] = [
 const heroDefaults: z.infer<typeof heroSchema> = {
   badgeText: "Trusted by 1,000+ learners",
   avatars: [
-    { url: "https://images.pexels.com/photos/7580822/pexels-photo-7580822.jpeg?auto=compress&cs=tinysrgb&w=200&h=200&fit=crop&crop=faces" },
-    { url: "https://images.pexels.com/photos/9171219/pexels-photo-9171219.jpeg?auto=compress&cs=tinysrgb&w=200&h=200&fit=crop&crop=faces" },
-    { url: "https://images.pexels.com/photos/7580821/pexels-photo-7580821.jpeg?auto=compress&cs=tinysrgb&w=200&h=200&fit=crop&crop=faces" },
-    { url: "https://images.pexels.com/photos/7580761/pexels-photo-7580761.jpeg?auto=compress&cs=tinysrgb&w=200&h=200&fit=crop&crop=faces" },
+    {
+      url: "https://images.pexels.com/photos/7580822/pexels-photo-7580822.jpeg?auto=compress&cs=tinysrgb&w=200&h=200&fit=crop&crop=faces",
+    },
+    {
+      url: "https://images.pexels.com/photos/9171219/pexels-photo-9171219.jpeg?auto=compress&cs=tinysrgb&w=200&h=200&fit=crop&crop=faces",
+    },
+    {
+      url: "https://images.pexels.com/photos/7580821/pexels-photo-7580821.jpeg?auto=compress&cs=tinysrgb&w=200&h=200&fit=crop&crop=faces",
+    },
+    {
+      url: "https://images.pexels.com/photos/7580761/pexels-photo-7580761.jpeg?auto=compress&cs=tinysrgb&w=200&h=200&fit=crop&crop=faces",
+    },
   ],
   titleLead: "Master tomorrow's",
   titleHighlight: "skills",
@@ -193,7 +231,12 @@ const statsFields: AnyField[] = [
     hint: "Four reads best — they sit on one row on desktop.",
     fields: [
       { name: "value", label: "Number", type: "text", placeholder: "1,000+" },
-      { name: "label", label: "Caption", type: "text", placeholder: "Learners upskilled" },
+      {
+        name: "label",
+        label: "Caption",
+        type: "text",
+        placeholder: "Learners upskilled",
+      },
     ],
   },
 ];
@@ -218,14 +261,30 @@ const categoriesSchema = z.object({
 });
 
 const headingFields = (titlePlaceholder: string): AnyField[] => [
-  { name: "title", label: "Heading", type: "text", placeholder: titlePlaceholder, wide: true },
+  {
+    name: "title",
+    label: "Heading",
+    type: "text",
+    placeholder: titlePlaceholder,
+    wide: true,
+  },
   { name: "description", label: "Sub-heading", type: "textarea", wide: true },
 ];
 
 const categoriesFields: AnyField[] = [
   ...headingFields("Explore top categories"),
-  { name: "linkLabel", label: "Corner link text", type: "text", placeholder: "View all categories" },
-  { name: "linkHref", label: "Corner link URL", type: "url", placeholder: "/courses" },
+  {
+    name: "linkLabel",
+    label: "Corner link text",
+    type: "text",
+    placeholder: "View all categories",
+  },
+  {
+    name: "linkHref",
+    label: "Corner link URL",
+    type: "url",
+    placeholder: "/courses",
+  },
   {
     name: "limit",
     label: "Maximum tiles",
@@ -254,8 +313,18 @@ const programsSchema = z.object({
 
 const programsFields: AnyField[] = [
   ...headingFields("Trending programs"),
-  { name: "linkLabel", label: "Corner link text", type: "text", placeholder: "Browse all programs" },
-  { name: "linkHref", label: "Corner link URL", type: "url", placeholder: "/courses" },
+  {
+    name: "linkLabel",
+    label: "Corner link text",
+    type: "text",
+    placeholder: "Browse all programs",
+  },
+  {
+    name: "linkHref",
+    label: "Corner link URL",
+    type: "url",
+    placeholder: "/courses",
+  },
   {
     name: "limit",
     label: "How many programs",
@@ -303,7 +372,12 @@ const whyUsFields: AnyField[] = [
     fields: [
       { name: "title", label: "Title", type: "text" },
       { name: "icon", label: "Icon", type: "icon" },
-      { name: "description", label: "Description", type: "textarea", wide: true },
+      {
+        name: "description",
+        label: "Description",
+        type: "textarea",
+        wide: true,
+      },
       { name: "tint", label: "Accent colour", type: "tint" },
     ],
   },
@@ -311,7 +385,8 @@ const whyUsFields: AnyField[] = [
 
 const whyUsDefaults: z.infer<typeof whyUsSchema> = {
   title: "Everything a modern academy needs",
-  description: "One platform for teaching, assessing, certifying and getting hired.",
+  description:
+    "One platform for teaching, assessing, certifying and getting hired.",
   items: [
     {
       icon: "MonitorPlay",
@@ -364,7 +439,9 @@ const processSchema = z.object({
   title: required(120, "Steps for your successful career"),
   description: text(240),
   items: z
-    .array(z.object({ icon: icon("ListChecks"), title: text(80), body: text(300) }))
+    .array(
+      z.object({ icon: icon("ListChecks"), title: text(80), body: text(300) }),
+    )
     .max(6)
     .default([]),
 });
@@ -429,10 +506,30 @@ const placedSchema = z.object({
 });
 
 const placedFields: AnyField[] = [
-  { name: "eyebrow", label: "Small line above the heading", type: "text", placeholder: "Skill For Career" },
-  { name: "titleLead", label: "Heading — first part", type: "text", placeholder: "900+" },
-  { name: "titleHighlight", label: "Heading — underlined word", type: "text", placeholder: "Students" },
-  { name: "titleTail", label: "Heading — last part", type: "text", placeholder: "Got Placed" },
+  {
+    name: "eyebrow",
+    label: "Small line above the heading",
+    type: "text",
+    placeholder: "Skill For Career",
+  },
+  {
+    name: "titleLead",
+    label: "Heading — first part",
+    type: "text",
+    placeholder: "900+",
+  },
+  {
+    name: "titleHighlight",
+    label: "Heading — underlined word",
+    type: "text",
+    placeholder: "Students",
+  },
+  {
+    name: "titleTail",
+    label: "Heading — last part",
+    type: "text",
+    placeholder: "Got Placed",
+  },
   {
     name: "items",
     label: "Learners",
@@ -455,16 +552,56 @@ const placedDefaults: z.infer<typeof placedSchema> = {
   titleHighlight: "Students",
   titleTail: "Got Placed",
   items: [
-    { name: "Himani", course: "Data Analyst", photo: "/images/students/student-11.png" },
-    { name: "Sneha Yadav", course: "Web Development", photo: "/images/students/student-14.png" },
-    { name: "Anjali Rajput", course: "Digital Marketing", photo: "/images/students/student-15.png" },
-    { name: "Ajeet", course: "Retail & Sales", photo: "/images/students/student-16.png" },
-    { name: "Priya Singh", course: "Full Stack Developer", photo: "/images/students/student-19.png" },
-    { name: "Anu Chauhan", course: "Social Media Management", photo: "/images/students/student-20.png" },
-    { name: "Bhumika Gandhi", course: "Digital Marketing", photo: "/images/students/student-6.png" },
-    { name: "Neha Sharma", course: "Full Stack Developer", photo: "/images/students/student-1.png" },
-    { name: "Raunak Bhatia", course: "Web Development", photo: "/images/students/student-4.png" },
-    { name: "Ritika Verma", course: "Data Analyst", photo: "/images/students/student-5.png" },
+    {
+      name: "Himani",
+      course: "Data Analyst",
+      photo: "/images/students/student-11.png",
+    },
+    {
+      name: "Sneha Yadav",
+      course: "Web Development",
+      photo: "/images/students/student-14.png",
+    },
+    {
+      name: "Anjali Rajput",
+      course: "Digital Marketing",
+      photo: "/images/students/student-15.png",
+    },
+    {
+      name: "Ajeet",
+      course: "Retail & Sales",
+      photo: "/images/students/student-16.png",
+    },
+    {
+      name: "Priya Singh",
+      course: "Full Stack Developer",
+      photo: "/images/students/student-19.png",
+    },
+    {
+      name: "Anu Chauhan",
+      course: "Social Media Management",
+      photo: "/images/students/student-20.png",
+    },
+    {
+      name: "Bhumika Gandhi",
+      course: "Digital Marketing",
+      photo: "/images/students/student-6.png",
+    },
+    {
+      name: "Neha Sharma",
+      course: "Full Stack Developer",
+      photo: "/images/students/student-1.png",
+    },
+    {
+      name: "Raunak Bhatia",
+      course: "Web Development",
+      photo: "/images/students/student-4.png",
+    },
+    {
+      name: "Ritika Verma",
+      course: "Data Analyst",
+      photo: "/images/students/student-5.png",
+    },
   ],
 };
 
@@ -474,7 +611,14 @@ const testimonialsSchema = z.object({
   title: required(120, "Careers, transformed"),
   description: text(240),
   items: z
-    .array(z.object({ name: text(60), role: text(80), quote: text(400), avatar: link() }))
+    .array(
+      z.object({
+        name: text(60),
+        role: text(80),
+        quote: text(400),
+        avatar: link(),
+      }),
+    )
     .max(12)
     .default([]),
 });
@@ -500,21 +644,24 @@ const testimonialsFields: AnyField[] = [
 
 const testimonialsDefaults: z.infer<typeof testimonialsSchema> = {
   title: "Careers, transformed",
-  description: "Real learners, real outcomes — promotions, switches and pay raises.",
+  description:
+    "Real learners, real outcomes — promotions, switches and pay raises.",
   items: [
     {
       name: "Rohit Chakravarti",
       role: "SkillForCareer learner",
       quote:
         "Amazing experience! The faculty is supportive and the environment truly helps in building skills and confidence.",
-      avatar: "https://skillforcareer.in/wp-content/uploads/2026/02/Rohit-Chakravarti.jpeg",
+      avatar:
+        "https://skillforcareer.in/wp-content/uploads/2026/02/Rohit-Chakravarti.jpeg",
     },
     {
       name: "Anjali Rajput",
       role: "Digital Marketing track",
       quote:
         "Excellent training and great mentors. I gained confidence, practical skills, and a clear career direction.",
-      avatar: "https://skillforcareer.in/wp-content/uploads/2026/02/anjali.jpeg",
+      avatar:
+        "https://skillforcareer.in/wp-content/uploads/2026/02/anjali.jpeg",
     },
     {
       name: "Rakesh",
@@ -532,7 +679,10 @@ const certificateSchema = z.object({
   badge: text(80),
   title: required(120, "Finish strong. Get certified."),
   description: text(400),
-  perks: z.array(z.object({ icon: icon("BadgeCheck"), text: text(160) })).max(6).default([]),
+  perks: z
+    .array(z.object({ icon: icon("BadgeCheck"), text: text(160) }))
+    .max(6)
+    .default([]),
   primaryLabel: text(40),
   primaryHref: link(),
   secondaryLabel: text(40),
@@ -548,7 +698,12 @@ const certificateSchema = z.object({
 });
 
 const certificateFields: AnyField[] = [
-  { name: "badge", label: "Badge above the heading", type: "text", placeholder: "Industry-recognised certificate" },
+  {
+    name: "badge",
+    label: "Badge above the heading",
+    type: "text",
+    placeholder: "Industry-recognised certificate",
+  },
   { name: "title", label: "Heading", type: "text" },
   { name: "description", label: "Sub-heading", type: "textarea", wide: true },
   {
@@ -563,10 +718,30 @@ const certificateFields: AnyField[] = [
       { name: "text", label: "Text", type: "text", wide: true },
     ],
   },
-  { name: "primaryLabel", label: "Primary button", type: "text", placeholder: "Start a course" },
-  { name: "primaryHref", label: "Primary button URL", type: "url", placeholder: "/courses" },
-  { name: "secondaryLabel", label: "Secondary button", type: "text", placeholder: "Verify a certificate" },
-  { name: "secondaryHref", label: "Secondary button URL", type: "url", placeholder: "/verify" },
+  {
+    name: "primaryLabel",
+    label: "Primary button",
+    type: "text",
+    placeholder: "Start a course",
+  },
+  {
+    name: "primaryHref",
+    label: "Primary button URL",
+    type: "url",
+    placeholder: "/courses",
+  },
+  {
+    name: "secondaryLabel",
+    label: "Secondary button",
+    type: "text",
+    placeholder: "Verify a certificate",
+  },
+  {
+    name: "secondaryHref",
+    label: "Secondary button URL",
+    type: "url",
+    placeholder: "/verify",
+  },
   {
     name: "sampleLabel",
     label: "Corner tag on the preview",
@@ -585,10 +760,30 @@ const certificateFields: AnyField[] = [
     hint: "The same four designs the academy issues. Manage the real ones under Certificates.",
   },
   { name: "sampleStudentName", label: "Preview — learner name", type: "text" },
-  { name: "sampleCourseTitle", label: "Preview — course title", type: "text", wide: true },
-  { name: "sampleSerialNumber", label: "Preview — serial number", type: "text" },
-  { name: "sampleIssuedAt", label: "Preview — issue date", type: "text", placeholder: "2026-02-14", hint: "Format: YYYY-MM-DD." },
-  { name: "sampleBatchName", label: "Preview — batch", type: "text", placeholder: "Web Development Batch 1" },
+  {
+    name: "sampleCourseTitle",
+    label: "Preview — course title",
+    type: "text",
+    wide: true,
+  },
+  {
+    name: "sampleSerialNumber",
+    label: "Preview — serial number",
+    type: "text",
+  },
+  {
+    name: "sampleIssuedAt",
+    label: "Preview — issue date",
+    type: "text",
+    placeholder: "2026-02-14",
+    hint: "Format: YYYY-MM-DD.",
+  },
+  {
+    name: "sampleBatchName",
+    label: "Preview — batch",
+    type: "text",
+    placeholder: "Web Development Batch 1",
+  },
   {
     name: "sampleDetail",
     label: "Preview — citation or period",
@@ -630,14 +825,31 @@ const storiesSchema = z.object({
   description: text(240),
   placedLabel: text(24),
   items: z
-    .array(z.object({ name: text(60), company: text(60), quote: text(400), photo: link() }))
+    .array(
+      z.object({
+        name: text(60),
+        company: text(60),
+        quote: text(400),
+        photo: link(),
+      }),
+    )
     .max(24)
     .default([]),
 });
 
 const storiesFields: AnyField[] = [
-  { name: "badge", label: "Badge above the heading", type: "text", placeholder: "Placement stories" },
-  { name: "placedLabel", label: "Photo tag", type: "text", placeholder: "Placed" },
+  {
+    name: "badge",
+    label: "Badge above the heading",
+    type: "text",
+    placeholder: "Placement stories",
+  },
+  {
+    name: "placedLabel",
+    label: "Photo tag",
+    type: "text",
+    placeholder: "Placed",
+  },
   ...headingFields("Our learners, now placed"),
   {
     name: "items",
@@ -666,31 +878,36 @@ const storiesDefaults: z.infer<typeof storiesSchema> = {
     {
       name: "Ashish Kumar Shrivastava",
       company: "Omega Healthcare",
-      quote: "The recruitment process was smooth, and the interview panel was supportive throughout.",
+      quote:
+        "The recruitment process was smooth, and the interview panel was supportive throughout.",
       photo: "https://skillforcareer.in/wp-content/uploads/2026/07/nt1.png",
     },
     {
       name: "Mayank Sharma",
       company: "Optum",
-      quote: "The interview process was well organized, and I'm grateful for this opportunity.",
+      quote:
+        "The interview process was well organized, and I'm grateful for this opportunity.",
       photo: "https://skillforcareer.in/wp-content/uploads/2026/07/nt3.png",
     },
     {
       name: "Vishal Kaushik",
       company: "CorroHealth",
-      quote: "I'm grateful for this opportunity — thank you Skill for Career for the guidance.",
+      quote:
+        "I'm grateful for this opportunity — thank you Skill for Career for the guidance.",
       photo: "https://skillforcareer.in/wp-content/uploads/2026/07/nt4.png",
     },
     {
       name: "Harsh Sharma",
       company: "Pacific",
-      quote: "Thank you Skill For Career for this opportunity and constant support.",
+      quote:
+        "Thank you Skill For Career for this opportunity and constant support.",
       photo: "https://skillforcareer.in/wp-content/uploads/2026/07/nt5.png",
     },
     {
       name: "Isha",
       company: "R1 RCM",
-      quote: "I got placed at R1 RCM. Truly thankful to the Skill for Career Academy team.",
+      quote:
+        "I got placed at R1 RCM. Truly thankful to the Skill for Career Academy team.",
       photo: "https://skillforcareer.in/wp-content/uploads/2026/07/nt2.png",
     },
     {
@@ -726,7 +943,12 @@ const videosSchema = z.object({
 });
 
 const videosFields: AnyField[] = [
-  { name: "badge", label: "Badge above the heading", type: "text", placeholder: "Learner stories" },
+  {
+    name: "badge",
+    label: "Badge above the heading",
+    type: "text",
+    placeholder: "Learner stories",
+  },
   ...headingFields("Hear it in their words"),
   {
     name: "items",
@@ -741,9 +963,19 @@ const videosFields: AnyField[] = [
       { name: "tag", label: "Caption under the name", type: "text" },
       { name: "poster", label: "Poster image", type: "image", wide: true },
       { name: "video", label: "Video URL (.mp4)", type: "url", wide: true },
-      { name: "duration", label: "Duration", type: "text", placeholder: "0:32" },
+      {
+        name: "duration",
+        label: "Duration",
+        type: "text",
+        placeholder: "0:32",
+      },
       { name: "rated", label: "Show five stars", type: "switch" },
-      { name: "quote", label: "Quote shown while playing", type: "textarea", wide: true },
+      {
+        name: "quote",
+        label: "Quote shown while playing",
+        type: "textarea",
+        wide: true,
+      },
     ],
   },
 ];
@@ -753,7 +985,8 @@ const V = "https://skillforcareer.in/wp-content/uploads";
 const videosDefaults: z.infer<typeof videosSchema> = {
   badge: "Learner stories",
   title: "Hear it in their words",
-  description: "Real learners on camera — swipe through and tap any reel to watch.",
+  description:
+    "Real learners on camera — swipe through and tap any reel to watch.",
   items: [
     {
       name: "Arun",
@@ -830,13 +1063,26 @@ const faqSchema = z.object({
   description: text(300),
   ctaLabel: text(40),
   ctaHref: link(),
-  items: z.array(z.object({ question: text(200), answer: text(1200) })).max(30).default([]),
+  items: z
+    .array(z.object({ question: text(200), answer: text(1200) }))
+    .max(30)
+    .default([]),
 });
 
 const faqFields: AnyField[] = [
   ...headingFields("Frequently asked questions"),
-  { name: "ctaLabel", label: "Button text", type: "text", placeholder: "Ask us anything" },
-  { name: "ctaHref", label: "Button URL", type: "url", placeholder: "/contact" },
+  {
+    name: "ctaLabel",
+    label: "Button text",
+    type: "text",
+    placeholder: "Ask us anything",
+  },
+  {
+    name: "ctaHref",
+    label: "Button URL",
+    type: "url",
+    placeholder: "/contact",
+  },
   {
     name: "items",
     label: "Questions",
@@ -912,7 +1158,10 @@ const enquirySchema = z.object({
   badge: text(60),
   title: required(120, "Talk to a course advisor"),
   description: text(400),
-  bullets: z.array(z.object({ text: text(160) })).max(6).default([]),
+  bullets: z
+    .array(z.object({ text: text(160) }))
+    .max(6)
+    .default([]),
   showContact: z.boolean().default(true),
   contactPhone: text(30),
   contactEmail: text(160),
@@ -925,7 +1174,12 @@ const enquirySchema = z.object({
 });
 
 const enquiryFields: AnyField[] = [
-  { name: "badge", label: "Badge above the heading", type: "text", placeholder: "Free career counselling" },
+  {
+    name: "badge",
+    label: "Badge above the heading",
+    type: "text",
+    placeholder: "Free career counselling",
+  },
   { name: "title", label: "Heading", type: "text" },
   { name: "description", label: "Sub-heading", type: "textarea", wide: true },
   {
@@ -938,14 +1192,49 @@ const enquiryFields: AnyField[] = [
     fields: [{ name: "text", label: "Text", type: "text", wide: true }],
   },
   { name: "showContact", label: "Show phone and email", type: "switch" },
-  { name: "contactPhone", label: "Phone", type: "text", hint: "Leave blank to use the number from Settings." },
-  { name: "contactEmail", label: "Email", type: "text", hint: "Leave blank to use the address from Settings." },
-  { name: "formTitle", label: "Form heading", type: "text", placeholder: "Request a callback" },
-  { name: "formSubtitle", label: "Form sub-heading", type: "text", placeholder: "Takes under a minute" },
-  { name: "submitLabel", label: "Submit button", type: "text", placeholder: "Request callback" },
-  { name: "consentNote", label: "Small print under the button", type: "textarea", wide: true },
+  {
+    name: "contactPhone",
+    label: "Phone",
+    type: "text",
+    hint: "Leave blank to use the number from Settings.",
+  },
+  {
+    name: "contactEmail",
+    label: "Email",
+    type: "text",
+    hint: "Leave blank to use the address from Settings.",
+  },
+  {
+    name: "formTitle",
+    label: "Form heading",
+    type: "text",
+    placeholder: "Request a callback",
+  },
+  {
+    name: "formSubtitle",
+    label: "Form sub-heading",
+    type: "text",
+    placeholder: "Takes under a minute",
+  },
+  {
+    name: "submitLabel",
+    label: "Submit button",
+    type: "text",
+    placeholder: "Request callback",
+  },
+  {
+    name: "consentNote",
+    label: "Small print under the button",
+    type: "textarea",
+    wide: true,
+  },
   { name: "successTitle", label: "Thank-you heading", type: "text" },
-  { name: "successBody", label: "Thank-you message", type: "textarea", wide: true },
+  {
+    name: "successBody",
+    label: "Thank-you message",
+    type: "textarea",
+    wide: true,
+  },
 ];
 
 const enquiryDefaults: z.infer<typeof enquirySchema> = {
@@ -1129,7 +1418,12 @@ const footerSchema = z.object({
    */
   showOffices: z.boolean().default(true),
   columns: z
-    .array(z.object({ title: text(60), links: z.array(linkItem).max(10).default([]) }))
+    .array(
+      z.object({
+        title: text(60),
+        links: z.array(linkItem).max(10).default([]),
+      }),
+    )
     .max(4)
     .default([]),
   contactTitle: text(60),
@@ -1137,7 +1431,10 @@ const footerSchema = z.object({
   phone: text(40),
   email: text(160),
   hours: text(80),
-  socials: z.array(z.object({ platform: social, href: link(300) })).max(8).default([]),
+  socials: z
+    .array(z.object({ platform: social, href: link(300) }))
+    .max(8)
+    .default([]),
   copyright: text(240),
   legalLinks: z.array(linkItem).max(6).default([]),
 });
@@ -1202,7 +1499,12 @@ const footerFields: AnyField[] = [
     max: 8,
     hint: "Pick the network and paste your page's address.",
     fields: [
-      { name: "platform", label: "Network", type: "select", options: SOCIAL_OPTIONS },
+      {
+        name: "platform",
+        label: "Network",
+        type: "select",
+        options: SOCIAL_OPTIONS,
+      },
       { name: "href", label: "Address", type: "text" },
     ],
   },
@@ -1235,7 +1537,10 @@ const footerDefaults: z.infer<typeof footerSchema> = {
         { label: "Data Science", href: "/courses?category=data-science" },
         { label: "AI & Machine Learning", href: "/courses?category=ai-ml" },
         { label: "Management & MBA", href: "/courses?category=management" },
-        { label: "Software Development", href: "/courses?category=software-development" },
+        {
+          label: "Software Development",
+          href: "/courses?category=software-development",
+        },
       ],
     },
     {
@@ -1340,7 +1645,12 @@ const authPanelFields: AnyField[] = [
   { name: "authorName", label: "Who said it", type: "text" },
   { name: "authorRole", label: "Their role", type: "text" },
   { name: "authorPhoto", label: "Their photo", type: "image", wide: true },
-  { name: "stars", label: "Stars above the quote", type: "number", hint: "1 to 5." },
+  {
+    name: "stars",
+    label: "Stars above the quote",
+    type: "number",
+    hint: "1 to 5.",
+  },
   {
     name: "copyright",
     label: "Line at the foot of the panel",
@@ -1361,7 +1671,10 @@ const authPanelDefaults: z.infer<typeof authPanelSchema> = {
   features: [
     { icon: "Radio", text: "Live interactive classes with expert mentors" },
     { icon: "Award", text: "Verified certificates on completion" },
-    { icon: "BriefcaseBusiness", text: "Placement support · 100+ hiring partners" },
+    {
+      icon: "BriefcaseBusiness",
+      text: "Placement support · 100+ hiring partners",
+    },
   ],
   showTestimonial: true,
   quote:
@@ -1381,6 +1694,138 @@ const authPanelDefaults: z.infer<typeof authPanelSchema> = {
  * the stored row overrides this, so an admin can reshuffle the page; new
  * sections added in code land at the position given here.
  */
+// ── Section: articles ────────────────────────────────────────────────────────
+
+/**
+ * The blog, on the landing page — "home page pr Article ka section nhi daala.
+ * Yaani blog". Posts are pulled live from Blog, newest first, so the band keeps
+ * itself current; only the wording around them is edited here.
+ */
+const articlesSchema = z.object({
+  title: required(120, "From the academy"),
+  description: text(240),
+  linkLabel: text(60),
+  linkHref: link(),
+  limit: count(9, 3),
+  tag: text(40),
+});
+
+const articlesFields: AnyField[] = [
+  ...headingFields("From the academy"),
+  {
+    name: "linkLabel",
+    label: "Corner link text",
+    type: "text",
+    placeholder: "Read the blog",
+  },
+  {
+    name: "linkHref",
+    label: "Corner link URL",
+    type: "url",
+    placeholder: "/blog",
+  },
+  {
+    name: "limit",
+    label: "How many articles",
+    type: "number",
+    hint: "Newest published posts first. Write them under Blog.",
+  },
+  {
+    name: "tag",
+    label: "Only this tag",
+    type: "text",
+    placeholder: "leave blank for all",
+    hint: "Narrows the band to one subject — e.g. only Placement posts.",
+  },
+];
+
+const articlesDefaults: z.infer<typeof articlesSchema> = {
+  title: "From the academy",
+  description:
+    "Career guidance, course explainers and industry notes from our trainers.",
+  linkLabel: "Read the blog",
+  linkHref: "/blog",
+  limit: 3,
+  tag: "",
+};
+
+// ── Section: partners ────────────────────────────────────────────────────────
+
+/**
+ * Placement and hiring partners, as two rows of logos.
+ *
+ * "Placement partners and hiring partners ka bhi section backend me daal do.
+ * Abhi m inactive rakhunga section pr kuch me phir active kr dunga" — so the
+ * section ships switched **off** (`defaultEnabled: false` below) and is filled
+ * in and turned on whenever the academy is ready.
+ */
+const partnerItem = z.object({ name: text(80), logo: link(), href: link(300) });
+const partnerItemFields: Field[] = [
+  { name: "name", label: "Name", type: "text" },
+  { name: "logo", label: "Logo", type: "image", wide: true },
+  {
+    name: "href",
+    label: "Website (optional)",
+    type: "url",
+    placeholder: "https://…",
+  },
+];
+
+const partnersSchema = z.object({
+  title: required(120, "Our partners"),
+  description: text(240),
+  placementTitle: text(80),
+  placementItems: z.array(partnerItem).max(60).default([]),
+  hiringTitle: text(80),
+  hiringItems: z.array(partnerItem).max(60).default([]),
+});
+
+const partnersFields: AnyField[] = [
+  ...headingFields("Our partners"),
+  {
+    name: "placementTitle",
+    label: "First row heading",
+    type: "text",
+    placeholder: "Placement partners",
+  },
+  {
+    name: "placementItems",
+    label: "Placement partners",
+    type: "list",
+    itemLabel: "partner",
+    titleKey: "name",
+    max: 60,
+    hint: "Companies the academy places learners with. The row scrolls once it outgrows the width.",
+    fields: partnerItemFields,
+  },
+  {
+    name: "hiringTitle",
+    label: "Second row heading",
+    type: "text",
+    placeholder: "Hiring partners",
+  },
+  {
+    name: "hiringItems",
+    label: "Hiring partners",
+    type: "list",
+    itemLabel: "partner",
+    titleKey: "name",
+    max: 60,
+    hint: "Companies that hire from the academy. Leave empty to show only the first row.",
+    fields: partnerItemFields,
+  },
+];
+
+const partnersDefaults: z.infer<typeof partnersSchema> = {
+  title: "Our partners",
+  description:
+    "The companies our learners train with, interview with and go on to join.",
+  placementTitle: "Placement partners",
+  placementItems: [],
+  hiringTitle: "Hiring partners",
+  hiringItems: [],
+};
+
 export const HOME_SECTIONS = {
   hero: {
     label: "Hero",
@@ -1480,7 +1925,8 @@ export const HOME_SECTIONS = {
   },
   enquiry: {
     label: "Callback form",
-    description: "The counselling pitch and callback form. Submissions land in Leads.",
+    description:
+      "The counselling pitch and callback form. Submissions land in Leads.",
     icon: "PhoneCall",
     schema: enquirySchema,
     fields: enquiryFields,
@@ -1488,7 +1934,8 @@ export const HOME_SECTIONS = {
   },
   cta: {
     label: "Closing banner",
-    description: "The pink sign-up banner — shown above the footer on every public page.",
+    description:
+      "The pink sign-up banner — shown above the footer on every public page.",
     icon: "Megaphone",
     schema: ctaSchema,
     fields: ctaFields,
@@ -1499,7 +1946,8 @@ export const HOME_SECTIONS = {
   // already stored for the bands above.
   header: {
     label: "Header",
-    description: "The bar at the top of every public page — menu, search and buttons.",
+    description:
+      "The bar at the top of every public page — menu, search and buttons.",
     icon: "Compass",
     schema: headerSchema,
     fields: headerFields,
@@ -1507,11 +1955,32 @@ export const HOME_SECTIONS = {
   },
   footer: {
     label: "Footer",
-    description: "The foot of every public page — link columns, addresses, contact and socials.",
+    description:
+      "The foot of every public page — link columns, addresses, contact and socials.",
     icon: "Building2",
     schema: footerSchema,
     fields: footerFields,
     defaults: footerDefaults,
+  },
+  articles: {
+    label: "Articles",
+    description: "The latest blog posts, pulled live from Blog.",
+    icon: "Newspaper",
+    schema: articlesSchema,
+    fields: articlesFields,
+    defaults: articlesDefaults,
+  },
+  partners: {
+    label: "Placement & hiring partners",
+    description:
+      "Two rows of partner logos. Ships switched off until it is filled in.",
+    icon: "Handshake",
+    schema: partnersSchema,
+    fields: partnersFields,
+    defaults: partnersDefaults,
+    // Added empty on purpose — the academy asked for the section now and will
+    // switch it on once the logos are in.
+    defaultEnabled: false,
   },
   authPanel: {
     label: "Sign-in panel",
@@ -1527,7 +1996,9 @@ export const HOME_SECTIONS = {
 export type HomeSectionKey = keyof typeof HOME_SECTIONS;
 
 /** The stored shape of one section's content. */
-export type HomeData<K extends HomeSectionKey> = z.infer<(typeof HOME_SECTIONS)[K]["schema"]>;
+export type HomeData<K extends HomeSectionKey> = z.infer<
+  (typeof HOME_SECTIONS)[K]["schema"]
+>;
 
 /** Keys in their shipped order — also the fallback order for a fresh install. */
 export const HOME_SECTION_KEYS = Object.keys(HOME_SECTIONS) as HomeSectionKey[];
@@ -1542,7 +2013,12 @@ export function isHomeSectionKey(value: string): value is HomeSectionKey {
  * they are still homepage furniture — but reordering them means nothing, and
  * switching one off hides it site-wide.
  */
-export const GLOBAL_SECTION_KEYS: HomeSectionKey[] = ["header", "cta", "footer", "authPanel"];
+export const GLOBAL_SECTION_KEYS: HomeSectionKey[] = [
+  "header",
+  "cta",
+  "footer",
+  "authPanel",
+];
 
 export function isGlobalSection(key: HomeSectionKey): boolean {
   return GLOBAL_SECTION_KEYS.includes(key);
@@ -1554,10 +2030,24 @@ export function isGlobalSection(key: HomeSectionKey): boolean {
  * its address, phone number and legal links — neither is a state an admin can
  * usefully choose, and both are a long way from Admin → Homepage to undo.
  */
-export const ALWAYS_ON_KEYS: HomeSectionKey[] = ["header", "footer", "authPanel"];
+export const ALWAYS_ON_KEYS: HomeSectionKey[] = [
+  "header",
+  "footer",
+  "authPanel",
+];
 
 export function isAlwaysOn(key: HomeSectionKey): boolean {
   return ALWAYS_ON_KEYS.includes(key);
+}
+
+/**
+ * Whether a section nobody has saved yet should be showing. Every band that
+ * makes up the designed page says yes; one added ahead of its content — the
+ * partner logos — says no, so it does not appear half-built on the live site.
+ */
+export function defaultEnabled(key: HomeSectionKey): boolean {
+  const section = HOME_SECTIONS[key] as { defaultEnabled?: boolean };
+  return section.defaultEnabled ?? true;
 }
 
 /**
@@ -1628,7 +2118,9 @@ export function labelForPath(
 export function validateSectionData(
   spec: { schema: z.ZodType; fields: readonly AnyField[] },
   input: unknown,
-): { success: true; data: unknown } | { success: false; issues: HomeDataIssue[] } {
+):
+  | { success: true; data: unknown }
+  | { success: false; issues: HomeDataIssue[] } {
   const parsed = spec.schema.safeParse(input);
   if (parsed.success) return { success: true, data: parsed.data };
 
@@ -1661,13 +2153,16 @@ export function parseSectionData(
   stored: unknown,
 ): Record<string, unknown> {
   const defaults = spec.defaults as Record<string, unknown>;
-  if (!stored || typeof stored !== "object" || Array.isArray(stored)) return defaults;
+  if (!stored || typeof stored !== "object" || Array.isArray(stored))
+    return defaults;
 
   const merged = { ...defaults, ...(stored as Record<string, unknown>) };
   const parsed = spec.schema.safeParse(merged);
   if (parsed.success) return parsed.data as Record<string, unknown>;
 
-  const shape = (spec.schema as unknown as { shape?: Record<string, z.ZodType> }).shape;
+  const shape = (
+    spec.schema as unknown as { shape?: Record<string, z.ZodType> }
+  ).shape;
   if (!shape) return defaults;
 
   const recovered: Record<string, unknown> = { ...defaults };
@@ -1746,9 +2241,11 @@ function maxLengthOf(node: unknown): number | null {
   const def = defOf(unwrap(node));
   if (def?.type !== "string" || !Array.isArray(def.checks)) return null;
   for (const check of def.checks) {
-    const cd = (check as { _zod?: { def?: { check?: string; maximum?: number } } })._zod
-      ?.def;
-    if (cd?.check === "max_length" && typeof cd.maximum === "number") return cd.maximum;
+    const cd = (
+      check as { _zod?: { def?: { check?: string; maximum?: number } } }
+    )._zod?.def;
+    if (cd?.check === "max_length" && typeof cd.maximum === "number")
+      return cd.maximum;
   }
   return null;
 }

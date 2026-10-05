@@ -191,6 +191,14 @@
   margin-top: 1.25em;
 }
 
+.prose-blog h1 {
+  margin-top: 1.8em;
+  font-size: 1.9em;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+}
+
 .prose-blog h2 {
   margin-top: 2em;
   font-size: 1.6em;
@@ -206,9 +214,31 @@
   line-height: 1.4;
 }
 
+.prose-blog h4 {
+  margin-top: 1.4em;
+  font-size: 1.05em;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.prose-blog h1 + *,
 .prose-blog h2 + *,
-.prose-blog h3 + * {
+.prose-blog h3 + *,
+.prose-blog h4 + * {
   margin-top: 0.6em;
+}
+
+/* A body that opens with a heading should not push itself away from the
+   heading above it on the page. */
+.prose-blog > :first-child {
+  margin-top: 0;
+}
+
+/* The same rhythm at the smaller text size the course page and a reading in
+   the learner's panel are set in. */
+.prose-blog-sm {
+  font-size: 0.95rem;
+  line-height: 1.7;
 }
 
 .prose-blog ul,

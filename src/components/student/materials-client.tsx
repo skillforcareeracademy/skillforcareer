@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BookOpenCheck,
   Download,
+  Eye,
   FileText,
   Highlighter,
   Image as ImageIcon,
@@ -45,6 +46,7 @@ import { GroupBrowser } from "./group-browser";
 import { cn } from "@/lib/utils";
 import { WordLookup } from "@/components/shared/word-lookup";
 import { RelatedContent } from "@/components/shared/related-content";
+import { LinkViewer } from "@/components/shared/link-viewer";
 
 /**
  * The reading a learner has been set, and the reader they read it in.
@@ -183,7 +185,9 @@ function HtmlBody({
     if (!root) return;
     root.innerHTML = body;
     // Longest first, so an overlapping shorter quote can't split a longer one.
-    for (const m of [...marks].sort((a, b) => b.quote.length - a.quote.length)) {
+    for (const m of [...marks].sort(
+      (a, b) => b.quote.length - a.quote.length,
+    )) {
       paint(root, m.quote, m.color);
     }
   }, [body, marks]);
@@ -193,7 +197,7 @@ function HtmlBody({
       ref={ref}
       // The same marks the panel's editor can apply: a first-level heading,
       // a highlight, and a picture.
-      className="prose prose-sm dark:prose-invert max-w-none text-sm leading-relaxed [&_h1]:text-xl [&_h1]:font-bold [&_h2]:text-base [&_h2]:font-semibold [&_h3]:font-semibold [&_img]:my-2 [&_img]:max-w-full [&_img]:rounded-lg [&_mark]:rounded [&_mark]:px-0.5 [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5"
+      className="prose-blog prose-blog-sm max-w-none [&_mark]:rounded [&_mark]:px-0.5"
     />
   );
 }
@@ -588,6 +592,18 @@ export function StudentMaterialsClient({
                 <span className="min-w-0 flex-1 truncate text-sm">
                   {detail.fileName || "Attached document"}
                 </span>
+                {/* Readable in place whether or not it may be taken away — a
+                    document the batch may only read is exactly the one that
+                    most needs a viewer inside the app. */}
+                <LinkViewer
+                  url={detail.fileUrl}
+                  name={detail.fileName || "Attached document"}
+                  className="shrink-0"
+                >
+                  <span className="border-input hover:bg-accent inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-sm font-medium">
+                    <Eye className="size-4" /> Open
+                  </span>
+                </LinkViewer>
                 {detail.downloadsEnabled ? (
                   <Button
                     size="sm"
@@ -620,14 +636,16 @@ export function StudentMaterialsClient({
                         <FileText className="size-4" />
                       )}
                     </span>
-                    <a
-                      href={a.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="min-w-0 flex-1 truncate text-sm hover:underline"
+                    {/* Opened in place rather than in another tab — "every
+                        link should open inside app… either it's your tube, doc
+                        or excel any link". */}
+                    <LinkViewer
+                      url={a.url}
+                      name={a.name}
+                      className="min-w-0 flex-1 truncate text-sm"
                     >
-                      {a.name || a.url}
-                    </a>
+                      <span className="block truncate">{a.name || a.url}</span>
+                    </LinkViewer>
                   </li>
                 ))}
               </ul>
