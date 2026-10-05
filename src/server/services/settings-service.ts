@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { prisma } from "@/lib/prisma";
 import { invalidateBranding } from "./branding-service";
 import { invalidateTracking } from "./tracking-service";
@@ -15,8 +16,15 @@ export interface SettingsWithMeta {
   updatedAt: string | null;
 }
 
-/** The current platform settings, with every default filled in. */
-export async function getSettings(): Promise<SettingsWithMeta> {
+/**
+ * The current platform settings, with every default filled in.
+ *
+ * Deduped for the length of one request: the fee screens ask for the grace
+ * period and penalty rate once per payment on the page, and the database is a
+ * region away — twenty rows used to mean twenty round-trips for one unchanging
+ * answer. A save still shows immediately, because the next request reads afresh.
+ */
+export const getSettings = cache(async (): Promise<SettingsWithMeta> => {
   const row = await prisma.setting.findUnique({ where: { id: GLOBAL_ID } });
   const stored = (row?.data ?? {}) as Record<string, unknown>;
 
@@ -29,7 +37,7 @@ export async function getSettings(): Promise<SettingsWithMeta> {
     settings,
     updatedAt: row?.updatedAt ? row.updatedAt.toISOString() : null,
   };
-}
+});
 
 /** Merge a partial update over the current settings and persist. */
 export async function updateSettings(

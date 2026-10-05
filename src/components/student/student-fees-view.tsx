@@ -99,7 +99,13 @@ export function StudentFeesView({ fees }: { fees: StudentFees }) {
                   ? "from-amber-500 to-orange-600"
                   : "from-slate-400 to-slate-500"
               }
-              hint={fees.totalDue > 0 ? "Outstanding balance" : "Nothing outstanding"}
+              hint={
+                fees.totalPenalty > 0
+                  ? `Includes ${inr(fees.totalPenalty)} in late fees`
+                  : fees.totalDue > 0
+                    ? "Outstanding balance"
+                    : "Nothing outstanding"
+              }
             />
             <StatCard
               label="Status"
@@ -287,6 +293,18 @@ function PaymentCard({ payment: p }: { payment: StudentPaymentRow }) {
                   </span>
                   <span className="min-w-0 flex-1 truncate font-medium">
                     {inr(i.amount)}
+                    {i.penaltyAmount > 0 && (
+                      <span className="font-normal text-rose-600 dark:text-rose-400">
+                        {" "}
+                        + {inr(i.penaltyAmount)} late fee
+                      </span>
+                    )}
+                    {i.status !== "PAID" && i.paidAmount > 0 && (
+                      <span className="text-muted-foreground font-normal">
+                        {" "}
+                        · {inr(i.paidAmount)} received
+                      </span>
+                    )}
                   </span>
                   <span
                     className={cn(

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState, type FormEvent } from "react";
+import { useCallback, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { format } from "date-fns";
 import {
@@ -8,6 +8,7 @@ import {
   MoreHorizontal,
   Trash2,
   Loader2,
+  Pencil,
   IndianRupee,
   Receipt,
   CircleCheckBig,
@@ -26,15 +27,14 @@ import {
   PAYMENT_PROVIDER_LABEL,
   PAYMENT_METHODS,
   PAYMENT_METHOD_LABEL,
+  joinPlan,
 } from "@/lib/validations/payment";
 import { PaymentAccountsDialog } from "@/components/admin/payments/payment-accounts-dialog";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatCards, type StatCard } from "@/components/shared/stat-cards";
 import { Button } from "@/components/ui/button";
-import { SearchSelect } from "@/components/shared/search-select";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -44,14 +44,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -72,6 +64,11 @@ import {
   PaymentDetailSheet,
   STATUS_BADGE,
 } from "@/components/admin/payments/payment-detail-sheet";
+import {
+  PaymentFormDialog,
+  type PaymentFormInitial,
+} from "@/components/admin/payments/payment-form-dialog";
+import type { PaymentDetail } from "@/components/admin/payments/types";
 
 interface PaymentRow {
   id: string;
@@ -91,6 +88,16 @@ interface PaymentRow {
   accountName: string | null;
   createdAt: string;
   paidAt: string | null;
+  amount: number;
+  discountAmount: number;
+  type: string;
+  emiPlan: string | null;
+  /** What this plan still owes, late fees included. */
+  outstanding: number;
+  penalty: number;
+  nextDueDate: string | null;
+  daysLate: number;
+  installmentCount: number;
 }
 interface Stats {
   revenue: number;
@@ -124,7 +131,6 @@ interface AccountOpt {
 }
 
 const ALL = "all";
-const NONE = "none";
 const inr = (n: number) => `₹${n.toLocaleString("en-IN")}`;
 
 function initials(name: string): string {
@@ -156,68 +162,10 @@ export function PaymentsClient({
   const router = useRouter();
   const pathname = usePathname();
   const [search, setSearch] = useState(query.search ?? "");
-  const [recordOpen, setRecordOpen] = useState(false);
   const [accountsOpen, setAccountsOpen] = useState(false);
-  const [form, setForm] = useState({
-    userId: "",
-    courseId: "",
-    amount: "",
-    status: "PAID",
-    provider: "MANUAL",
-    method: "UPI",
-    accountId: "",
-    paidAt: "",
-    couponCode: "",
-    type: "ONE_TIME",
-    installments: "3",
-  });
-  const [coupon, setCoupon] = useState<{
-    discount: number;
-    net: number;
-    code: string;
-  } | null>(null);
-  const [applying, setApplying] = useState(false);
-
-  async function applyCoupon() {
-    if (!form.couponCode.trim() || Number(form.amount) < 1) {
-      toast.error("Enter an amount and a coupon code.");
-      return;
-    }
-    setApplying(true);
-    try {
-      const r = await api.post<{
-        valid: boolean;
-        reason?: string;
-        discount?: number;
-        netAmount?: number;
-        code?: string;
-      }>("/api/coupons/validate", {
-        code: form.couponCode,
-        amount: Number(form.amount),
-        courseId: form.courseId || undefined,
-      });
-      if (!r.valid) {
-        setCoupon(null);
-        toast.error(r.reason ?? "Invalid coupon.");
-      } else {
-        setCoupon({
-          discount: r.discount ?? 0,
-          net: r.netAmount ?? Number(form.amount),
-          code: r.code ?? form.couponCode,
-        });
-        toast.success(
-          `Coupon applied — ₹${(r.discount ?? 0).toLocaleString("en-IN")} off.`,
-        );
-      }
-    } catch (err) {
-      toast.error(
-        err instanceof ApiError ? err.message : "Couldn't validate coupon.",
-      );
-    } finally {
-      setApplying(false);
-    }
-  }
-  const [recording, setRecording] = useState(false);
+  const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<PaymentFormInitial | null>(null);
+  const [opening, setOpening] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<PaymentRow | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
 
@@ -266,55 +214,48 @@ export function PaymentsClient({
       page: 1,
     });
   }
-  function set<K extends keyof typeof form>(key: K, value: (typeof form)[K]) {
-    setForm((prev) => ({ ...prev, [key]: value }));
-  }
-
-  async function onRecord(e: FormEvent) {
-    e.preventDefault();
-    setRecording(true);
-    const isEmi = form.method === "EMI";
+  /**
+   * Open a row for editing — "bahar se click krke field edit ka option".
+   *
+   * The list row carries only what the table shows, so the plan and its terms
+   * are fetched before the dialog opens rather than arriving a moment later
+   * into boxes the office has already started typing in.
+   */
+  async function openEdit(p: PaymentRow) {
+    setOpening(p.id);
     try {
-      await api.post("/api/payments", {
-        userId: form.userId,
-        courseId: form.courseId || undefined,
-        amount: Number(form.amount),
-        status: form.status,
-        provider: form.method === "ONLINE" ? "RAZORPAY" : "MANUAL",
-        method: form.method,
-        accountId: form.accountId || undefined,
-        paidAt:
-          form.status === "PAID" && form.paidAt
-            ? new Date(form.paidAt).toISOString()
-            : undefined,
-        couponCode: coupon ? coupon.code : undefined,
-        type: isEmi ? "EMI" : "ONE_TIME",
-        installments: isEmi ? Number(form.installments) : undefined,
+      const d = await api.get<PaymentDetail>(`/api/payments/${p.id}`);
+      setEditing({
+        id: d.id,
+        userId: d.userId,
+        courseId: d.courseId,
+        amount: d.amount,
+        discountAmount: d.discountAmount,
+        status: d.status,
+        method: d.method,
+        accountId: null,
+        paidAt: d.paidAt,
+        plan: joinPlan(d.type, d.emiPlan),
+        interestPercent: d.interestPercent,
+        installments: d.installments.map((i) => ({
+          amount: i.amount,
+          dueDate: i.dueDate,
+        })),
+        graceDays: d.graceDays,
+        penaltyPercent: d.penaltyPercent,
+        penaltyFlat: d.penaltyFlat,
+        penaltyWaived: d.penaltyWaived,
+        firstPaymentAt: d.firstPaymentAt,
+        lastPaymentAt: d.lastPaymentAt,
+        notes: d.notes,
       });
-      toast.success("Payment recorded.");
-      setRecordOpen(false);
-      setForm({
-        userId: "",
-        courseId: "",
-        amount: "",
-        status: "PAID",
-        provider: "MANUAL",
-        method: "UPI",
-        accountId: "",
-        paidAt: "",
-        couponCode: "",
-        type: "ONE_TIME",
-        installments: "3",
-      });
-      setCoupon(null);
-      router.refresh();
+      setFormOpen(true);
     } catch (err) {
-      if (err instanceof ApiError) {
-        const d = err.details as { issues?: { message: string }[] } | undefined;
-        toast.error(d?.issues?.[0]?.message ?? err.message);
-      } else toast.error("Couldn't record payment.");
+      toast.error(
+        err instanceof ApiError ? err.message : "Couldn't open that payment.",
+      );
     } finally {
-      setRecording(false);
+      setOpening(null);
     }
   }
 
@@ -415,6 +356,17 @@ export function PaymentsClient({
           <DropdownMenuItem onClick={() => setDetailId(p.id)}>
             <Eye className="size-4" /> View &amp; refund
           </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={opening === p.id}
+            onClick={() => openEdit(p)}
+          >
+            {opening === p.id ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Pencil className="size-4" />
+            )}
+            Edit payment &amp; fees
+          </DropdownMenuItem>
           <DropdownMenuItem onClick={() => sendReminder(p)}>
             <BellRing className="size-4" /> Send reminder
           </DropdownMenuItem>
@@ -461,7 +413,43 @@ export function PaymentsClient({
       key: "amount",
       header: "Amount",
       className: "tabular-nums font-medium",
-      cell: (p) => inr(p.netAmount),
+      cell: (p) => (
+        <div>
+          <p>{inr(p.netAmount)}</p>
+          {p.outstanding > 0 && (
+            <p className="text-muted-foreground text-xs font-normal">
+              {inr(p.outstanding)} due
+              {p.daysLate > 0 ? ` · ${p.daysLate}d late` : ""}
+            </p>
+          )}
+          {p.installmentCount > 0 && p.outstanding <= 0 && (
+            <p className="text-muted-foreground text-xs font-normal">
+              {p.installmentCount} instalments · cleared
+            </p>
+          )}
+        </div>
+      ),
+    },
+    {
+      key: "due",
+      header: "Next due",
+      cell: (p) =>
+        p.nextDueDate ? (
+          <span
+            className={
+              p.daysLate > 0
+                ? "text-sm whitespace-nowrap text-rose-600 dark:text-rose-400"
+                : "text-muted-foreground text-sm whitespace-nowrap"
+            }
+          >
+            {format(new Date(p.nextDueDate), "d MMM yyyy")}
+            {p.penalty > 0 && (
+              <span className="block text-xs">+{inr(p.penalty)} late fee</span>
+            )}
+          </span>
+        ) : (
+          <span className="text-muted-foreground text-sm">—</span>
+        ),
     },
     { key: "status", header: "Status", cell: statusBadge },
     {
@@ -529,11 +517,18 @@ export function PaymentsClient({
           <span className="font-medium tabular-nums">{inr(p.netAmount)}</span>
           {statusBadge(p)}
         </div>
+        {p.outstanding > 0 && (
+          <p className="text-muted-foreground mt-1 text-xs">
+            {inr(p.outstanding)} due
+            {p.nextDueDate
+              ? ` by ${format(new Date(p.nextDueDate), "d MMM")}`
+              : ""}
+            {p.daysLate > 0 ? ` · ${p.daysLate} days late` : ""}
+          </p>
+        )}
       </div>
     );
   }
-
-  const canRecord = Boolean(form.userId && Number(form.amount) >= 1);
 
   return (
     <div className="space-y-6">
@@ -545,7 +540,12 @@ export function PaymentsClient({
             <Button variant="outline" onClick={() => setAccountsOpen(true)}>
               <Landmark className="size-4" /> Accounts
             </Button>
-            <Button onClick={() => setRecordOpen(true)}>
+            <Button
+              onClick={() => {
+                setEditing(null);
+                setFormOpen(true);
+              }}
+            >
               <Plus className="size-4" /> Record payment
             </Button>
           </div>
@@ -710,227 +710,16 @@ export function PaymentsClient({
         }
       />
 
-      {/* Record dialog */}
-      <Dialog open={recordOpen} onOpenChange={setRecordOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Record payment</DialogTitle>
-            <DialogDescription>
-              Log a payment (e.g. manual / bank transfer) for a learner.
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={onRecord} className="space-y-4">
-            <div className="space-y-1.5">
-              <Label>Learner</Label>
-              {/* Searchable rather than a scroll: "leaner search krne ka option
-                  kyuki zyada learner honge to dikkat hogi". Finds by email too,
-                  since two learners often share a name. */}
-              <SearchSelect
-                ariaLabel="Learner"
-                options={users.map((u) => ({
-                  id: u.id,
-                  label: u.name,
-                  hint: u.email,
-                }))}
-                value={form.userId || null}
-                onChange={(id) => set("userId", id ?? "")}
-                placeholder="Choose a learner"
-                searchPlaceholder="Search by name or email…"
-                emptyLabel="No learner matches that."
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Course (optional)</Label>
-              <SearchSelect
-                ariaLabel="Course"
-                options={courses.map((c) => ({ id: c.id, label: c.title }))}
-                value={form.courseId || null}
-                onChange={(id) => set("courseId", id ?? "")}
-                placeholder="None"
-                clearLabel="None"
-                searchPlaceholder="Search courses…"
-                emptyLabel="No course matches that."
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="pay-amt">Amount (₹)</Label>
-                <Input
-                  id="pay-amt"
-                  type="number"
-                  min={1}
-                  value={form.amount}
-                  onChange={(e) => set("amount", e.target.value)}
-                  placeholder="e.g. 4999"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Status</Label>
-                <Select
-                  value={form.status}
-                  onValueChange={(v) => v && set("status", v)}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue>
-                      {(v) => PAYMENT_STATUS_LABEL[String(v)]}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {PAYMENT_STATUSES.filter(
-                      (s) => s !== "REFUNDED" && s !== "PARTIALLY_REFUNDED",
-                    ).map((s) => (
-                      <SelectItem key={s} value={s}>
-                        {PAYMENT_STATUS_LABEL[s]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <Label>Payment method</Label>
-                <Select
-                  value={form.method}
-                  onValueChange={(v) => v && set("method", v)}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue>
-                      {(v) => PAYMENT_METHOD_LABEL[String(v)]}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {PAYMENT_METHODS.map((m) => (
-                      <SelectItem key={m} value={m}>
-                        {PAYMENT_METHOD_LABEL[m]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Received in</Label>
-                <Select
-                  value={form.accountId || NONE}
-                  onValueChange={(v) =>
-                    set("accountId", v === NONE ? "" : (v ?? ""))
-                  }
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue>
-                      {(v) =>
-                        !v || v === NONE
-                          ? "Not specified"
-                          : (accounts.find((a) => a.id === v)?.name ??
-                            "Not specified")
-                      }
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NONE}>Not specified</SelectItem>
-                    {accounts.map((a) => (
-                      <SelectItem key={a.id} value={a.id}>
-                        {a.name}
-                        {a.autoReconcile ? " · auto" : ""}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {form.status === "PAID" && (
-              <div className="space-y-1.5">
-                <Label htmlFor="pay-date">Payment date &amp; time</Label>
-                <Input
-                  id="pay-date"
-                  type="datetime-local"
-                  value={form.paidAt}
-                  onChange={(e) => set("paidAt", e.target.value)}
-                />
-                <p className="text-muted-foreground text-xs">
-                  Leave blank to use the current time.
-                </p>
-              </div>
-            )}
-
-            {/* Coupon */}
-            <div className="space-y-1.5">
-              <Label htmlFor="pay-coupon">Coupon (optional)</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="pay-coupon"
-                  value={form.couponCode}
-                  onChange={(e) => {
-                    set("couponCode", e.target.value.toUpperCase());
-                    setCoupon(null);
-                  }}
-                  placeholder="Code"
-                  className="font-mono"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={applyCoupon}
-                  disabled={applying || !form.couponCode.trim()}
-                >
-                  {applying ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    "Apply"
-                  )}
-                </Button>
-              </div>
-              {coupon && (
-                <p className="text-xs text-emerald-600 dark:text-emerald-400">
-                  −₹{coupon.discount.toLocaleString("en-IN")} · Net payable ₹
-                  {coupon.net.toLocaleString("en-IN")}
-                </p>
-              )}
-            </div>
-
-            {/* EMI — shown when the method is EMI */}
-            {form.method === "EMI" && (
-              <div className="space-y-1.5">
-                <Label htmlFor="pay-emi">Installments</Label>
-                <Select
-                  value={form.installments}
-                  onValueChange={(v) => v && set("installments", v)}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue>{(v) => `${v} months`}</SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {[2, 3, 4, 6, 9, 12].map((n) => (
-                      <SelectItem key={n} value={String(n)}>
-                        {n} months
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-muted-foreground text-xs">
-                  A monthly installment schedule is generated over the net
-                  amount.
-                </p>
-              </div>
-            )}
-
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setRecordOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={!canRecord || recording}>
-                {recording && <Loader2 className="size-4 animate-spin" />}
-                Record
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <PaymentFormDialog
+        open={formOpen}
+        onOpenChange={(o) => {
+          setFormOpen(o);
+          if (!o) setEditing(null);
+        }}
+        options={{ users, courses, accounts }}
+        initial={editing}
+        onSaved={() => router.refresh()}
+      />
 
       <PaymentDetailSheet
         paymentId={detailId}

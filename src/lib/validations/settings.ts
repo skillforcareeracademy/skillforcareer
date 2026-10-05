@@ -17,7 +17,10 @@ const optionalEmail = z
   .string()
   .trim()
   .max(160)
-  .refine((v) => v === "" || z.string().email().safeParse(v).success, "Enter a valid email")
+  .refine(
+    (v) => v === "" || z.string().email().safeParse(v).success,
+    "Enter a valid email",
+  )
   .or(z.literal(""));
 
 /**
@@ -155,6 +158,17 @@ export const settingsSchema = z.object({
   /// Annual rate applied to an interest-bearing plan, in percent.
   emiInterestPercent: z.coerce.number().min(0).max(60),
   emiMaxInstallments: z.coerce.number().int().min(2).max(36),
+  /// Days after a due date before an instalment counts as late. The office
+  /// asked for "an option to add grace period from the payment date".
+  feeGraceDays: z.coerce.number().int().min(0).max(90),
+  /// What a late instalment is charged — "penalty of 10% penalty would be
+  /// charged. We can also edit that penalty percentage or amount." A flat
+  /// figure wins over the percentage when it is set.
+  feePenaltyPercent: z.coerce.number().min(0).max(100),
+  feePenaltyFlat: z.coerce.number().min(0).max(1_000_000),
+  /// Whether the scheduled nudges go out at all — 7 days, 3 days, 1 day and
+  /// 2 hours before a due date, then an overdue notice after it.
+  feeRemindersEnabled: z.boolean(),
 
   // ── Assistant & guides ───────────────────────────────────────────────────
   chatbotEnabled: z.boolean(),
@@ -254,6 +268,10 @@ export const DEFAULT_SETTINGS: Settings = {
   emiZeroCostEnabled: true,
   emiInterestPercent: 12,
   emiMaxInstallments: 12,
+  feeGraceDays: 5,
+  feePenaltyPercent: 10,
+  feePenaltyFlat: 0,
+  feeRemindersEnabled: true,
 
   chatbotEnabled: true,
   chatbotName: "Ami",

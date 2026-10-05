@@ -24,6 +24,10 @@ export interface StudentInstallment {
   paidAt: string | null;
   /** Past its due date and still unpaid. */
   isOverdue: boolean;
+  /** Part payments: anything short of `amount` leaves the rest owing. */
+  paidAmount: number;
+  /** What being late has cost, after any waiver the office has given. */
+  penaltyAmount: number;
 }
 
 export interface StudentPaymentRow {
@@ -53,6 +57,8 @@ export interface StudentFees {
   totalBilled: number;
   totalPaid: number;
   totalDue: number;
+  /** Late fees carried in `totalDue`, shown separately so they can be queried. */
+  totalPenalty: number;
   /** "Paid" only when there is something to pay and nothing outstanding. */
   overallStatus: "PAID" | "PARTIAL" | "UNPAID" | "NONE";
   hasEmi: boolean;
@@ -113,6 +119,8 @@ export async function getStudentFees(userId: string): Promise<StudentFees> {
       status: i.status,
       paidAt: i.paidAt ? i.paidAt.toISOString() : null,
       isOverdue: i.status !== "PAID" && i.dueDate.getTime() < now,
+      paidAmount: num(i.paidAmount),
+      penaltyAmount: i.penaltyWaived || p.penaltyWaived ? 0 : num(i.penaltyAmount),
     })),
     // A pending link the learner can still settle themselves. Expired links and
     // ones already paid are not offered.
@@ -129,15 +137,32 @@ export async function getStudentFees(userId: string): Promise<StudentFees> {
   const live = rows.filter((r) => r.status !== "REFUNDED" && r.status !== "FAILED");
   const totalBilled = live.reduce((sum, r) => sum + r.netAmount, 0);
 
-  // An EMI payment is "paid" instalment by instalment; a one-off is paid or not.
+  // An EMI payment is "paid" instalment by instalment; a one-off is paid or
+  // not. A part payment counts for exactly what came in.
   const totalPaid = live.reduce((sum, r) => {
     if (r.installments.length > 0) {
-      return sum + r.installments.filter((i) => i.status === "PAID").reduce((s, i) => s + i.amount, 0);
+      return (
+        sum +
+        r.installments.reduce(
+          (s, i) => s + (i.status === "PAID" ? i.amount : Math.min(i.amount, i.paidAmount)),
+          0,
+        )
+      );
     }
-    return r.status === "PAID" ? sum + r.netAmount : sum;
+    return r.status === "PAID" || r.status === "NO_DUE" ? sum + r.netAmount : sum;
   }, 0);
 
-  const totalDue = Math.max(0, Math.round((totalBilled - totalPaid) * 100) / 100);
+  // Late fees are owed on top of the fee itself, so the learner sees the figure
+  // that actually clears the account.
+  const totalPenalty = live.reduce(
+    (sum, r) => sum + r.installments.reduce((s, i) => s + i.penaltyAmount, 0),
+    0,
+  );
+
+  const totalDue = Math.max(
+    0,
+    Math.round((totalBilled - totalPaid + totalPenalty) * 100) / 100,
+  );
 
   const emiRows = live.filter((r) => r.installments.length > 0);
   const allInstallments = emiRows.flatMap((r) => r.installments);
@@ -167,6 +192,7 @@ export async function getStudentFees(userId: string): Promise<StudentFees> {
     totalBilled: Math.round(totalBilled * 100) / 100,
     totalPaid: Math.round(totalPaid * 100) / 100,
     totalDue,
+    totalPenalty: Math.round(totalPenalty * 100) / 100,
     overallStatus,
     hasEmi: emiRows.length > 0,
     emi: {

@@ -122,6 +122,17 @@ enum PaymentStatus {
   FAILED
   REFUNDED
   PARTIALLY_REFUNDED
+
+  /// The academy's own fee states, asked for by name: "Status me: no pending
+  /// due, payment due, payment defaulted, payment failed, course Discontinued,
+  /// full Refunded, partial refund". The first three are kept up to date by
+  /// `refreshFeeStatus` rather than typed in — nothing is owed, something is
+  /// owed, or something has gone past its grace period unpaid.
+  NO_DUE
+  DUE
+  DEFAULTED
+  /// The learner left the course; whatever is outstanding stops chasing them.
+  DISCONTINUED
 }
 
 enum PaymentProvider {
@@ -135,6 +146,10 @@ enum PaymentType {
   ONE_TIME
   EMI
   SUBSCRIPTION
+  /// A deposit that holds a seat, with the balance still to come. The office
+  /// asked for it beside the other three: "Payment type: Booking amount, fully
+  /// paid (One time), Interest based EMI, Zero Cost EMI".
+  BOOKING
 }
 
 // How the learner actually paid — distinct from the gateway/provider.
@@ -1964,6 +1979,32 @@ model Payment {
   interestPercent Decimal? @db.Decimal(5, 2)
   principalAmount Decimal? @db.Decimal(10, 2)
 
+  /// How long after a due date the office waits before it counts as late, and
+  /// what it charges when it does. Both fall back to the platform settings, so
+  /// a payment only carries them when this learner was given different terms.
+  /// "Provide an option to add grace period from the payment date… penalty of
+  /// 10%… We can also edit that penalty percentage or amount."
+  graceDays      Int?
+  penaltyPercent Decimal? @db.Decimal(5, 2)
+  /// A flat charge instead of a percentage, when the office prefers one.
+  penaltyFlat    Decimal? @db.Decimal(10, 2)
+  /// "An option to waive off penalty if required manually" — set here it
+  /// forgives every instalment on the plan at once.
+  penaltyWaived  Boolean  @default(false)
+
+  /// The ends of the payment trail, filled in from what has actually been paid
+  /// and editable by hand when the office knows better.
+  firstPaymentAt DateTime?
+  lastPaymentAt  DateTime?
+
+  /// Which of the scheduled nudges have already gone out — "7 days before, 3
+  /// days before, 1 day before and 2 hours" — as a comma-separated list of
+  /// stage keys, so a re-run of the sweep cannot send one twice.
+  remindedStages String? @db.VarChar(60)
+
+  /// Free text for the office: why a fee was discounted, what was agreed.
+  notes String? @db.Text
+
   /// Set when a counsellor collected this against a CRM lead, so admissions can
   /// trace a learner's first payment back to the enquiry that produced it.
   leadId        String?
@@ -2052,6 +2093,20 @@ model Installment {
   status         InstallmentStatus @default(SCHEDULED)
   paidAt         DateTime?
   lastRemindedAt DateTime?
+
+  /// What has actually come in against this instalment. Less than `amount`
+  /// means a part payment, which leaves the instalment owing the difference.
+  paidAmount    Decimal        @default(0) @db.Decimal(10, 2)
+  /// How it was paid, when the office recorded it by hand.
+  method        PaymentMethod?
+  /// Late charge worked out from the plan's terms once the grace period has
+  /// run out, and whether somebody has forgiven it.
+  penaltyAmount Decimal        @default(0) @db.Decimal(10, 2)
+  penaltyWaived Boolean        @default(false)
+  /// The scheduled nudges already sent for this instalment — see
+  /// `Payment.remindedStages`.
+  remindedStages String?       @db.VarChar(60)
+  note           String?       @db.VarChar(300)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -387,7 +387,10 @@ export function SettingsClient({
                 />
               </Field>
               <Separator />
-              <Field label="Favicon" hint="The small icon shown in browser tabs.">
+              <Field
+                label="Favicon"
+                hint="The small icon shown in browser tabs."
+              >
                 <ImageUpload
                   label="favicon"
                   value={form.faviconUrl}
@@ -407,7 +410,7 @@ export function SettingsClient({
                     type="color"
                     value={form.primaryColor}
                     onChange={(e) => set("primaryColor", e.target.value)}
-                    className="size-9 shrink-0 cursor-pointer rounded-md border border-input bg-transparent p-1"
+                    className="border-input size-9 shrink-0 cursor-pointer rounded-md border bg-transparent p-1"
                   />
                   <Input
                     id="primaryColor"
@@ -446,7 +449,9 @@ export function SettingsClient({
               />
               <div className="flex items-start justify-between gap-4 py-3">
                 <div className="space-y-0.5">
-                  <p className="text-sm font-medium">Default role for new users</p>
+                  <p className="text-sm font-medium">
+                    Default role for new users
+                  </p>
                   <p className="text-muted-foreground text-xs">
                     The role assigned when someone registers.
                   </p>
@@ -482,8 +487,8 @@ export function SettingsClient({
             <CardHeader>
               <CardTitle>Watch &amp; attempt limits</CardTitle>
               <CardDescription>
-                Platform-wide caps. A lesson, quiz or assignment can override its
-                own — set one of these to 0 for no limit, which is how the
+                Platform-wide caps. A lesson, quiz or assignment can override
+                its own — set one of these to 0 for no limit, which is how the
                 platform behaved before limits existed.
               </CardDescription>
             </CardHeader>
@@ -498,7 +503,9 @@ export function SettingsClient({
                   type="number"
                   min={0}
                   value={form.lessonViewLimit}
-                  onChange={(e) => set("lessonViewLimit", Number(e.target.value) || 0)}
+                  onChange={(e) =>
+                    set("lessonViewLimit", Number(e.target.value) || 0)
+                  }
                 />
               </Field>
               <Field
@@ -511,7 +518,9 @@ export function SettingsClient({
                   type="number"
                   min={0}
                   value={form.lessonDownloadLimit}
-                  onChange={(e) => set("lessonDownloadLimit", Number(e.target.value) || 0)}
+                  onChange={(e) =>
+                    set("lessonDownloadLimit", Number(e.target.value) || 0)
+                  }
                 />
               </Field>
               <Field
@@ -524,7 +533,9 @@ export function SettingsClient({
                   type="number"
                   min={0}
                   value={form.quizAttemptLimit}
-                  onChange={(e) => set("quizAttemptLimit", Number(e.target.value) || 0)}
+                  onChange={(e) =>
+                    set("quizAttemptLimit", Number(e.target.value) || 0)
+                  }
                 />
               </Field>
               <Field
@@ -601,6 +612,79 @@ export function SettingsClient({
                     value={form.emiMaxInstallments}
                     onChange={(e) =>
                       set("emiMaxInstallments", Number(e.target.value) || 2)
+                    }
+                  />
+                </Field>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* What happens when an instalment goes past its date. The office
+              asked for a grace period, a penalty it can change, and the run of
+              reminders that go out before and after the day itself. */}
+          <Card className="mt-4">
+            <CardHeader>
+              <CardTitle>Late fees &amp; reminders</CardTitle>
+              <CardDescription>
+                The default terms for every plan. A single learner&apos;s plan
+                can override them under Payments.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="divide-y">
+                <ToggleRow
+                  label="Send payment reminders"
+                  description="7 days, 3 days, 1 day and 2 hours before each due date — then an overdue notice after it."
+                  checked={form.feeRemindersEnabled}
+                  onChange={(v) => set("feeRemindersEnabled", v)}
+                />
+              </div>
+              <div className="grid gap-4 sm:grid-cols-3">
+                <Field
+                  label="Grace period (days)"
+                  htmlFor="feeGraceDays"
+                  hint="Days after the due date before a payment counts as late. 0 charges from the next day."
+                >
+                  <Input
+                    id="feeGraceDays"
+                    type="number"
+                    min={0}
+                    max={90}
+                    value={form.feeGraceDays}
+                    onChange={(e) =>
+                      set("feeGraceDays", Number(e.target.value) || 0)
+                    }
+                  />
+                </Field>
+                <Field
+                  label="Penalty (%)"
+                  htmlFor="feePenaltyPercent"
+                  hint="Charged on the overdue instalment once the grace period runs out."
+                >
+                  <Input
+                    id="feePenaltyPercent"
+                    type="number"
+                    min={0}
+                    max={100}
+                    step="0.5"
+                    value={form.feePenaltyPercent}
+                    onChange={(e) =>
+                      set("feePenaltyPercent", Number(e.target.value) || 0)
+                    }
+                  />
+                </Field>
+                <Field
+                  label="…or a flat penalty (₹)"
+                  htmlFor="feePenaltyFlat"
+                  hint="Used instead of the percentage when it is above zero."
+                >
+                  <Input
+                    id="feePenaltyFlat"
+                    type="number"
+                    min={0}
+                    value={form.feePenaltyFlat}
+                    onChange={(e) =>
+                      set("feePenaltyFlat", Number(e.target.value) || 0)
                     }
                   />
                 </Field>
@@ -699,13 +783,17 @@ export function SettingsClient({
                     value={form.codingPracticeAudience}
                     onValueChange={(v) =>
                       v &&
-                      set("codingPracticeAudience", v as Settings["codingPracticeAudience"])
+                      set(
+                        "codingPracticeAudience",
+                        v as Settings["codingPracticeAudience"],
+                      )
                     }
                   >
                     <SelectTrigger className="w-full">
                       <SelectValue>
                         {(v: string) =>
-                          CODING_PRACTICE_AUDIENCES.find((a) => a.value === v)?.label ?? v
+                          CODING_PRACTICE_AUDIENCES.find((a) => a.value === v)
+                            ?.label ?? v
                         }
                       </SelectValue>
                     </SelectTrigger>
@@ -746,7 +834,8 @@ export function SettingsClient({
                 <p className="text-destructive text-xs">
                   The sign-in secret isn&apos;t set on the server yet
                   (CODING_PRACTICE_SSO_SECRET). Until it is, the link shows a
-                  &ldquo;not connected yet&rdquo; page instead of signing anyone in.
+                  &ldquo;not connected yet&rdquo; page instead of signing anyone
+                  in.
                 </p>
               )}
             </CardContent>
@@ -803,7 +892,10 @@ export function SettingsClient({
                   onChange={(e) => set("certRightTitle", e.target.value)}
                 />
               </Field>
-              <Field label="Signature image" hint="Same again for the second signatory.">
+              <Field
+                label="Signature image"
+                hint="Same again for the second signatory."
+              >
                 <ImageUpload
                   value={form.certRightSignatureUrl}
                   onChange={(url) => set("certRightSignatureUrl", url)}
@@ -812,9 +904,9 @@ export function SettingsClient({
                 />
               </Field>
               <p className="text-muted-foreground text-xs sm:col-span-2">
-                These sign every certificate the academy issues — the learners&apos;
-                real ones and the sample on the homepage alike. The logo comes
-                from Branding, above.
+                These sign every certificate the academy issues — the
+                learners&apos; real ones and the sample on the homepage alike.
+                The logo comes from Branding, above.
               </p>
             </CardContent>
           </Card>
@@ -826,7 +918,8 @@ export function SettingsClient({
             <CardHeader>
               <CardTitle>Email &amp; notifications</CardTitle>
               <CardDescription>
-                The sender identity for system emails and which events notify admins.
+                The sender identity for system emails and which events notify
+                admins.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -1029,7 +1122,9 @@ function TrackingField({
         autoComplete="off"
       />
       <p className="text-muted-foreground text-xs">{hint}</p>
-      {connected && <p className="text-muted-foreground text-xs">{connectedNote}</p>}
+      {connected && (
+        <p className="text-muted-foreground text-xs">{connectedNote}</p>
+      )}
     </div>
   );
 }
@@ -1051,7 +1146,7 @@ function SocialField({
     <div className="space-y-1.5">
       <Label>{label}</Label>
       <div className="flex items-center gap-2">
-        <span className="text-muted-foreground grid size-9 shrink-0 place-items-center rounded-lg border border-input bg-muted/40">
+        <span className="text-muted-foreground border-input bg-muted/40 grid size-9 shrink-0 place-items-center rounded-lg border">
           {icon}
         </span>
         <Input
