@@ -190,7 +190,9 @@ function HtmlBody({
   return (
     <div
       ref={ref}
-      className="prose prose-sm dark:prose-invert max-w-none text-sm leading-relaxed [&_h2]:text-base [&_h2]:font-semibold [&_h3]:font-semibold [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5"
+      // The same marks the panel's editor can apply: a first-level heading,
+      // a highlight, and a picture.
+      className="prose prose-sm dark:prose-invert max-w-none text-sm leading-relaxed [&_h1]:text-xl [&_h1]:font-bold [&_h2]:text-base [&_h2]:font-semibold [&_h3]:font-semibold [&_img]:my-2 [&_img]:max-w-full [&_img]:rounded-lg [&_mark]:rounded [&_mark]:px-0.5 [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5"
     />
   );
 }

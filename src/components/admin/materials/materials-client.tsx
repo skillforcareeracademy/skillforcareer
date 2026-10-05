@@ -11,6 +11,7 @@ import {
   Eye,
   EyeOff,
   FileText,
+  Check,
   ChevronRight,
   FolderTree,
   Image as ImageIcon,
@@ -177,6 +178,8 @@ export function MaterialsClient({
   const [kindFilter, setKindFilter] = useState(ALL);
   /** Which piece is having its text fetched before the editor opens. */
   const [loadingEdit, setLoadingEdit] = useState<string | null>(null);
+  /** Which attachment is being renamed or re-pointed, by index. */
+  const [editingAsset, setEditingAsset] = useState<number | null>(null);
 
   const hasFilters =
     Boolean(search) ||
@@ -1171,33 +1174,92 @@ export function MaterialsClient({
                             <FileText className="size-4" />
                           )}
                         </span>
-                        <a
-                          href={a.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="min-w-0 flex-1 truncate text-sm hover:underline"
-                        >
-                          {a.name || a.url}
-                        </a>
-                        {i === 0 && (
-                          <Badge
-                            variant="secondary"
-                            className="shrink-0 text-[10px]"
-                          >
-                            Main
-                          </Badge>
+                        {editingAsset === i ? (
+                          /* "m not able to edit link" — a link could only be
+                             removed and added again. Both its name and its
+                             address can be changed in place now. */
+                          <>
+                            <span className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row">
+                              <Input
+                                value={a.name}
+                                onChange={(e) =>
+                                  setForm({
+                                    ...form,
+                                    assets: form.assets.map((x, at) =>
+                                      at === i ? { ...x, name: e.target.value } : x,
+                                    ),
+                                  })
+                                }
+                                placeholder="What it is called"
+                                className="h-8"
+                              />
+                              {a.kind === "LINK" && (
+                                <Input
+                                  value={a.url}
+                                  onChange={(e) =>
+                                    setForm({
+                                      ...form,
+                                      assets: form.assets.map((x, at) =>
+                                        at === i ? { ...x, url: e.target.value } : x,
+                                      ),
+                                    })
+                                  }
+                                  placeholder="https://…"
+                                  className="h-8"
+                                />
+                              )}
+                            </span>
+                            <Button
+                              type="button"
+                              size="icon-sm"
+                              variant="ghost"
+                              aria-label="Done"
+                              onClick={() => setEditingAsset(null)}
+                            >
+                              <Check className="size-4" />
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            <a
+                              href={a.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="min-w-0 flex-1 truncate text-sm hover:underline"
+                            >
+                              {a.name || a.url}
+                            </a>
+                            {i === 0 && (
+                              <Badge
+                                variant="secondary"
+                                className="shrink-0 text-[10px]"
+                              >
+                                Main
+                              </Badge>
+                            )}
+                            <Button
+                              type="button"
+                              size="icon-sm"
+                              variant="ghost"
+                              aria-label={`Edit ${a.name || a.url}`}
+                              onClick={() => setEditingAsset(i)}
+                            >
+                              <Pencil className="size-4" />
+                            </Button>
+                          </>
                         )}
                         <Button
                           type="button"
                           size="icon-sm"
                           variant="ghost"
                           aria-label={`Remove ${a.name || a.url}`}
-                          onClick={() =>
+                          onClick={() => {
+                            setEditingAsset(null);
                             setForm({
                               ...form,
                               assets: form.assets.filter((_, at) => at !== i),
-                            })
-                          }
+                            });
+                          }}
                         >
                           <X className="size-4" />
                         </Button>
