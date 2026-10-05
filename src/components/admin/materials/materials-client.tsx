@@ -175,6 +175,8 @@ export function MaterialsClient({
   const [published, setPublished] = useState(ALL);
   /** Behind the Documents figure: material with a file attached. */
   const [kindFilter, setKindFilter] = useState(ALL);
+  /** Which piece is having its text fetched before the editor opens. */
+  const [loadingEdit, setLoadingEdit] = useState<string | null>(null);
 
   const hasFilters =
     Boolean(search) ||
@@ -492,6 +494,61 @@ export function MaterialsClient({
     }
   }
 
+  /**
+   * Open a piece for editing, with its text.
+   *
+   * The list rows do not carry the body — a library of chapters would be
+   * megabytes — so it is fetched here. It used to open blank, which both hid
+   * the text and, because a blank body saves as "no text", wiped it on the
+   * next save.
+   */
+  async function openEdit(m: MaterialRow) {
+    const base = {
+      id: m.id,
+      title: m.title,
+      description: m.description ?? "",
+      courseIds: m.courseIds,
+      groupIds: m.groupIds,
+      // The old single file is the first attachment; anything else added
+      // since follows it.
+      assets: [
+        ...(m.fileUrl
+          ? [
+              {
+                kind: "FILE" as const,
+                url: m.fileUrl,
+                name: m.fileName ?? "",
+                mimeType: m.mimeType ?? undefined,
+              },
+            ]
+          : []),
+        ...m.assets.map((a) => ({
+          kind: a.kind as Asset["kind"],
+          url: a.url,
+          name: a.name ?? "",
+          mimeType: a.mimeType ?? undefined,
+        })),
+      ],
+      body: "",
+      downloadsEnabled: m.downloadsEnabled,
+      isPublished: m.isPublished,
+      batchIds: m.batchIds,
+    };
+    // Fetched *before* the dialog opens: the editor takes its content when it
+    // mounts, so arriving with the text a moment later would leave it blank.
+    setLoadingEdit(m.id);
+    try {
+      const res = await api.get<{ material: { body: string | null } }>(
+        `/api/materials/${m.id}`,
+      );
+      setForm({ ...base, body: res.material.body ?? "" });
+    } catch {
+      toast.error("Couldn't load that one — try again.");
+    } finally {
+      setLoadingEdit(null);
+    }
+  }
+
   async function onImport(file: File, mode: ImportMode) {
     setImporting(true);
     try {
@@ -651,41 +708,7 @@ export function MaterialsClient({
             <MoreHorizontal className="size-4" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem
-              onClick={() =>
-                setForm({
-                  id: m.id,
-                  title: m.title,
-                  description: m.description ?? "",
-                  courseIds: m.courseIds,
-                  groupIds: m.groupIds,
-                  // The old single file is the first attachment; anything else
-                  // added since follows it.
-                  assets: [
-                    ...(m.fileUrl
-                      ? [
-                          {
-                            kind: "FILE" as const,
-                            url: m.fileUrl,
-                            name: m.fileName ?? "",
-                            mimeType: m.mimeType ?? undefined,
-                          },
-                        ]
-                      : []),
-                    ...m.assets.map((a) => ({
-                      kind: a.kind as Asset["kind"],
-                      url: a.url,
-                      name: a.name ?? "",
-                      mimeType: a.mimeType ?? undefined,
-                    })),
-                  ],
-                  body: "",
-                  downloadsEnabled: m.downloadsEnabled,
-                  isPublished: m.isPublished,
-                  batchIds: m.batchIds,
-                })
-              }
-            >
+            <DropdownMenuItem onClick={() => void openEdit(m)}>
               <Pencil className="size-4" /> Edit
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => void togglePublished(m)}>
@@ -912,6 +935,23 @@ export function MaterialsClient({
                           >
                             {m.isPublished ? "Published" : "Draft"}
                           </Badge>
+                          {/* "When I open through folder then I can not edit
+                              it" — the same action the table row has. */}
+                          <Button
+                            size="icon-sm"
+                            variant="ghost"
+                            className="shrink-0"
+                            onClick={() => void openEdit(m)}
+                            disabled={loadingEdit === m.id}
+                            aria-label={`Edit ${m.title}`}
+                            title="Edit"
+                          >
+                            {loadingEdit === m.id ? (
+                              <Loader2 className="size-4 animate-spin" />
+                            ) : (
+                              <Pencil className="size-4" />
+                            )}
+                          </Button>
                         </li>
                       ))}
                     </ul>
@@ -1210,7 +1250,8 @@ export function MaterialsClient({
                 />
                 {form.id && (
                   <p className="text-muted-foreground text-xs">
-                    Leave this empty to keep the text already saved.
+                    This is the text as it is saved — what you leave here is what
+                    learners will read.
                   </p>
                 )}
               </div>

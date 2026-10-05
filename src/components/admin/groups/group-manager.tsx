@@ -154,7 +154,7 @@ export function GroupManager({
     return (
       <div key={node.id}>
         <div
-          className="flex items-center gap-2 py-2"
+          className="flex flex-wrap items-center gap-2 py-2"
           style={{ paddingLeft: `${node.depth * 1.25}rem` }}
         >
           {hasKids ? (
@@ -202,14 +202,23 @@ export function GroupManager({
             </>
           ) : (
             <>
-              <span
+              {/* The name comes first and keeps a floor of its own width: it
+                  used to be `flex-1 truncate` beside a fixed-width folder
+                  picker and four buttons, so on anything narrow it was
+                  squeezed to nothing and the row showed no name at all.
+                  Tapping it opens the group, which is what people try. */}
+              <button
+                type="button"
+                onClick={() => hasKids && toggle(node.id)}
                 className={cn(
-                  "min-w-0 flex-1 truncate",
+                  "min-w-32 flex-1 basis-48 truncate text-left",
+                  hasKids && "hover:text-primary cursor-pointer",
                   node.depth === 0 ? "font-medium" : "text-sm",
                 )}
+                title={node.path}
               >
                 {node.name}
-              </span>
+              </button>
               <Badge variant="secondary" className="shrink-0 text-[10px] font-normal">
                 {node.totalCount} {node.totalCount === 1 ? copy.noun.one : copy.noun.many}
               </Badge>

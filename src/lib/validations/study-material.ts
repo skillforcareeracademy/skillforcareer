@@ -43,7 +43,12 @@ export const studyMaterialSchema = z.object({
    * The reading itself. HTML from the editor — headings, lists, emphasis — or
    * plain text typed before the editor existed.
    */
-  body: z.string().max(400_000).optional().or(z.literal("")),
+  /**
+   * A whole chapter can be pasted in here, so the cap is generous rather than
+   * tidy — the column behind it is LongText. The limit that remains is there
+   * to stop a runaway paste, not to shape what the academy may write.
+   */
+  body: z.string().max(2_000_000).optional().or(z.literal("")),
   downloadsEnabled: z.boolean().optional(),
   isPublished: z.boolean().optional(),
   /** Empty both = everyone on the course, as with quizzes. */

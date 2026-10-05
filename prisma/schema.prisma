@@ -610,7 +610,11 @@ model StudyMaterial {
   mimeType String?
   /// Text written in the panel instead of, or alongside, a file. This is what a
   /// learner can highlight.
-  body     String? @db.Text
+  ///
+  /// `LongText`, not `Text`: the academy pastes whole chapters in here, and
+  /// `Text` stops at 65,535 bytes with "Data Too Long" — which is what the
+  /// "Something went wrong" on a long save turned out to be.
+  body     String? @db.LongText
 
   /// "Download off karne ka option" — reading stays possible, saving a copy
   /// does not.
@@ -1176,7 +1180,7 @@ model Lesson {
   order           Int        @default(0)
   isPreview       Boolean    @default(false)
   durationSeconds Int        @default(0)
-  content         String?    @db.Text
+  content         String?    @db.LongText
 
   /// Release control — "students ko saare lessons ek saath nhi denge".
   /// IMMEDIATE (the shipped behaviour) opens the lesson to anyone enrolled;
@@ -1340,7 +1344,7 @@ model Note {
   lessonId         String?
   quizId           String?
   timestampSeconds Int     @default(0)
-  content          String  @db.Text
+  content          String  @db.LongText
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1430,7 +1434,7 @@ model Assignment {
   createdById  String
   title        String
   description  String?        @db.Text
-  instructions String?        @db.Text
+  instructions String?        @db.LongText
   type         AssignmentType @default(FILE)
   gradingMode  GradingMode    @default(MANUAL)
   /// Permanent number, one run across the academy, never reused — and the
@@ -2572,7 +2576,7 @@ model Term {
   /// The line a pop-up shows.
   meaning     String   @db.Text
   /// The fuller account, on the term's own page.
-  explanation String?  @db.Text
+  explanation String?  @db.LongText
   /// Worked examples, as a JSON array of strings.
   examples    Json?
   isPublished Boolean  @default(true)
@@ -3239,7 +3243,7 @@ model BatchNote {
   id          String   @id @default(cuid())
   batchId     String
   title       String
-  body        String?  @db.Text
+  body        String?  @db.LongText
   fileUrl     String?
   fileName    String?
   createdById String

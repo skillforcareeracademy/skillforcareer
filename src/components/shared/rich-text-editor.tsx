@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useEditor, EditorContent, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import {
@@ -108,6 +109,19 @@ export function RichTextEditor({
     },
     onUpdate: ({ editor }) => onChange(editor.getHTML()),
   });
+
+  /**
+   * Follow the value when it is replaced from outside — opening a saved piece
+   * for editing, say. Tiptap takes `content` once, on mount, so without this a
+   * body that arrives after the first render never appears. Guarded on the
+   * editor's own HTML so typing does not fight the sync.
+   */
+  useEffect(() => {
+    if (!editor) return;
+    if (value !== editor.getHTML()) {
+      editor.commands.setContent(value || "", { emitUpdate: false });
+    }
+  }, [value, editor]);
 
   return (
     <div className={cn("border-input overflow-hidden rounded-lg border", className)}>
