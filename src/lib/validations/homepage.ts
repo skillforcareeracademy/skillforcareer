@@ -1829,6 +1829,60 @@ const partnersDefaults: z.infer<typeof partnersSchema> = {
   hiringItems: [],
 };
 
+// ── Section: course page ads ─────────────────────────────────────────────────
+
+/**
+ * The cards under the buy box on every course page.
+ *
+ * "Iske niche ad ke liye do teen card bna do. Jisko mai edit kr skta hu time to
+ * time for branding purpose of our different partner companies." They are the
+ * academy's own to write and rewrite, so nothing here is pulled from the
+ * catalogue — a title, a line, a picture and somewhere to go.
+ */
+const coursePromoItem = z.object({
+  title: text(80),
+  body: text(200),
+  image: link(),
+  linkLabel: text(40),
+  href: link(300),
+});
+
+const coursePromosSchema = z.object({
+  items: z.array(coursePromoItem).max(6).default([]),
+});
+
+const coursePromosFields: AnyField[] = [
+  {
+    name: "items",
+    label: "Cards",
+    type: "list",
+    itemLabel: "card",
+    titleKey: "title",
+    max: 6,
+    hint: "Shown one under another beneath the buy box, on every course page. Leave empty to show none.",
+    fields: [
+      { name: "title", label: "Heading", type: "text" },
+      {
+        name: "linkLabel",
+        label: "Button text",
+        type: "text",
+        placeholder: "Find out more",
+      },
+      { name: "body", label: "Line underneath", type: "textarea", wide: true },
+      { name: "image", label: "Picture or logo", type: "image", wide: true },
+      {
+        name: "href",
+        label: "Where it goes",
+        type: "url",
+        wide: true,
+        placeholder: "https://…",
+      },
+    ],
+  },
+];
+
+const coursePromosDefaults: z.infer<typeof coursePromosSchema> = { items: [] };
+
 export const HOME_SECTIONS = {
   hero: {
     label: "Hero",
@@ -1984,6 +2038,15 @@ export const HOME_SECTIONS = {
     // Added empty on purpose — the academy asked for the section now and will
     // switch it on once the logos are in.
     defaultEnabled: false,
+  },
+  coursePromos: {
+    label: "Course page ads",
+    description:
+      "Partner cards under the buy box on every course page. Empty until you add one.",
+    icon: "Megaphone",
+    schema: coursePromosSchema,
+    fields: coursePromosFields,
+    defaults: coursePromosDefaults,
   },
   authPanel: {
     label: "Sign-in panel",

@@ -59,8 +59,11 @@ function renderSection(section: HomeSection): ReactNode {
       return <PartnersSection data={section.data} />;
     case "enquiry":
       return <EnquiryForm data={section.data} />;
-    // The closing banner is drawn by the marketing layout, on every page.
+    // The closing banner is drawn by the marketing layout, on every page, and
+    // the course-page ads belong to the course page — both are edited here but
+    // neither is a band of the homepage.
     case "cta":
+    case "coursePromos":
       return null;
   }
 }

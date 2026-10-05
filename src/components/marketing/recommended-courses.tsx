@@ -4,9 +4,10 @@ import { ROUTES } from "@/lib/constants";
 import type { TrendingProgram } from "@/server/services/course-service";
 
 /**
- * "Learners also took" rail under a course. Same category first, so someone
- * who has decided on the field but not the course has somewhere to go other
- * than the back button.
+ * "Learners also took" rail under a course — the rest of the same category, and
+ * nothing else, so someone who has decided on the field but not the course has
+ * somewhere to go other than the back button. A category with only this one
+ * course in it shows no rail at all.
  */
 export function RecommendedCourses({
   courses,
@@ -24,7 +25,7 @@ export function RecommendedCourses({
               Learners also took these
             </h2>
             <p className="text-muted-foreground mt-2 text-sm">
-              Hand-picked programmes in the same field, with the same placement
+              More from {courses[0].categoryName}, with the same placement
               support.
             </p>
           </div>

@@ -615,9 +615,11 @@ export async function getPublicCourseBySlug(slug: string) {
 }
 
 /**
- * "Students also bought" for the course detail page: same category first, then
- * whatever else is popular, so the rail is never short on a thin category.
- * The current course is always excluded.
+ * "Students also bought" for the course detail page.
+ *
+ * Strictly the same category, and the current course is always excluded. A
+ * category with nothing else in it returns nothing, and the rail takes itself
+ * off the page rather than filling up with unrelated programmes.
  */
 export async function listRecommendedCourses(
   courseId: string,
@@ -656,17 +658,10 @@ export async function listRecommendedCourses(
     select,
   });
 
-  let rows = sameCategory;
-  if (rows.length < take) {
-    const seen = [courseId, ...rows.map((r) => r.id)];
-    const filler = await prisma.course.findMany({
-      where: { status: "PUBLISHED", id: { notIn: seen } },
-      orderBy: [{ isFeatured: "desc" }, { enrollmentCount: "desc" }],
-      take: take - rows.length,
-      select,
-    });
-    rows = [...rows, ...filler];
-  }
+  // Same category and nothing else — "which should be from same category only.
+  // Else we can keep it hide." A thin category used to be padded out with
+  // whatever was popular, which put a cookery course under a coding one.
+  const rows = sameCategory;
 
   return rows.map((c) => ({
     id: c.id,

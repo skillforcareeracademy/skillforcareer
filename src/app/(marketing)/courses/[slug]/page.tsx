@@ -36,6 +36,7 @@ import {
 import { CoursePreview } from "@/components/marketing/course-preview";
 import { CourseReviews } from "@/components/marketing/course-reviews";
 import { RecommendedCourses } from "@/components/marketing/recommended-courses";
+import { CoursePromos } from "@/components/marketing/course-promos";
 import { ProcessSection } from "@/components/marketing/process-section";
 import { FaqSection } from "@/components/marketing/faq-section";
 import { LearnerVideos } from "@/components/marketing/learner-videos";
@@ -89,16 +90,17 @@ export default async function CourseDetailPage({
   if (!c) notFound();
 
   const user = await getSessionUser();
-  const [enrolled, reviews, recommended, process, videos, faq] =
+  const [enrolled, reviews, recommended, process, videos, faq, promos] =
     await Promise.all([
       user ? isEnrolled(user.id, c.id) : Promise.resolve(false),
       listCourseReviews(c.id),
       listRecommendedCourses(c.id, c.category.slug),
-      // Shared with the homepage: one edit updates both. All three resolve from
+      // Shared with the homepage: one edit updates both. All four resolve from
       // the same cached read, so this costs no extra round-trip.
       getHomeSection("process"),
       getHomeSection("learnerVideos"),
       getHomeSection("faq"),
+      getHomeSection("coursePromos"),
     ]);
 
   const isFree = c.pricingType === "FREE";
@@ -323,6 +325,10 @@ export default async function CourseDetailPage({
                 </div>
               </div>
             </Card>
+
+            {/* The academy's own partner cards, edited under
+                Admin → Homepage → Course page ads. */}
+            {promos.enabled && <CoursePromos data={promos.data} />}
           </aside>
 
           {/* Main */}

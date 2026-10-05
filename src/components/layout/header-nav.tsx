@@ -1,6 +1,8 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { ChevronDown, ArrowRight } from "lucide-react";
 import {
   DropdownMenu,
@@ -28,7 +30,33 @@ const linkClass =
  * link: clicking "Courses" goes to the catalogue, hovering it shows the shortcut
  * list. That matters on touch, where there is no hover to rely on.
  */
-export function HeaderNav({ links, menus }: { links: HeaderLink[]; menus: HeaderMenus }) {
+export function HeaderNav({
+  links,
+  menus,
+}: {
+  links: HeaderLink[];
+  menus: HeaderMenus;
+}) {
+  const pathname = usePathname();
+  // Which menu is showing. Held here rather than left to each dropdown because
+  // it has to be *closed* from outside — see below.
+  const [openKey, setOpenKey] = useState<string | null>(null);
+
+  /**
+   * Shut the menu once the page has changed.
+   *
+   * "Course to page khul jaa rha hai pr ye menu band nhi hota khud se." A
+   * dropdown that opens on hover knows nothing about routing: following one of
+   * its links navigates without unmounting anything, so the panel stayed up
+   * over the new page. Deferred a tick because the compiler's
+   * `set-state-in-effect` rule rejects a synchronous setState from an effect
+   * body — the same shape the chat widget uses to close itself.
+   */
+  useEffect(() => {
+    const id = setTimeout(() => setOpenKey(null), 0);
+    return () => clearTimeout(id);
+  }, [pathname]);
+
   return (
     <nav className="hidden items-center gap-0.5 lg:flex">
       {links.map((item) => {
@@ -44,7 +72,11 @@ export function HeaderNav({ links, menus }: { links: HeaderLink[]; menus: Header
         }
 
         return (
-          <DropdownMenu key={key}>
+          <DropdownMenu
+            key={key}
+            open={openKey === key}
+            onOpenChange={(next) => setOpenKey(next ? key : null)}
+          >
             <DropdownMenuTrigger
               openOnHover
               delay={80}
@@ -79,7 +111,9 @@ export function HeaderNav({ links, menus }: { links: HeaderLink[]; menus: Header
                       className="hover:bg-muted focus-visible:bg-muted group flex items-center justify-between gap-4 rounded-md px-2.5 py-2 text-sm outline-none"
                     >
                       <span className="min-w-0">
-                        <span className="block truncate font-medium">{entry.title}</span>
+                        <span className="block truncate font-medium">
+                          {entry.title}
+                        </span>
                         {entry.meta && (
                           <span className="text-muted-foreground block truncate text-xs">
                             {entry.meta}
@@ -102,7 +136,9 @@ export function HeaderNav({ links, menus }: { links: HeaderLink[]; menus: Header
                   "hover:underline",
                 )}
               >
-                {item.menu === "categories" ? "Browse all categories" : "See all courses"}
+                {item.menu === "categories"
+                  ? "Browse all categories"
+                  : "See all courses"}
                 <ArrowRight className="size-3.5" aria-hidden />
               </Link>
             </DropdownMenuContent>
@@ -121,7 +157,10 @@ export interface MenuEntry {
 }
 
 /** The rows a link's chosen dropdown shows — empty means "render a plain link". */
-export function itemsFor(kind: HeaderMenuKind, menus: HeaderMenus): MenuEntry[] {
+export function itemsFor(
+  kind: HeaderMenuKind,
+  menus: HeaderMenus,
+): MenuEntry[] {
   if (kind === "categories") {
     return menus.categories.map((c) => ({
       title: c.name,
