@@ -14,7 +14,9 @@ function slugify(value: string): string {
 }
 
 function isUniqueViolation(e: unknown): boolean {
-  return e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002";
+  return (
+    e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002"
+  );
 }
 
 export interface CategoryRow {
@@ -66,7 +68,13 @@ export async function listPublicCategories() {
     prisma.category.findMany({
       where: { isActive: true },
       orderBy: [{ order: "asc" }, { name: "asc" }],
-      select: { id: true, name: true, slug: true, description: true },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        description: true,
+        icon: true,
+      },
     }),
     prisma.course.groupBy({
       by: ["categoryId"],
@@ -82,7 +90,8 @@ export async function listPublicCategories() {
 }
 
 export async function createCategory(input: CategoryInput): Promise<void> {
-  const slug = input.slug && input.slug.length ? input.slug : slugify(input.name);
+  const slug =
+    input.slug && input.slug.length ? input.slug : slugify(input.name);
   const data: Prisma.CategoryUncheckedCreateInput = {
     name: input.name,
     slug,
@@ -108,7 +117,8 @@ export async function updateCategory(
   id: string,
   input: CategoryInput,
 ): Promise<void> {
-  const slug = input.slug && input.slug.length ? input.slug : slugify(input.name);
+  const slug =
+    input.slug && input.slug.length ? input.slug : slugify(input.name);
   if (input.parentId === id) {
     throw AppError.badRequest("A category cannot be its own parent.");
   }
@@ -139,7 +149,9 @@ export async function deleteCategory(id: string): Promise<void> {
   });
   if (!cat) throw AppError.notFound("Category not found.");
   if (cat._count.courses > 0) {
-    throw AppError.conflict("Reassign this category's courses before deleting it.");
+    throw AppError.conflict(
+      "Reassign this category's courses before deleting it.",
+    );
   }
   if (cat._count.children > 0) {
     throw AppError.conflict("Delete or move its sub-categories first.");

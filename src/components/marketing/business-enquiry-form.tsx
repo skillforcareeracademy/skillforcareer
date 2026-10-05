@@ -77,7 +77,9 @@ export function BusinessEnquiryForm() {
       setDone(true);
       setForm(blank);
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Couldn't send. Try again.");
+      toast.error(
+        err instanceof ApiError ? err.message : "Couldn't send. Try again.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -90,8 +92,12 @@ export function BusinessEnquiryForm() {
           <Building2 className="size-4" />
         </span>
         <div className="min-w-0">
-          <h3 className="text-sm leading-tight font-semibold">Request a proposal</h3>
-          <p className="text-muted-foreground text-xs">We reply within one working day</p>
+          <h3 className="text-sm leading-tight font-semibold">
+            Request a proposal
+          </h3>
+          <p className="text-muted-foreground text-xs">
+            We reply within one working day
+          </p>
         </div>
       </div>
 
@@ -102,10 +108,15 @@ export function BusinessEnquiryForm() {
           </span>
           <h4 className="text-base font-semibold">Proposal request received</h4>
           <p className="text-muted-foreground mt-1.5 max-w-xs text-sm">
-            Our corporate team will get in touch to understand your goals and share a
-            costed plan.
+            Our corporate team will get in touch to understand your goals and
+            share a costed plan.
           </p>
-          <Button variant="outline" size="sm" className="mt-5" onClick={() => setDone(false)}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-5"
+            onClick={() => setDone(false)}
+          >
             Send another request
           </Button>
         </div>
@@ -162,10 +173,14 @@ export function BusinessEnquiryForm() {
               <Label className="text-xs">Team size</Label>
               <Select
                 value={form.teamSize}
-                onValueChange={(v) => set("teamSize", (v as string) ?? TEAM_SIZES[1])}
+                onValueChange={(v) =>
+                  set("teamSize", (v as string) ?? TEAM_SIZES[1])
+                }
               >
                 <SelectTrigger className="w-full">
-                  <SelectValue>{(v) => (v as string) ?? TEAM_SIZES[1]}</SelectValue>
+                  <SelectValue>
+                    {(v) => (v as string) ?? TEAM_SIZES[1]}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {TEAM_SIZES.map((size) => (
@@ -179,7 +194,9 @@ export function BusinessEnquiryForm() {
             <div className="space-y-1">
               <Label htmlFor="biz-area" className="text-xs">
                 Training area{" "}
-                <span className="text-muted-foreground font-normal">(optional)</span>
+                <span className="text-muted-foreground font-normal">
+                  (optional)
+                </span>
               </Label>
               <Input
                 id="biz-area"
@@ -193,7 +210,9 @@ export function BusinessEnquiryForm() {
           <div className="space-y-1">
             <Label htmlFor="biz-msg" className="text-xs">
               What do you want the team to learn?{" "}
-              <span className="text-muted-foreground font-normal">(optional)</span>
+              <span className="text-muted-foreground font-normal">
+                (optional)
+              </span>
             </Label>
             <Textarea
               id="biz-msg"
@@ -204,7 +223,12 @@ export function BusinessEnquiryForm() {
             />
           </div>
 
-          <Button type="submit" className="w-full" size="lg" disabled={submitting}>
+          <Button
+            type="submit"
+            className="w-full"
+            size="lg"
+            disabled={submitting}
+          >
             {submitting ? (
               <>
                 <Loader2 className="size-4 animate-spin" /> Sending…

@@ -14,7 +14,9 @@ function chipLabel(title: string): string {
 export async function Hero({ data }: { data: HomeData<"hero"> }) {
   // Chips are the catalogue's own most-enrolled courses, not copy an admin has
   // to keep in step with it — so the toggle is all the editor needs to expose.
-  const popular = data.showPopular ? await listPopularCourses(data.popularLimit) : [];
+  const popular = data.showPopular
+    ? await listPopularCourses(data.popularLimit)
+    : [];
 
   return (
     <section className="relative overflow-hidden">
@@ -75,7 +77,9 @@ export async function Hero({ data }: { data: HomeData<"hero"> }) {
           {popular.length > 0 && (
             <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
               {data.popularLabel && (
-                <span className="text-muted-foreground text-sm">{data.popularLabel}</span>
+                <span className="text-muted-foreground text-sm">
+                  {data.popularLabel}
+                </span>
               )}
               {popular.map((course) => (
                 <Link
@@ -96,7 +100,10 @@ export async function Hero({ data }: { data: HomeData<"hero"> }) {
               {data.trust.map((item, i) => {
                 const Icon = iconFor(item.icon);
                 return (
-                  <span key={`${item.text}-${i}`} className="flex items-center gap-1.5">
+                  <span
+                    key={`${item.text}-${i}`}
+                    className="flex items-center gap-1.5"
+                  >
                     <Icon className={cn("size-4", toneFor(item.tone))} />
                     {item.text}
                   </span>

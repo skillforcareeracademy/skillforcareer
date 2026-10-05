@@ -17,8 +17,13 @@ export function StatsBand({ data }: { data: HomeData<"stats"> }) {
   const columns = COLUMNS[Math.min(data.items.length, 4) - 1];
 
   return (
-    <section className="border-y bg-muted/30">
-      <div className={cn("container-page grid grid-cols-2 gap-6 py-10 sm:py-12", columns)}>
+    <section className="bg-muted/30 border-y">
+      <div
+        className={cn(
+          "container-page grid grid-cols-2 gap-6 py-10 sm:py-12",
+          columns,
+        )}
+      >
         {data.items.map((stat, i) => (
           <div key={`${stat.label}-${i}`} className="text-center">
             <p className="bg-gradient-to-r from-rose-600 to-pink-600 bg-clip-text text-3xl font-bold text-transparent sm:text-4xl">

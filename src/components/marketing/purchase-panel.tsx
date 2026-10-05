@@ -1,6 +1,11 @@
 "use client";
 
-import { MessageSquareText, PlayCircle, ShieldCheck, ShoppingCart } from "lucide-react";
+import {
+  MessageSquareText,
+  PlayCircle,
+  ShieldCheck,
+  ShoppingCart,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ButtonLink } from "@/components/shared/button-link";
 import { EnquiryDialog } from "./enquiry-dialog";

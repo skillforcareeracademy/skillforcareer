@@ -16,7 +16,9 @@ const OWN_CTA = ["/for-business"];
 
 export function CtaBandSlot({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  if (OWN_CTA.some((path) => pathname === path || pathname.startsWith(`${path}/`))) {
+  if (
+    OWN_CTA.some((path) => pathname === path || pathname.startsWith(`${path}/`))
+  ) {
     return null;
   }
   return <>{children}</>;

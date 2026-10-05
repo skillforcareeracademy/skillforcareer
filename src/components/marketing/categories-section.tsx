@@ -2,11 +2,20 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { listPublicCategories } from "@/server/services/category-service";
-import { CATEGORY_STYLES, DEFAULT_CATEGORY_STYLE } from "@/config/marketing";
+import {
+  CATEGORY_STYLES,
+  DEFAULT_CATEGORY_STYLE,
+  FALLBACK_ICON_NAME,
+} from "@/config/marketing";
+import { IconGlyph } from "@/components/shared/icon-glyph";
 import type { HomeData } from "@/lib/validations/homepage";
 import { cn } from "@/lib/utils";
 
-export async function CategoriesSection({ data }: { data: HomeData<"categories"> }) {
+export async function CategoriesSection({
+  data,
+}: {
+  data: HomeData<"categories">;
+}) {
   // Counts come from the catalogue, so the tiles can't advertise 128 courses in
   // a category that holds one.
   const categories = (await listPublicCategories()).slice(0, data.limit);
@@ -33,8 +42,13 @@ export async function CategoriesSection({ data }: { data: HomeData<"categories">
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
         {categories.map((cat) => {
-          const { icon: Icon, gradient } =
+          // The academy's own choice first — "how to change these category
+          // icons??? Same icons lge hue hain" was every tile falling through to
+          // the default because the shipped map only knows a handful of slugs.
+          const { gradient } =
             CATEGORY_STYLES[cat.slug] ?? DEFAULT_CATEGORY_STYLE;
+          const glyph =
+            cat.icon?.trim() || FALLBACK_ICON_NAME[cat.slug] || "BookOpen";
           return (
             <Link key={cat.slug} href={`/courses?category=${cat.slug}`}>
               <Card className="group hover:border-primary/40 h-full flex-row items-center gap-4 p-4 transition-all hover:shadow-md">
@@ -44,7 +58,7 @@ export async function CategoriesSection({ data }: { data: HomeData<"categories">
                     gradient,
                   )}
                 >
-                  <Icon className="size-6" aria-hidden />
+                  <IconGlyph name={glyph} className="size-6" />
                 </span>
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-semibold">

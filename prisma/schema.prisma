@@ -1137,6 +1137,11 @@ model Course {
   courseNo     Int     @default(0)
   abbreviation String?
 
+  /// The badge on the course card: a name from the icon catalogue, or a URL to
+  /// the academy's own picture. "Also how to change course icons?" — blank
+  /// wears whatever the category wears.
+  icon String?
+
   // Denormalised aggregates for fast catalog rendering
   ratingAvg       Float @default(0)
   ratingCount     Int   @default(0)

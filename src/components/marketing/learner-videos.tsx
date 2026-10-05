@@ -1,7 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { PlayCircle, Play, Star, ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  PlayCircle,
+  Play,
+  Star,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -85,7 +91,7 @@ export function LearnerVideos({ data }: { data: HomeData<"learnerVideos"> }) {
           <div
             ref={scrollerRef}
             onScroll={updateArrows}
-            className="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            className="flex snap-x snap-mandatory [scrollbar-width:none] gap-4 overflow-x-auto pb-2 [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
           >
             {data.items.map((r, i) => (
               <button
@@ -138,7 +144,10 @@ export function LearnerVideos({ data }: { data: HomeData<"learnerVideos"> }) {
         </div>
       </div>
 
-      <Dialog open={playing != null} onOpenChange={(o) => !o && setPlaying(null)}>
+      <Dialog
+        open={playing != null}
+        onOpenChange={(o) => !o && setPlaying(null)}
+      >
         <DialogContent className="gap-3 p-4 sm:max-w-md sm:p-5">
           <DialogHeader className="text-left">
             <DialogTitle>{playing?.name}</DialogTitle>

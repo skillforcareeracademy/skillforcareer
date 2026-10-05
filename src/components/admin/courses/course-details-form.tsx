@@ -27,6 +27,7 @@ import {
 import { RichTextEditor } from "@/components/shared/rich-text-editor";
 import { ImageUpload } from "@/components/shared/image-upload";
 import { SearchSelect } from "@/components/shared/search-select";
+import { IconPicker } from "@/components/admin/homepage/icon-picker";
 import {
   COURSE_LEVELS,
   DELIVERY_MODES,
@@ -178,6 +179,7 @@ export function CourseDetailsForm({
   );
   const [tags, setTags] = useState((course.tags ?? []).join(", "));
   const [instructorId, setInstructorId] = useState(course.instructorId);
+  const [icon, setIcon] = useState(course.icon ?? "");
   const [display, setDisplay] = useState<CoursePageDisplay>(course.pageDisplay);
 
   const setShow = <K extends keyof CoursePageDisplay>(
@@ -231,6 +233,7 @@ export function CourseDetailsForm({
       promoVideoUrl: v.promoVideoUrl,
       categoryId: v.categoryId,
       instructorId,
+      icon,
       level: v.level,
       deliveryMode: v.deliveryMode,
       language: v.language || "en",
@@ -422,6 +425,14 @@ export function CourseDetailsForm({
             </Field>
             <Field label="Promo video URL">
               <Input {...register("promoVideoUrl")} placeholder="https://…" />
+            </Field>
+            {/* The small badge on the course card. Blank wears the category's.
+                "Also how to change course icons?" */}
+            <Field
+              label="Card icon"
+              hint="Leave as the category's unless this course needs its own."
+            >
+              <IconPicker value={icon || "BookOpen"} onChange={setIcon} />
             </Field>
           </CardContent>
         </Card>

@@ -47,7 +47,11 @@ export function FaqSection({
           <div className="lg:col-span-2">
             <Accordion multiple className="divide-y rounded-2xl border">
               {data.items.map((faq, i) => (
-                <AccordionItem key={i} value={String(i)} className="border-b-0 px-5">
+                <AccordionItem
+                  key={i}
+                  value={String(i)}
+                  className="border-b-0 px-5"
+                >
                   <AccordionTrigger className="text-left hover:no-underline">
                     <span className="pr-2 font-medium">{faq.question}</span>
                   </AccordionTrigger>

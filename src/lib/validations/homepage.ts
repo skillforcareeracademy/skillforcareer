@@ -1421,7 +1421,10 @@ const footerSchema = z.object({
     .array(
       z.object({
         title: text(60),
-        links: z.array(linkItem).max(10).default([]),
+        // "In footer only 8 links are allowed in a column. Increase the limit."
+        // The editor used to stop at 8 while this allowed 10, so the stricter
+        // of the two was the one anybody met.
+        links: z.array(linkItem).max(20).default([]),
       }),
     )
     .max(4)
@@ -1469,7 +1472,7 @@ const footerFields: AnyField[] = [
         type: "list",
         itemLabel: "link",
         titleKey: "label",
-        max: 8,
+        max: 20,
         fields: linkFields,
       },
     ],

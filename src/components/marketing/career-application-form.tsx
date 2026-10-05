@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -55,7 +61,11 @@ interface Prefill {
   name: string;
   email: string;
   phone: string;
-  enrolments: { courseId: string; courseTitle: string; batchCode: string | null }[];
+  enrolments: {
+    courseId: string;
+    courseTitle: string;
+    batchCode: string | null;
+  }[];
 }
 
 interface FormState {
@@ -110,7 +120,12 @@ export function CareerApplicationForm({
   /** Pre-fills "job expecting" when the visitor came from a team or role card. */
   role?: string;
   /** Set when applying to a specific open role with a hiring partner. */
-  post?: { id: string; title: string; company: string; level: ExperienceLevel } | null;
+  post?: {
+    id: string;
+    title: string;
+    company: string;
+    level: ExperienceLevel;
+  } | null;
 }) {
   const [form, setForm] = useState<FormState>({
     name: "",
@@ -148,9 +163,7 @@ export function CareerApplicationForm({
       .then((res) => (res.ok ? res.json() : null))
       .then((json) => {
         const envelope = json?.data as
-          | { signedIn: boolean; applicant: Prefill | null }
-          | null
-          | undefined;
+          { signedIn: boolean; applicant: Prefill | null } | null | undefined;
         if (!alive) return;
         setSignedIn(envelope?.signedIn ?? false);
         const data = envelope?.applicant;
@@ -196,7 +209,8 @@ export function CareerApplicationForm({
       : (courseOptions.find((c) => c.id === id)?.title ?? "Select your course");
 
   function pickCourse(id: string) {
-    const previous = enrolled.find((e) => e.courseId === form.courseId)?.batchCode ?? "";
+    const previous =
+      enrolled.find((e) => e.courseId === form.courseId)?.batchCode ?? "";
     const next = enrolled.find((e) => e.courseId === id)?.batchCode ?? "";
     setForm((f) => ({
       ...f,
@@ -210,11 +224,17 @@ export function CareerApplicationForm({
   function pickFile(file: File | null) {
     if (!file) return;
     if (!CV_EXTENSIONS.test(file.name)) {
-      setErrors((e) => ({ ...e, cv: "Upload a PDF or Word document (.pdf, .doc, .docx)." }));
+      setErrors((e) => ({
+        ...e,
+        cv: "Upload a PDF or Word document (.pdf, .doc, .docx).",
+      }));
       return;
     }
     if (file.size > CV_MAX_BYTES) {
-      setErrors((e) => ({ ...e, cv: `Your CV must be under ${CV_MAX_LABEL}.` }));
+      setErrors((e) => ({
+        ...e,
+        cv: `Your CV must be under ${CV_MAX_LABEL}.`,
+      }));
       return;
     }
     setCv(file);
@@ -243,7 +263,8 @@ export function CareerApplicationForm({
       !form.experienceDetails.trim() &&
       !next.experienceDetails
     ) {
-      next.experienceDetails = "Tell us about your experience — company, role and years";
+      next.experienceDetails =
+        "Tell us about your experience — company, role and years";
     }
     if (!cv) next.cv = "Attach your CV (PDF or Word).";
     if (Object.keys(next).length || !parsed.success) {
@@ -267,26 +288,38 @@ export function CareerApplicationForm({
 
     setSubmitting(true);
     try {
-      const res = await fetch("/api/careers/applications", { method: "POST", body: fd });
+      const res = await fetch("/api/careers/applications", {
+        method: "POST",
+        body: fd,
+      });
       const json = await res.json().catch(() => null);
       if (!res.ok || !json?.success) {
         if (res.status === 413) {
-          throw new Error(`Your CV is too large — keep it under ${CV_MAX_LABEL}.`);
-        }
-        const issues = json?.error?.details?.issues as
-          | { path: string; message: string }[]
-          | undefined;
-        if (issues?.length) {
-          setErrors(
-            Object.fromEntries(issues.map((i) => [i.path.split(".")[0], i.message])),
+          throw new Error(
+            `Your CV is too large — keep it under ${CV_MAX_LABEL}.`,
           );
         }
-        throw new Error(json?.error?.message ?? "Couldn't send your CV. Please try again.");
+        const issues = json?.error?.details?.issues as
+          { path: string; message: string }[] | undefined;
+        if (issues?.length) {
+          setErrors(
+            Object.fromEntries(
+              issues.map((i) => [i.path.split(".")[0], i.message]),
+            ),
+          );
+        }
+        throw new Error(
+          json?.error?.message ?? "Couldn't send your CV. Please try again.",
+        );
       }
       setDone({ email: form.email });
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Couldn't send your CV. Please try again.");
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Couldn't send your CV. Please try again.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -302,9 +335,15 @@ export function CareerApplicationForm({
         <p className="text-muted-foreground mt-2 max-w-md">
           Our placement team has your details. We&apos;ve sent a confirmation to{" "}
           <span className="text-foreground font-medium">{done.email}</span>, and
-          we&apos;ll be in touch when a role matches what you&apos;re looking for.
+          we&apos;ll be in touch when a role matches what you&apos;re looking
+          for.
         </p>
-        <Button className="mt-6" variant="outline" nativeButton={false} render={<Link href="/careers" />}>
+        <Button
+          className="mt-6"
+          variant="outline"
+          nativeButton={false}
+          render={<Link href="/careers" />}
+        >
           <ArrowLeft className="size-4" /> Back to careers
         </Button>
       </div>
@@ -330,7 +369,10 @@ export function CareerApplicationForm({
           a minute.
         </p>
         <div className="mt-6 flex flex-wrap justify-center gap-2">
-          <Button nativeButton={false} render={<Link href={`${ROUTES.register}?next=${next}`} />}>
+          <Button
+            nativeButton={false}
+            render={<Link href={`${ROUTES.register}?next=${next}`} />}
+          >
             Create an account
           </Button>
           <Button
@@ -351,15 +393,19 @@ export function CareerApplicationForm({
         <div className="flex items-start gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4 text-sm">
           <BadgeCheck className="mt-0.5 size-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
           <p>
-            Signed in as <span className="font-medium">{prefill.name}</span> — we&apos;ve
-            filled in your details{enrolled.length ? ", course and batch" : ""} from your
-            account. Check them before you send.
+            Signed in as <span className="font-medium">{prefill.name}</span> —
+            we&apos;ve filled in your details
+            {enrolled.length ? ", course and batch" : ""} from your account.
+            Check them before you send.
           </p>
         </div>
       )}
 
       {/* Honeypot: invisible to people, irresistible to form-filling scripts. */}
-      <div aria-hidden className="absolute -left-[10000px] size-px overflow-hidden">
+      <div
+        aria-hidden
+        className="absolute -left-[10000px] size-px overflow-hidden"
+      >
         <label>
           Website
           <input
@@ -397,9 +443,17 @@ export function CareerApplicationForm({
             />
           </Field>
           <Field label="Phone number" error={errors.phone}>
-            <PhoneInput key={phoneKey} value={form.phone} onChange={(v) => set("phone", v)} />
+            <PhoneInput
+              key={phoneKey}
+              value={form.phone}
+              onChange={(v) => set("phone", v)}
+            />
           </Field>
-          <Field id="ca-address" label="Current address" error={errors.currentAddress}>
+          <Field
+            id="ca-address"
+            label="Current address"
+            error={errors.currentAddress}
+          >
             <Input
               id="ca-address"
               value={form.currentAddress}
@@ -415,8 +469,14 @@ export function CareerApplicationForm({
       <Section icon={GraduationCap} title="Your training">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Course" error={errors.courseId}>
-            <Select value={form.courseId || null} onValueChange={(v) => pickCourse(String(v ?? ""))}>
-              <SelectTrigger className="w-full" aria-invalid={!!errors.courseId}>
+            <Select
+              value={form.courseId || null}
+              onValueChange={(v) => pickCourse(String(v ?? ""))}
+            >
+              <SelectTrigger
+                className="w-full"
+                aria-invalid={!!errors.courseId}
+              >
                 <SelectValue>
                   {(v) => (v ? courseTitle(String(v)) : "Select your course")}
                 </SelectValue>
@@ -481,7 +541,11 @@ export function CareerApplicationForm({
             />
           </Field>
 
-          <Field label="Fresher or experienced?" error={errors.experienceLevel} className="sm:col-span-2">
+          <Field
+            label="Fresher or experienced?"
+            error={errors.experienceLevel}
+            className="sm:col-span-2"
+          >
             <div role="radiogroup" className="grid grid-cols-2 gap-3">
               {EXPERIENCE_LEVELS.map((level) => {
                 const active = form.experienceLevel === level;
@@ -499,7 +563,9 @@ export function CareerApplicationForm({
                         : "hover:bg-muted/60",
                     )}
                   >
-                    <span className="block font-medium">{EXPERIENCE_LEVEL_LABELS[level]}</span>
+                    <span className="block font-medium">
+                      {EXPERIENCE_LEVEL_LABELS[level]}
+                    </span>
                     <span className="text-muted-foreground block text-xs">
                       {level === "FRESHER"
                         ? "Looking for my first job"
@@ -530,7 +596,11 @@ export function CareerApplicationForm({
             </Field>
           )}
 
-          <Field id="ca-location" label="Preferred job location" error={errors.expectedLocation}>
+          <Field
+            id="ca-location"
+            label="Preferred job location"
+            error={errors.expectedLocation}
+          >
             <Input
               id="ca-location"
               value={form.expectedLocation}
@@ -542,9 +612,14 @@ export function CareerApplicationForm({
           <Field label="Preferred job mode" error={errors.expectedMode}>
             <Select
               value={form.expectedMode || null}
-              onValueChange={(v) => set("expectedMode", (v ?? "") as JobMode | "")}
+              onValueChange={(v) =>
+                set("expectedMode", (v ?? "") as JobMode | "")
+              }
             >
-              <SelectTrigger className="w-full" aria-invalid={!!errors.expectedMode}>
+              <SelectTrigger
+                className="w-full"
+                aria-invalid={!!errors.expectedMode}
+              >
                 <SelectValue>
                   {(v) => (v ? JOB_MODE_LABELS[v as JobMode] : "Select a mode")}
                 </SelectValue>
@@ -590,7 +665,9 @@ export function CareerApplicationForm({
               </span>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium">{cv.name}</p>
-                <p className="text-muted-foreground text-xs">{fileSize(cv.size)}</p>
+                <p className="text-muted-foreground text-xs">
+                  {fileSize(cv.size)}
+                </p>
               </div>
               <Button
                 type="button"
@@ -619,7 +696,9 @@ export function CareerApplicationForm({
               )}
             >
               <Upload className="text-muted-foreground size-6" />
-              <span className="text-sm font-medium">Choose a file or drop it here</span>
+              <span className="text-sm font-medium">
+                Choose a file or drop it here
+              </span>
               <span className="text-muted-foreground text-xs">
                 PDF or Word (.pdf, .doc, .docx), up to {CV_MAX_LABEL}
               </span>
@@ -636,30 +715,42 @@ export function CareerApplicationForm({
         </Field>
       </Section>
 
-      <div data-invalid={errors.consent ? "true" : undefined} className="space-y-1.5">
+      <div
+        data-invalid={errors.consent ? "true" : undefined}
+        className="space-y-1.5"
+      >
         <label className="flex items-start gap-3 text-sm">
           <Checkbox
             checked={consent}
             onCheckedChange={(checked) => {
               setConsent(checked === true);
-              if (errors.consent) setErrors((e) => ({ ...e, consent: undefined }));
+              if (errors.consent)
+                setErrors((e) => ({ ...e, consent: undefined }));
             }}
             aria-invalid={!!errors.consent}
             className="mt-0.5"
           />
           <span className="text-muted-foreground">
-            I agree that Skill For Career may keep my details and CV, and share them with
-            its placement and hiring partners for job opportunities. See our{" "}
+            I agree that Skill For Career may keep my details and CV, and share
+            them with its placement and hiring partners for job opportunities.
+            See our{" "}
             <Link href="/privacy" className="text-primary hover:underline">
               privacy policy
             </Link>
             .
           </span>
         </label>
-        {errors.consent && <p className="text-destructive text-xs">{errors.consent}</p>}
+        {errors.consent && (
+          <p className="text-destructive text-xs">{errors.consent}</p>
+        )}
       </div>
 
-      <Button type="submit" size="lg" className="w-full sm:w-auto" disabled={submitting}>
+      <Button
+        type="submit"
+        size="lg"
+        className="w-full sm:w-auto"
+        disabled={submitting}
+      >
         {submitting ? (
           <>
             <Loader2 className="size-4 animate-spin" /> Sending…
@@ -715,10 +806,15 @@ function Field({
   children: ReactNode;
 }) {
   return (
-    <div data-invalid={error ? "true" : undefined} className={cn("space-y-1.5", className)}>
+    <div
+      data-invalid={error ? "true" : undefined}
+      className={cn("space-y-1.5", className)}
+    >
       <Label htmlFor={id} className="text-xs">
         {label}
-        {optional && <span className="text-muted-foreground font-normal"> (optional)</span>}
+        {optional && (
+          <span className="text-muted-foreground font-normal"> (optional)</span>
+        )}
       </Label>
       {children}
       {error ? (

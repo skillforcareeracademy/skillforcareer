@@ -13,7 +13,9 @@ export async function AnnouncementBar() {
   const promo = await getBannerPromo();
   if (!promo) return null;
 
-  const endsOn = promo.expiresAt ? format(new Date(promo.expiresAt), "d MMM") : null;
+  const endsOn = promo.expiresAt
+    ? format(new Date(promo.expiresAt), "d MMM")
+    : null;
 
   return (
     <div className="bg-gradient-to-r from-rose-600 via-pink-600 to-fuchsia-600 text-white">

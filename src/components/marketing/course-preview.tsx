@@ -68,7 +68,10 @@ export function CoursePreview({
 
       {hasVideo && (
         <Dialog open={open} onOpenChange={setOpen}>
-          <DialogContent className="overflow-hidden p-0 sm:max-w-3xl" showCloseButton>
+          <DialogContent
+            className="overflow-hidden p-0 sm:max-w-3xl"
+            showCloseButton
+          >
             <DialogHeader className="sr-only">
               <DialogTitle>{title} — preview</DialogTitle>
             </DialogHeader>

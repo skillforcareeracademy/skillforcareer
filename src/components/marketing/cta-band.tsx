@@ -17,7 +17,9 @@ export function CtaBand({ data }: { data: HomeData<"cta"> }) {
           }}
         />
         <div className="relative mx-auto max-w-2xl">
-          <h2 className="text-3xl font-bold text-white sm:text-4xl">{data.title}</h2>
+          <h2 className="text-3xl font-bold text-white sm:text-4xl">
+            {data.title}
+          </h2>
           {data.description && (
             <p className="mt-4 text-lg text-white/90">{data.description}</p>
           )}

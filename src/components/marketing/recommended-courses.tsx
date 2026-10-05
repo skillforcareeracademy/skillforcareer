@@ -8,7 +8,11 @@ import type { TrendingProgram } from "@/server/services/course-service";
  * who has decided on the field but not the course has somewhere to go other
  * than the back button.
  */
-export function RecommendedCourses({ courses }: { courses: TrendingProgram[] }) {
+export function RecommendedCourses({
+  courses,
+}: {
+  courses: TrendingProgram[];
+}) {
   if (courses.length === 0) return null;
 
   return (
@@ -20,7 +24,8 @@ export function RecommendedCourses({ courses }: { courses: TrendingProgram[] }) 
               Learners also took these
             </h2>
             <p className="text-muted-foreground mt-2 text-sm">
-              Hand-picked programmes in the same field, with the same placement support.
+              Hand-picked programmes in the same field, with the same placement
+              support.
             </p>
           </div>
           <ButtonLink href={ROUTES.courses} variant="outline" size="sm">

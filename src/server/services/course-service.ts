@@ -95,6 +95,7 @@ export async function updateCourse(
     tags: input.tags ?? [],
     requirements: input.requirements ?? [],
     objectives: input.objectives ?? [],
+    icon: input.icon || null,
   };
   // Who the page credits. "I can not change this, as an admin I should be able
   // to manage this" — so the editor may hand a course to another instructor,
@@ -179,6 +180,7 @@ export async function getCourseForEdit(id: string) {
   return {
     id: c.id,
     instructorId: c.instructorId,
+    icon: c.icon,
     pageDisplay: readCoursePageDisplay(c.pageDisplay),
     title: c.title,
     subtitle: c.subtitle,
@@ -357,7 +359,7 @@ export async function listPublicCourses(opts: {
     ],
     take: opts.take ?? 24,
     include: {
-      category: { select: { name: true, slug: true } },
+      category: { select: { name: true, slug: true, icon: true } },
       instructor: { select: { name: true } },
       _count: { select: { chapters: true, enrollments: true } },
     },
@@ -372,6 +374,8 @@ export async function listPublicCourses(opts: {
     level: c.level,
     categoryName: c.category.name,
     categorySlug: c.category.slug,
+    icon: c.icon,
+    categoryIcon: c.category.icon,
     instructorName: c.instructor.name,
     price: c.price.toNumber(),
     discountPrice: c.discountPrice ? c.discountPrice.toNumber() : null,
@@ -458,6 +462,10 @@ export type TrendingProgram = {
   level: string;
   categoryName: string;
   categorySlug: string;
+  /** The course's own badge, when it has been given one. */
+  icon: string | null;
+  /** …and its category's, which it falls back to. */
+  categoryIcon: string | null;
   instructorName: string;
   price: number;
   discountPrice: number | null;
@@ -500,7 +508,8 @@ export async function listTrendingPrograms(
       durationMinutes: true,
       isFeatured: true,
       objectives: true,
-      category: { select: { name: true, slug: true } },
+      icon: true,
+      category: { select: { name: true, slug: true, icon: true } },
       instructor: { select: { name: true } },
     },
   });
@@ -513,6 +522,8 @@ export async function listTrendingPrograms(
     level: c.level,
     categoryName: c.category.name,
     categorySlug: c.category.slug,
+    icon: c.icon,
+    categoryIcon: c.category.icon,
     instructorName: c.instructor.name,
     price: c.price.toNumber(),
     discountPrice: c.discountPrice ? c.discountPrice.toNumber() : null,
@@ -544,7 +555,7 @@ export async function getPublicCourseBySlug(slug: string) {
   const c = await prisma.course.findFirst({
     where: { slug, status: "PUBLISHED" },
     include: {
-      category: { select: { name: true, slug: true } },
+      category: { select: { name: true, slug: true, icon: true } },
       instructor: { select: { name: true, headline: true, avatarUrl: true } },
       chapters: {
         orderBy: { order: "asc" },
@@ -629,7 +640,8 @@ export async function listRecommendedCourses(
     durationMinutes: true,
     isFeatured: true,
     objectives: true,
-    category: { select: { name: true, slug: true } },
+    icon: true,
+    category: { select: { name: true, slug: true, icon: true } },
     instructor: { select: { name: true } },
   } satisfies Prisma.CourseSelect;
 
@@ -664,6 +676,8 @@ export async function listRecommendedCourses(
     level: c.level,
     categoryName: c.category.name,
     categorySlug: c.category.slug,
+    icon: c.icon,
+    categoryIcon: c.category.icon,
     instructorName: c.instructor.name,
     price: c.price.toNumber(),
     discountPrice: c.discountPrice ? c.discountPrice.toNumber() : null,

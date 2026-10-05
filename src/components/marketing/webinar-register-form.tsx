@@ -35,10 +35,15 @@ export function WebinarRegisterForm({
     }
     setSubmitting(true);
     try {
-      const res = await api.post<{ joinUrl: string | null }>(`/api/webinars/${webinarId}/register`, parsed.data);
+      const res = await api.post<{ joinUrl: string | null }>(
+        `/api/webinars/${webinarId}/register`,
+        parsed.data,
+      );
       setDone({ joinUrl: res.joinUrl });
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Couldn't register. Try again.");
+      toast.error(
+        err instanceof ApiError ? err.message : "Couldn't register. Try again.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -49,14 +54,21 @@ export function WebinarRegisterForm({
       <div className="rounded-xl border border-emerald-500/30 bg-emerald-50 p-5 text-center dark:bg-emerald-500/10">
         <CheckCircle2 className="mx-auto size-8 text-emerald-600 dark:text-emerald-400" />
         <p className="mt-2 font-semibold">You&apos;re registered!</p>
-        <p className="text-muted-foreground mt-1 text-sm">We&apos;ll email you the joining details before it starts.</p>
+        <p className="text-muted-foreground mt-1 text-sm">
+          We&apos;ll email you the joining details before it starts.
+        </p>
         {attendanceDiscountPercent > 0 && (
           <p className="mt-2 text-sm font-medium text-emerald-700 dark:text-emerald-300">
-            Stay for the whole session and we&apos;ll send you {attendanceDiscountPercent}% off any course.
+            Stay for the whole session and we&apos;ll send you{" "}
+            {attendanceDiscountPercent}% off any course.
           </p>
         )}
         {done.joinUrl && (
-          <Button className="mt-4" nativeButton={false} render={<a href={done.joinUrl} target="_blank" rel="noopener" />}>
+          <Button
+            className="mt-4"
+            nativeButton={false}
+            render={<a href={done.joinUrl} target="_blank" rel="noopener" />}
+          >
             <ExternalLink className="size-4" /> Join link
           </Button>
         )}
@@ -82,15 +94,31 @@ export function WebinarRegisterForm({
       )}
       <div className="space-y-1.5">
         <Label htmlFor="w-name">Full name</Label>
-        <Input id="w-name" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Your name" required />
+        <Input
+          id="w-name"
+          value={form.name}
+          onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+          placeholder="Your name"
+          required
+        />
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="w-email">Email</Label>
-        <Input id="w-email" type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} placeholder="you@example.com" required />
+        <Input
+          id="w-email"
+          type="email"
+          value={form.email}
+          onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+          placeholder="you@example.com"
+          required
+        />
       </div>
       <div className="space-y-1.5">
         <Label>Phone (optional)</Label>
-        <PhoneInput value={form.phone} onChange={(v) => setForm((f) => ({ ...f, phone: v }))} />
+        <PhoneInput
+          value={form.phone}
+          onChange={(v) => setForm((f) => ({ ...f, phone: v }))}
+        />
       </div>
       <Button type="submit" size="lg" className="w-full" disabled={submitting}>
         {submitting && <Loader2 className="size-4 animate-spin" />}
@@ -98,7 +126,8 @@ export function WebinarRegisterForm({
       </Button>
       {attendanceDiscountPercent > 0 && (
         <p className="text-muted-foreground text-center text-xs">
-          Attend the full session to earn {attendanceDiscountPercent}% off any course.
+          Attend the full session to earn {attendanceDiscountPercent}% off any
+          course.
         </p>
       )}
     </form>

@@ -37,7 +37,9 @@ export function PublicCourseCard({ course }: { course: CatalogCourse }) {
   const isFree = course.pricingType === "FREE" || effective <= 0;
   const priceLabel = isFree ? "Free" : `₹${effective.toLocaleString("en-IN")}`;
   const hasDiscount =
-    !isFree && course.discountPrice != null && course.discountPrice < course.price;
+    !isFree &&
+    course.discountPrice != null &&
+    course.discountPrice < course.price;
 
   return (
     <Card className="group flex h-full flex-col gap-0 overflow-hidden p-0 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">

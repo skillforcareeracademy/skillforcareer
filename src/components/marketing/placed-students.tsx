@@ -37,7 +37,9 @@ function StudentCard({ student }: { student: PlacedStudent }) {
       <p className="mt-0.5 truncate px-1 text-sm font-bold text-black">
         {student.name}
       </p>
-      <p className="truncate px-1 text-[11px] text-neutral-700">{student.course}</p>
+      <p className="truncate px-1 text-[11px] text-neutral-700">
+        {student.course}
+      </p>
     </div>
   );
 }
@@ -54,7 +56,9 @@ function MarqueeRow({
   // row is exactly card-height and shears the shadow off flat.
   return (
     <div className="marquee-row flex overflow-hidden py-4">
-      <div className={`marquee-track ${reverse ? "marquee-track-reverse" : ""}`}>
+      <div
+        className={`marquee-track ${reverse ? "marquee-track-reverse" : ""}`}
+      >
         {buildTrack(students).map((student, i) => (
           <StudentCard key={`${student.name}-${i}`} student={student} />
         ))}

@@ -35,8 +35,14 @@ export const CATEGORY_STYLES: Record<string, CategoryStyle> = {
   "ai-ml": { icon: BrainCircuit, gradient: "from-violet-500 to-purple-600" },
   management: { icon: Briefcase, gradient: "from-amber-500 to-orange-600" },
   "software-development": { icon: Code2, gradient: "from-sky-500 to-blue-600" },
-  "digital-marketing": { icon: Megaphone, gradient: "from-emerald-500 to-teal-600" },
-  "product-management": { icon: Boxes, gradient: "from-fuchsia-500 to-pink-600" },
+  "digital-marketing": {
+    icon: Megaphone,
+    gradient: "from-emerald-500 to-teal-600",
+  },
+  "product-management": {
+    icon: Boxes,
+    gradient: "from-fuchsia-500 to-pink-600",
+  },
   "cloud-devops": { icon: Cloud, gradient: "from-cyan-500 to-blue-600" },
   design: { icon: Palette, gradient: "from-indigo-500 to-violet-600" },
 };
@@ -44,6 +50,23 @@ export const CATEGORY_STYLES: Record<string, CategoryStyle> = {
 export const DEFAULT_CATEGORY_STYLE: CategoryStyle = {
   icon: BookOpen,
   gradient: "from-rose-500 to-pink-600",
+};
+
+/**
+ * The same shipped guesses, named for the icon catalogue rather than imported
+ * as components, so a category that has never been given an icon still gets a
+ * sensible one and `IconGlyph` can draw either a glyph or a picture from the
+ * one stored value.
+ */
+export const FALLBACK_ICON_NAME: Record<string, string> = {
+  "data-science": "Database",
+  "ai-ml": "BrainCircuit",
+  management: "BriefcaseBusiness",
+  "software-development": "Code2",
+  "digital-marketing": "Megaphone",
+  "product-management": "Layers",
+  "cloud-devops": "Cloud",
+  design: "Palette",
 };
 
 /**

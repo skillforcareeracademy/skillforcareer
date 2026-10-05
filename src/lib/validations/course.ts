@@ -108,6 +108,8 @@ export const updateCourseSchema = z.object({
   categoryId: z.string().min(1, "Choose a category"),
   /** Who the course page credits, and who owns it in the instructor workspace. */
   instructorId: z.string().min(1).optional().or(z.literal("")),
+  /** The card badge: a catalogue name, or a URL to the academy's own picture. */
+  icon: z.string().trim().max(500).optional().or(z.literal("")),
   level: z.enum(COURSE_LEVELS),
   deliveryMode: z.enum(DELIVERY_MODES),
   language: z.string().trim().max(20).default("en"),

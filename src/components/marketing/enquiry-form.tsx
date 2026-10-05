@@ -81,7 +81,9 @@ export function EnquiryForm({ data }: { data: HomeData<"enquiry"> }) {
             )}
             <h2 className="mt-4 text-3xl sm:text-4xl">{data.title}</h2>
             {data.description && (
-              <p className="text-muted-foreground mt-3 text-lg">{data.description}</p>
+              <p className="text-muted-foreground mt-3 text-lg">
+                {data.description}
+              </p>
             )}
             {data.bullets.length > 0 && (
               <ul className="mt-6 space-y-3">
@@ -122,7 +124,9 @@ export function EnquiryForm({ data }: { data: HomeData<"enquiry"> }) {
                 <h3 className="text-sm leading-tight font-semibold">
                   {data.formTitle}
                 </h3>
-                <p className="text-muted-foreground text-xs">{data.formSubtitle}</p>
+                <p className="text-muted-foreground text-xs">
+                  {data.formSubtitle}
+                </p>
               </div>
             </div>
 

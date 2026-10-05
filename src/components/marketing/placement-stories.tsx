@@ -17,7 +17,11 @@ import { imageProps } from "@/lib/image-sizes";
 /** Must match the `gap-6` on the scroll track (1.5rem). */
 const CARD_GAP_PX = 24;
 
-export function PlacementStories({ data }: { data: HomeData<"placementStories"> }) {
+export function PlacementStories({
+  data,
+}: {
+  data: HomeData<"placementStories">;
+}) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [atStart, setAtStart] = useState(true);
   const [atEnd, setAtEnd] = useState(false);
@@ -47,7 +51,10 @@ export function PlacementStories({ data }: { data: HomeData<"placementStories"> 
   function scrollByPage(dir: number) {
     const el = scrollerRef.current;
     if (!el) return;
-    el.scrollBy({ left: dir * (el.clientWidth + CARD_GAP_PX), behavior: "smooth" });
+    el.scrollBy({
+      left: dir * (el.clientWidth + CARD_GAP_PX),
+      behavior: "smooth",
+    });
   }
 
   // After the hooks, never before them — emptying the list in the admin hides
@@ -95,7 +102,7 @@ export function PlacementStories({ data }: { data: HomeData<"placementStories"> 
       <div
         ref={scrollerRef}
         onScroll={updateArrows}
-        className="flex snap-x snap-mandatory gap-6 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="flex snap-x snap-mandatory [scrollbar-width:none] gap-6 overflow-x-auto pb-2 [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
       >
         {data.items.map((story, i) => (
           <Card
@@ -123,7 +130,10 @@ export function PlacementStories({ data }: { data: HomeData<"placementStories"> 
             <div className="flex flex-1 flex-col p-5">
               <div className="flex gap-0.5">
                 {Array.from({ length: 5 }).map((_, star) => (
-                  <Star key={star} className="size-4 fill-amber-400 text-amber-400" />
+                  <Star
+                    key={star}
+                    className="size-4 fill-amber-400 text-amber-400"
+                  />
                 ))}
               </div>
               <Quote className="text-primary/30 mt-3 size-6" aria-hidden />
@@ -135,7 +145,8 @@ export function PlacementStories({ data }: { data: HomeData<"placementStories"> 
                   <p className="truncate text-sm font-semibold">{story.name}</p>
                   {story.company && (
                     <p className="text-muted-foreground flex items-center gap-1 truncate text-xs">
-                      <Building2 className="size-3 shrink-0" /> Placed at {story.company}
+                      <Building2 className="size-3 shrink-0" /> Placed at{" "}
+                      {story.company}
                     </p>
                   )}
                 </div>

@@ -1,6 +1,11 @@
 "use client";
 
-import { cloneElement, useState, type FormEvent, type ReactElement } from "react";
+import {
+  cloneElement,
+  useState,
+  type FormEvent,
+  type ReactElement,
+} from "react";
 import { CheckCircle2, Loader2, MessageSquareText, Send } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
@@ -45,7 +50,12 @@ export function EnquiryDialog({
   title?: string;
 }) {
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ name: "", phone: "", email: "", message: "" });
+  const [form, setForm] = useState({
+    name: "",
+    phone: "",
+    email: "",
+    message: "",
+  });
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
 
@@ -81,19 +91,20 @@ export function EnquiryDialog({
       await api.post("/api/enquiries", parsed.data);
       setDone(true);
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Couldn't send. Try again.");
+      toast.error(
+        err instanceof ApiError ? err.message : "Couldn't send. Try again.",
+      );
     } finally {
       setSubmitting(false);
     }
   }
 
   const subject = courseTitle ?? "our programs";
-  const triggerElement =
-    trigger ?? (
-      <Button variant="outline" size="sm" className="flex-1">
-        <MessageSquareText className="size-4" /> Enquiry
-      </Button>
-    );
+  const triggerElement = trigger ?? (
+    <Button variant="outline" size="sm" className="flex-1">
+      <MessageSquareText className="size-4" /> Enquiry
+    </Button>
+  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -128,11 +139,13 @@ export function EnquiryDialog({
         ) : (
           <>
             <DialogHeader>
-              <DialogTitle>{courseTitle ? "Enquire about this program" : title}</DialogTitle>
+              <DialogTitle>
+                {courseTitle ? "Enquire about this program" : title}
+              </DialogTitle>
               <DialogDescription>
                 Leave your number and we&apos;ll call you back about{" "}
-                <span className="text-foreground font-medium">{subject}</span> — fees,
-                batches and placement support. No sign-up needed.
+                <span className="text-foreground font-medium">{subject}</span> —
+                fees, batches and placement support. No sign-up needed.
               </DialogDescription>
             </DialogHeader>
 
@@ -152,13 +165,18 @@ export function EnquiryDialog({
 
               <div className="space-y-1">
                 <Label className="text-xs">Phone number</Label>
-                <PhoneInput value={form.phone} onChange={(v) => set("phone", v)} />
+                <PhoneInput
+                  value={form.phone}
+                  onChange={(v) => set("phone", v)}
+                />
               </div>
 
               <div className="space-y-1">
                 <Label htmlFor="pe-email" className="text-xs">
                   Email{" "}
-                  <span className="text-muted-foreground font-normal">(optional)</span>
+                  <span className="text-muted-foreground font-normal">
+                    (optional)
+                  </span>
                 </Label>
                 <Input
                   id="pe-email"
@@ -172,7 +190,9 @@ export function EnquiryDialog({
               <div className="space-y-1">
                 <Label htmlFor="pe-msg" className="text-xs">
                   Message{" "}
-                  <span className="text-muted-foreground font-normal">(optional)</span>
+                  <span className="text-muted-foreground font-normal">
+                    (optional)
+                  </span>
                 </Label>
                 <Textarea
                   id="pe-msg"

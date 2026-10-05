@@ -46,9 +46,15 @@ export function LegalPage({
             <span className="text-primary inline-flex items-center gap-1.5 rounded-full bg-rose-500/10 px-3 py-1 text-sm font-medium">
               <ScrollText className="size-4" /> Legal
             </span>
-            <h1 className="mt-5 text-4xl leading-tight font-bold sm:text-5xl">{title}</h1>
-            <p className="text-muted-foreground mt-4 text-lg text-pretty">{intro}</p>
-            <p className="text-muted-foreground mt-4 text-sm">Last updated: {updated}</p>
+            <h1 className="mt-5 text-4xl leading-tight font-bold sm:text-5xl">
+              {title}
+            </h1>
+            <p className="text-muted-foreground mt-4 text-lg text-pretty">
+              {intro}
+            </p>
+            <p className="text-muted-foreground mt-4 text-sm">
+              Last updated: {updated}
+            </p>
           </div>
         </div>
       </section>
@@ -57,7 +63,10 @@ export function LegalPage({
         <div className="grid gap-10 lg:grid-cols-[15rem_minmax(0,1fr)] lg:gap-14">
           {/* Jump-to rail — a plain list on mobile, sticky beside the text on
               desktop, so a long policy stays navigable either way. */}
-          <nav aria-label="On this page" className="lg:sticky lg:top-24 lg:self-start">
+          <nav
+            aria-label="On this page"
+            className="lg:sticky lg:top-24 lg:self-start"
+          >
             <p className="text-muted-foreground mb-3 text-xs font-semibold tracking-wide uppercase">
               On this page
             </p>
@@ -104,8 +113,8 @@ export function LegalPage({
             <Card className="mt-10 max-w-2xl gap-0 p-6">
               <h2 className="font-semibold">Questions about this policy?</h2>
               <p className="text-muted-foreground mt-1.5 text-sm">
-                Write to us and we&apos;ll come back to you. Please mention which document
-                you&apos;re asking about.
+                Write to us and we&apos;ll come back to you. Please mention
+                which document you&apos;re asking about.
               </p>
               <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm">
                 <a

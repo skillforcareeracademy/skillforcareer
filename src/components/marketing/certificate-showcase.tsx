@@ -8,11 +8,17 @@ import type { CertificateType } from "@/lib/validations/certificate";
 /** A typed date that `format()` can't choke on, whatever the admin entered. */
 function issuedAt(value: string): string {
   const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
+  return Number.isNaN(parsed.getTime())
+    ? new Date().toISOString()
+    : parsed.toISOString();
 }
 
 /** Home-page showcase of a sample certificate learners earn. */
-export function CertificateShowcase({ data }: { data: HomeData<"certificate"> }) {
+export function CertificateShowcase({
+  data,
+}: {
+  data: HomeData<"certificate">;
+}) {
   return (
     <section className="bg-muted/30 border-y">
       <div className="container-page grid items-center gap-10 py-16 sm:py-24 lg:grid-cols-2">
@@ -24,15 +30,21 @@ export function CertificateShowcase({ data }: { data: HomeData<"certificate"> })
           )}
           <h2 className="mt-4 text-3xl sm:text-4xl">{data.title}</h2>
           {data.description && (
-            <p className="text-muted-foreground mt-3 text-lg">{data.description}</p>
+            <p className="text-muted-foreground mt-3 text-lg">
+              {data.description}
+            </p>
           )}
           {data.perks.length > 0 && (
             <ul className="mt-6 space-y-3">
               {data.perks.map((perk, i) => {
                 const Icon = iconFor(perk.icon, "BadgeCheck");
                 return (
-                  <li key={`${perk.text}-${i}`} className="flex items-start gap-2.5 text-sm">
-                    <Icon className="text-primary mt-0.5 size-5 shrink-0" /> {perk.text}
+                  <li
+                    key={`${perk.text}-${i}`}
+                    className="flex items-start gap-2.5 text-sm"
+                  >
+                    <Icon className="text-primary mt-0.5 size-5 shrink-0" />{" "}
+                    {perk.text}
                   </li>
                 );
               })}
@@ -45,7 +57,11 @@ export function CertificateShowcase({ data }: { data: HomeData<"certificate"> })
               </ButtonLink>
             )}
             {data.secondaryLabel && (
-              <ButtonLink href={data.secondaryHref || "/verify"} size="lg" variant="outline">
+              <ButtonLink
+                href={data.secondaryHref || "/verify"}
+                size="lg"
+                variant="outline"
+              >
                 <ShieldCheck className="size-4" /> {data.secondaryLabel}
               </ButtonLink>
             )}

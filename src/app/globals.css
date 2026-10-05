@@ -165,6 +165,13 @@
   animation-direction: reverse;
 }
 
+/* The learner reviews drift rather than scroll — "these reviews should also be
+   in slow motion" — and they are wide cards, so they need much longer to cross
+   the screen than the little portrait photos do. */
+.marquee-track-slow {
+  animation-duration: 90s;
+}
+
 .marquee-row:hover .marquee-track {
   animation-play-state: paused;
 }

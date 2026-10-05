@@ -1,6 +1,11 @@
 import { ArrowRight, Award, BookOpen, Clock, Star, Users } from "lucide-react";
 import { Card } from "@/components/ui/card";
-import { CATEGORY_STYLES, DEFAULT_CATEGORY_STYLE } from "@/config/marketing";
+import {
+  CATEGORY_STYLES,
+  DEFAULT_CATEGORY_STYLE,
+  FALLBACK_ICON_NAME,
+} from "@/config/marketing";
+import { IconGlyph } from "@/components/shared/icon-glyph";
 import { ButtonLink } from "@/components/shared/button-link";
 import { ProgramEnquiryDialog } from "./program-enquiry-dialog";
 import type { TrendingProgram } from "@/server/services/course-service";
@@ -26,14 +31,23 @@ function learnersLabel(count: number): string {
 
 /** Program / course card — mirrors the upGrad card pattern. */
 export function CourseCard({ program }: { program: TrendingProgram }) {
-  const { icon: Icon, gradient } =
+  // "Also how to change course icons?" — a course may carry its own, and
+  // otherwise wears whatever its category wears.
+  const { gradient } =
     CATEGORY_STYLES[program.categorySlug] ?? DEFAULT_CATEGORY_STYLE;
+  const glyph =
+    program.icon?.trim() ||
+    program.categoryIcon?.trim() ||
+    FALLBACK_ICON_NAME[program.categorySlug] ||
+    "BookOpen";
   const effective = program.discountPrice ?? program.price;
   const isFree = program.pricingType === "FREE" || effective <= 0;
   const priceLabel = isFree ? "Free" : `₹${effective.toLocaleString("en-IN")}`;
   const savings =
     !isFree && program.discountPrice && program.discountPrice < program.price
-      ? Math.round(((program.price - program.discountPrice) / program.price) * 100)
+      ? Math.round(
+          ((program.price - program.discountPrice) / program.price) * 100,
+        )
       : null;
   const duration = durationLabel(program.durationMinutes);
   const href = `/courses/${program.slug}`;
@@ -76,13 +90,15 @@ export function CourseCard({ program }: { program: TrendingProgram }) {
             gradient,
           )}
         >
-          <Icon className="size-4.5" aria-hidden />
+          <IconGlyph name={glyph} className="size-4.5" />
         </span>
       </div>
 
       {/* Body */}
       <div className="flex flex-1 flex-col p-5">
-        <p className="text-muted-foreground text-xs font-medium">{program.categoryName}</p>
+        <p className="text-muted-foreground text-xs font-medium">
+          {program.categoryName}
+        </p>
         <h3 className="mt-1.5 line-clamp-2 text-base leading-snug font-semibold">
           {program.title}
         </h3>

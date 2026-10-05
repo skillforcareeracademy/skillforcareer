@@ -5,7 +5,12 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import type { CourseReview } from "@/server/services/course-service";
 
 function initials(name: string): string {
-  return name.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase();
+  return name
+    .split(" ")
+    .map((p) => p[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
 }
 
 function Stars({ rating }: { rating: number }) {
@@ -44,7 +49,9 @@ export function CourseReviews({
         {ratingCount > 0 && (
           <span className="text-muted-foreground flex items-center gap-1.5 text-sm">
             <Star className="size-4 fill-amber-400 text-amber-400" />
-            <span className="text-foreground font-semibold">{ratingAvg.toFixed(1)}</span>
+            <span className="text-foreground font-semibold">
+              {ratingAvg.toFixed(1)}
+            </span>
             · {ratingCount.toLocaleString("en-IN")} rating
             {ratingCount === 1 ? "" : "s"}
           </span>
@@ -56,8 +63,12 @@ export function CourseReviews({
           <Card key={r.id} className="gap-3 p-5">
             <div className="flex items-center gap-3">
               <Avatar className="size-9">
-                {r.avatarUrl && <AvatarImage src={r.avatarUrl} alt={r.author} />}
-                <AvatarFallback className="text-xs">{initials(r.author)}</AvatarFallback>
+                {r.avatarUrl && (
+                  <AvatarImage src={r.avatarUrl} alt={r.author} />
+                )}
+                <AvatarFallback className="text-xs">
+                  {initials(r.author)}
+                </AvatarFallback>
               </Avatar>
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium">{r.author}</p>
@@ -68,7 +79,9 @@ export function CourseReviews({
             </div>
             <Stars rating={r.rating} />
             {r.comment && (
-              <p className="text-foreground/90 text-sm leading-relaxed">{r.comment}</p>
+              <p className="text-foreground/90 text-sm leading-relaxed">
+                {r.comment}
+              </p>
             )}
           </Card>
         ))}

@@ -17,7 +17,13 @@ export interface Step {
  * cards stack. They're anchored to the badge centre (`top-11` = 24px padding +
  * half of the 40px badge), so the line meets each number head-on.
  */
-export function StepList({ steps, className }: { steps: Step[]; className?: string }) {
+export function StepList({
+  steps,
+  className,
+}: {
+  steps: Step[];
+  className?: string;
+}) {
   return (
     <ol
       className={cn(
@@ -58,7 +64,9 @@ export function StepList({ steps, className }: { steps: Step[]; className?: stri
                 {i + 1}
               </span>
               <h3 className="relative mt-5 font-semibold">{title}</h3>
-              <p className="text-muted-foreground relative mt-2 text-sm">{body}</p>
+              <p className="text-muted-foreground relative mt-2 text-sm">
+                {body}
+              </p>
             </Card>
           </li>
         );

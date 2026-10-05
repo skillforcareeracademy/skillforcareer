@@ -4,7 +4,11 @@ import { CourseCard } from "./course-card";
 import { listTrendingPrograms } from "@/server/services/course-service";
 import type { HomeData } from "@/lib/validations/homepage";
 
-export async function ProgramsSection({ data }: { data: HomeData<"programs"> }) {
+export async function ProgramsSection({
+  data,
+}: {
+  data: HomeData<"programs">;
+}) {
   const programs = await listTrendingPrograms(data.limit);
   if (programs.length === 0) return null;
 

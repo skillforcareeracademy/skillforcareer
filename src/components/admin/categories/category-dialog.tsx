@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { IconPicker } from "@/components/admin/homepage/icon-picker";
 import { Switch } from "@/components/ui/switch";
 import {
   Select,
@@ -113,7 +114,9 @@ export function CategoryDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{editing ? "Edit category" : "New category"}</DialogTitle>
+          <DialogTitle>
+            {editing ? "Edit category" : "New category"}
+          </DialogTitle>
           <DialogDescription>
             {editing
               ? "Update this category's details."
@@ -124,7 +127,11 @@ export function CategoryDialog({
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="cat-name">Name</Label>
-            <Input id="cat-name" placeholder="Data Science" {...register("name")} />
+            <Input
+              id="cat-name"
+              placeholder="Data Science"
+              {...register("name")}
+            />
             {errors.name && (
               <p className="text-destructive text-xs">{errors.name.message}</p>
             )}
@@ -149,6 +156,22 @@ export function CategoryDialog({
             <Textarea id="cat-desc" rows={2} {...register("description")} />
           </div>
 
+          {/* The badge on the category tile and on every course card beneath
+              it. "How to change these category icons??? Same icons lge hue
+              hain" — until now the tiles ignored this field entirely. */}
+          <div className="space-y-1.5">
+            <Label htmlFor="cat-icon">Icon</Label>
+            <IconPicker
+              id="cat-icon"
+              value={watch("icon") || "BookOpen"}
+              onChange={(name) => setValue("icon", name, { shouldDirty: true })}
+            />
+            <p className="text-muted-foreground text-xs">
+              Shown on the category tile and on the courses in it. You can pick
+              a glyph or upload your own image.
+            </p>
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="cat-order">Order</Label>
@@ -158,14 +181,17 @@ export function CategoryDialog({
               <Label>Parent</Label>
               <Select
                 value={parentId ? parentId : NONE}
-                onValueChange={(v) => setValue("parentId", !v || v === NONE ? "" : v)}
+                onValueChange={(v) =>
+                  setValue("parentId", !v || v === NONE ? "" : v)
+                }
               >
                 <SelectTrigger>
                   <SelectValue placeholder="None">
                     {(v) =>
                       !v || v === NONE
                         ? "None"
-                        : (parentOptions.find((p) => p.id === v)?.name ?? "None")
+                        : (parentOptions.find((p) => p.id === v)?.name ??
+                          "None")
                     }
                   </SelectValue>
                 </SelectTrigger>
@@ -184,7 +210,9 @@ export function CategoryDialog({
           <div className="flex items-center justify-between rounded-lg border p-3">
             <div>
               <Label htmlFor="cat-active">Active</Label>
-              <p className="text-muted-foreground text-xs">Visible in the catalog</p>
+              <p className="text-muted-foreground text-xs">
+                Visible in the catalog
+              </p>
             </div>
             <Switch
               id="cat-active"
