@@ -212,6 +212,16 @@ enum SubmissionStatus {
   LATE
 }
 
+/// What a paper is for — "Type ke andar: Practice Quiz and Exam Quiz (if none
+/// selected then ungrouped rhega chahiye) as it's optional."
+///
+/// Optional on purpose: a quiz with no type is not wrong, it is simply
+/// untyped, and the panel lists those under "Not set".
+enum QuizType {
+  PRACTICE
+  EXAM
+}
+
 enum QuizDifficulty {
   EASY
   INTERMEDIATE
@@ -1637,6 +1647,8 @@ model Quiz {
 
   /// How hard the paper is, as the academy grades it.
   difficulty QuizDifficulty @default(EASY)
+  /// Practice or exam; null means the academy has not said.
+  quizType   QuizType?
 
   /// The quiz's permanent number, handed out when it is created and never
   /// changed — "Quiz number can not be changed". It is how the academy refers

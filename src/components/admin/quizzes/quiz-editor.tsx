@@ -64,6 +64,10 @@ import {
 import { QuestionDialog, type EditableQuestion } from "@/components/admin/quizzes/question-dialog";
 import { QuizGenerateDialog } from "@/components/admin/quizzes/quiz-generate-dialog";
 import { SampleSheetMenu } from "@/components/shared/sample-sheet-menu";
+import { QUIZ_TYPES, QUIZ_TYPE_LABEL } from "@/lib/validations/quiz";
+
+/** The Select needs a value for "nothing chosen"; the form stores "". */
+const NONE_TYPE = "__none";
 import { QuizSourcesCard, type QuizSourceRow } from "@/components/admin/quizzes/quiz-sources-card";
 import { AudiencePicker } from "@/components/shared/audience-picker";
 import { cn } from "@/lib/utils";
@@ -80,6 +84,7 @@ interface Quiz {
   maxAttempts: number;
   shuffleQuestions: boolean;
   allowPause: boolean;
+  quizType: string | null;
   showAnswers: boolean;
   showAnswerPerQuestion: boolean;
   categoryId: string | null;
@@ -148,6 +153,7 @@ export function QuizEditor({
     maxAttempts: String(quiz.maxAttempts),
     shuffleQuestions: quiz.shuffleQuestions,
     allowPause: quiz.allowPause,
+    quizType: quiz.quizType ?? "",
     showAnswers: quiz.showAnswers,
     showAnswerPerQuestion: quiz.showAnswerPerQuestion,
     difficulty: quiz.difficulty,
@@ -270,6 +276,7 @@ export function QuizEditor({
         maxAttempts: Number(form.maxAttempts) || 0,
         shuffleQuestions: form.shuffleQuestions,
         allowPause: form.allowPause,
+        quizType: form.quizType,
         showAnswers: form.showAnswers,
         showAnswerPerQuestion: form.showAnswerPerQuestion,
         difficulty: form.difficulty,
@@ -571,6 +578,33 @@ export function QuizEditor({
                     {QUIZ_DIFFICULTIES.map((d) => (
                       <SelectItem key={d} value={d}>
                         {QUIZ_DIFFICULTY_LABEL[d]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Quiz type</Label>
+                <Select
+                  value={form.quizType || NONE_TYPE}
+                  onValueChange={(v) => set("quizType", v === NONE_TYPE ? "" : (v ?? ""))}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue>
+                      {(v) =>
+                        !v || v === NONE_TYPE
+                          ? "Not set"
+                          : (QUIZ_TYPE_LABEL[String(v)] ?? "Not set")
+                      }
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {/* Optional: a paper with no type is listed under
+                        "Not set" rather than being forced into one. */}
+                    <SelectItem value={NONE_TYPE}>Not set</SelectItem>
+                    {QUIZ_TYPES.map((t) => (
+                      <SelectItem key={t} value={t}>
+                        {QUIZ_TYPE_LABEL[t]}
                       </SelectItem>
                     ))}
                   </SelectContent>

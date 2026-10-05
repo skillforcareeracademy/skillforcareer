@@ -7,6 +7,19 @@ export const QUESTION_TYPES = [
   "SHORT_ANSWER",
 ] as const;
 export const GRADING_MODES = ["AUTO", "MANUAL"] as const;
+/**
+ * What a paper is for. Optional: a quiz with no type is listed under "Not set"
+ * rather than being pushed into one.
+ */
+export const QUIZ_TYPES = ["PRACTICE", "EXAM"] as const;
+export type QuizTypeValue = (typeof QUIZ_TYPES)[number];
+export const QUIZ_TYPE_LABEL: Record<string, string> = {
+  PRACTICE: "Practice quiz",
+  EXAM: "Exam quiz",
+};
+/** The tab/filter value for papers with no type. */
+export const QUIZ_TYPE_NONE = "none";
+
 export const QUIZ_DIFFICULTIES = [
   "EASY",
   "INTERMEDIATE",
@@ -65,6 +78,8 @@ export const updateQuizSchema = z.object({
   maxAttempts: z.coerce.number().int().min(0).max(50).default(1),
   /** Whether a learner may stop part-way and come back to it. */
   allowPause: z.boolean().default(false),
+  /** Practice or exam; blank leaves it unset. */
+  quizType: z.enum(QUIZ_TYPES).optional().or(z.literal("")),
   shuffleQuestions: z.boolean().default(false),
   /** The whole answer key, once the paper is submitted. */
   showAnswers: z.boolean().default(true),

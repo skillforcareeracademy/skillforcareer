@@ -14,6 +14,7 @@ import {
   QUIZ_EXPORT_COLUMNS,
   DEFAULT_QUIZ_COLUMNS,
   QUIZ_DIFFICULTIES,
+  QUIZ_TYPE_NONE,
   type QuizExportColumn,
   type CreateQuizInput,
   type UpdateQuizInput,
@@ -39,6 +40,8 @@ export interface QuizListQuery {
   subCategoryId?: string;
   /** How hard the paper is. */
   difficulty?: string;
+  /** "PRACTICE", "EXAM", or "none" for the ones with no type. */
+  quizType?: string;
   /** Scope to quizzes an instructor created or owns via the course. */
   ownerId?: string;
   /** "sequence" (the academy's own order), "recent", or "attempts". */
@@ -56,6 +59,10 @@ export async function listQuizzesAdmin(q: QuizListQuery) {
   else if (q.categoryId) and.push({ categoryId: q.categoryId });
   if (q.subCategoryId) and.push({ subCategoryId: q.subCategoryId });
   if (q.difficulty) and.push({ difficulty: q.difficulty as Prisma.QuizWhereInput["difficulty"] });
+  if (q.quizType === QUIZ_TYPE_NONE) and.push({ quizType: null });
+  else if (q.quizType) {
+    and.push({ quizType: q.quizType as Prisma.QuizWhereInput["quizType"] });
+  }
   if (q.ownerId) {
     and.push({ OR: [{ createdById: q.ownerId }, { course: { instructorId: q.ownerId } }] });
   }
@@ -106,6 +113,7 @@ export async function listQuizzesAdmin(q: QuizListQuery) {
       quizNo: z.quizNo,
       sequence: z.sequence,
       difficulty: z.difficulty,
+      quizType: z.quizType,
       courseId: z.courseId,
       courseTitle: z.course?.title ?? null,
       categoryId: z.categoryId,
@@ -184,6 +192,7 @@ export async function getQuizEdit(id: string) {
     gradingMode: z.gradingMode,
     maxAttempts: z.maxAttempts,
     allowPause: z.allowPause,
+    quizType: z.quizType,
     shuffleQuestions: z.shuffleQuestions,
     showAnswers: z.showAnswers,
     showAnswerPerQuestion: z.showAnswerPerQuestion,
@@ -318,6 +327,7 @@ export async function updateQuiz(id: string, input: UpdateQuizInput): Promise<vo
       gradingMode: input.gradingMode,
       maxAttempts: input.maxAttempts,
       allowPause: input.allowPause,
+      quizType: input.quizType || null,
       shuffleQuestions: input.shuffleQuestions,
       showAnswers: input.showAnswers,
       showAnswerPerQuestion: input.showAnswerPerQuestion,

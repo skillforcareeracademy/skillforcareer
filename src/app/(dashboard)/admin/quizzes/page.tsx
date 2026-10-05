@@ -38,6 +38,7 @@ export default async function QuizzesPage({
     categoryId: str(sp.category),
     subCategoryId: str(sp.sub),
     difficulty: str(sp.difficulty),
+    quizType: str(sp.type),
     sort: str(sp.sort),
     view: str(sp.view),
   };

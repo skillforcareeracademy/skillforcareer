@@ -37,6 +37,7 @@ export default async function InstructorQuizzesPage({
     categoryId: str(sp.category),
     subCategoryId: str(sp.sub),
     difficulty: str(sp.difficulty),
+    quizType: str(sp.type),
     sort: str(sp.sort),
     view: str(sp.view),
     ownerId: user.id,

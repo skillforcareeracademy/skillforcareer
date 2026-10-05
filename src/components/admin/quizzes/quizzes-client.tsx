@@ -34,6 +34,9 @@ import type { ImportMode } from "@/lib/validations/import-mode";
 import {
   QUIZ_EXPORT_COLUMNS,
   DEFAULT_QUIZ_COLUMNS,
+  QUIZ_TYPES,
+  QUIZ_TYPE_LABEL,
+  QUIZ_TYPE_NONE,
 } from "@/lib/validations/quiz";
 import type { GroupOption } from "@/server/services/content-group-service";
 import { Button } from "@/components/ui/button";
@@ -83,6 +86,7 @@ interface QuizRow {
   quizNo: number;
   sequence: number;
   difficulty: string;
+  quizType: string | null;
   courseId: string | null;
   courseTitle: string | null;
   categoryId: string | null;
@@ -117,6 +121,7 @@ interface Query {
   categoryId?: string;
   subCategoryId?: string;
   difficulty?: string;
+  quizType?: string;
   sort?: string;
   /** "folders" or the table. Kept in the URL so the page can load them all. */
   view?: string;
@@ -234,6 +239,7 @@ export function QuizzesClient({
         category: query.categoryId,
         sub: query.subCategoryId,
         difficulty: query.difficulty,
+        type: query.quizType,
         sort: query.sort,
         view: query.view,
         page: query.page,
@@ -247,6 +253,7 @@ export function QuizzesClient({
       if (merged.category) p.set("category", String(merged.category));
       if (merged.sub) p.set("sub", String(merged.sub));
       if (merged.difficulty) p.set("difficulty", String(merged.difficulty));
+      if (merged.type) p.set("type", String(merged.type));
       if (merged.sort) p.set("sort", String(merged.sort));
       if (merged.view) p.set("view", String(merged.view));
       if (merged.page && Number(merged.page) > 1)
@@ -649,6 +656,11 @@ export function QuizzesClient({
                 <span className="text-muted-foreground">{z.sequence}. </span>
               )}
               {z.title}
+            {z.quizType && (
+              <Badge variant="outline" className="ms-2 shrink-0 text-[10px]">
+                {QUIZ_TYPE_LABEL[z.quizType]}
+              </Badge>
+            )}
             </p>
             {z.quizNo > 0 && (
               <p className="text-muted-foreground text-[11px]">
@@ -839,6 +851,25 @@ export function QuizzesClient({
 
       {/* Summary */}
       <StatCards cards={statCards} />
+
+      {/* Practice, exam, or neither — the academy asked for tabs as well as a
+          filter, so the two drive the same parameter. */}
+      <div className="flex flex-wrap gap-2">
+        {[
+          { value: "", label: "All quizzes" },
+          ...QUIZ_TYPES.map((t) => ({ value: t, label: QUIZ_TYPE_LABEL[t] })),
+          { value: QUIZ_TYPE_NONE, label: "Not set" },
+        ].map((t) => (
+          <Button
+            key={t.value || "all"}
+            size="sm"
+            variant={(query.quizType ?? "") === t.value ? "default" : "outline"}
+            onClick={() => setParams({ type: t.value || undefined, page: 1 })}
+          >
+            {t.label}
+          </Button>
+        ))}
+      </div>
 
       {/* Folder view, the same as the learner sees — "admin me bhi quiz folder
           wise dikhni chahiye jaise student panel me dikh rhi hai". */}
