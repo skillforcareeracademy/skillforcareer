@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -106,6 +106,30 @@ export function GroupManager({
     }
   }
 
+  /**
+   * Dragging one folder onto another files it inside — "drag and drop krke
+   * inko ek dusre ke andar move krne ka option de do". The dropdown beside
+   * each row does the same thing; this is the quicker way when the tree is on
+   * screen in front of you.
+   */
+  /**
+   * The id lives in a ref, not in state: `dragover` fires immediately after
+   * `dragstart`, before React has flushed a state update, and a handler that
+   * reads a stale `null` never calls `preventDefault` — so the row refuses the
+   * drop and nothing moves. The state alongside it is only for the highlight.
+   */
+  const draggingRef = useRef<string | null>(null);
+  const [dragging, setDragging] = useState<string | null>(null);
+  const [over, setOver] = useState<string | null>(null);
+
+  /** A folder cannot be filed inside itself, or inside its own descendant. */
+  function canDrop(dragId: string | null, target: GroupNode): boolean {
+    if (!dragId || dragId === target.id) return false;
+    const dragged = flat.find((g) => g.id === dragId);
+    if (!dragged) return false;
+    return !target.path.startsWith(`${dragged.path} → `) && target.path !== dragged.path;
+  }
+
   async function move(node: GroupNode, newParent: string) {
     setBusy(node.id);
     try {
@@ -154,7 +178,40 @@ export function GroupManager({
     return (
       <div key={node.id}>
         <div
-          className="flex flex-wrap items-center gap-2 py-2"
+          draggable={!editing}
+          onDragStart={(e) => {
+            draggingRef.current = node.id;
+            setDragging(node.id);
+            e.dataTransfer.effectAllowed = "move";
+            // Firefox will not start a drag without data on the transfer.
+            e.dataTransfer.setData("text/plain", node.id);
+          }}
+          onDragEnd={() => {
+            draggingRef.current = null;
+            setDragging(null);
+            setOver(null);
+          }}
+          onDragOver={(e) => {
+            if (!canDrop(draggingRef.current, node)) return;
+            e.preventDefault(); // marks this row as a place that accepts the drop
+            e.dataTransfer.dropEffect = "move";
+            setOver(node.id);
+          }}
+          onDragLeave={() => setOver((o) => (o === node.id ? null : o))}
+          onDrop={(e) => {
+            e.preventDefault();
+            const id = draggingRef.current ?? e.dataTransfer.getData("text/plain");
+            draggingRef.current = null;
+            setOver(null);
+            setDragging(null);
+            const dragged = flat.find((g) => g.id === id);
+            if (dragged && canDrop(id, node)) void move(dragged, node.id);
+          }}
+          className={cn(
+            "flex flex-wrap items-center gap-2 rounded-md py-2 transition-colors",
+            dragging === node.id && "opacity-40",
+            over === node.id && "bg-primary/10 ring-primary/40 ring-1",
+          )}
           style={{ paddingLeft: `${node.depth * 1.25}rem` }}
         >
           {hasKids ? (
@@ -284,7 +341,7 @@ export function GroupManager({
         </Link>
         <PageHeader
           title={copy.title}
-          description={`Nest them as deep as you like. ${total} ${total === 1 ? copy.noun.one : copy.noun.many} filed so far.`}
+          description={`Nest them as deep as you like — drag one onto another to file it inside. ${total} ${total === 1 ? copy.noun.one : copy.noun.many} filed so far.`}
         />
       </div>
 
