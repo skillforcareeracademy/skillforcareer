@@ -37,6 +37,7 @@ import { Card } from "@/components/ui/card";
 import { QuizNotesBar } from "./quiz-notes-bar";
 import { QuestionReportDialog } from "./question-report-dialog";
 import { AttemptHistorySheet } from "@/components/shared/attempt-history-sheet";
+import { RelatedContent } from "@/components/shared/related-content";
 import { cn } from "@/lib/utils";
 
 interface Option {
@@ -909,6 +910,10 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
             </p>
           </div>
         )}
+
+        {/* What to read next, and the work that follows — "so that students
+            can easily find study material, quizes and assignments". */}
+        <RelatedContent kind="QUIZ" id={quiz.id} />
 
         <AttemptHistorySheet
           open={historyOpen}

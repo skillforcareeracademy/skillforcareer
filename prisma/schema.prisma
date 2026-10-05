@@ -488,6 +488,7 @@ model User {
   assignmentAttempts   AssignmentAttempt[]    @relation("AssignmentAttemptStudent")
   terms                Term[]                 @relation("TermAuthor")
   boardSlides          BoardSlide[]           @relation("BoardAuthor")
+  contentLinks         ContentLink[]          @relation("ContentLinkAuthor")
   termBookmarks        TermBookmark[]         @relation("TermBookmarkUser")
   trashed              TrashItem[]            @relation("TrashOwner")
 
@@ -790,6 +791,35 @@ enum GroupKind {
   BATCH
   CERTIFICATE
   DISCUSSION
+}
+
+/// Two pieces of content the academy says belong together.
+///
+/// "No option to link quiz with study material and study material with quiz,
+/// similarly both with assignments — so that students can easily find study
+/// material, quizes and assignments. Multiple quizes can be connected with one
+/// study material and multiple study material or assignments can be connected
+/// with one quiz."
+///
+/// One row per pair, read in both directions: linking a quiz to a chapter also
+/// shows the quiz on that chapter, which is what makes it useful to a learner.
+/// `GroupKind` is reused rather than a second vocabulary, so the same three —
+/// and anything added later — can be joined without another migration.
+model ContentLink {
+  id       String    @id @default(cuid())
+  fromKind GroupKind
+  fromId   String
+  toKind   GroupKind
+  toId     String
+
+  createdById String
+  createdAt   DateTime @default(now())
+
+  createdBy User @relation("ContentLinkAuthor", fields: [createdById], references: [id], onUpdate: NoAction)
+
+  @@index([fromKind, fromId])
+  @@index([toKind, toId])
+  @@index([createdById])
 }
 
 /// A folder, nested as deep as the academy wants.

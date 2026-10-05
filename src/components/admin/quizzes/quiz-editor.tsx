@@ -64,6 +64,7 @@ import {
 import { QuestionDialog, type EditableQuestion } from "@/components/admin/quizzes/question-dialog";
 import { QuizGenerateDialog } from "@/components/admin/quizzes/quiz-generate-dialog";
 import { SampleSheetMenu } from "@/components/shared/sample-sheet-menu";
+import { RelatedContent } from "@/components/shared/related-content";
 import { QUIZ_TYPES, QUIZ_TYPE_LABEL } from "@/lib/validations/quiz";
 
 /** The Select needs a value for "nothing chosen"; the form stores "". */
@@ -829,6 +830,9 @@ export function QuizEditor({
         sources={quiz.sources}
         onGenerate={() => setGenerating(true)}
       />
+
+      {/* The reading this paper tests and the work that follows it. */}
+      <RelatedContent kind="QUIZ" id={quiz.id} canEdit />
 
       {generating && (
         <QuizGenerateDialog

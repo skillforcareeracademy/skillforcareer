@@ -44,6 +44,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { GroupBrowser } from "./group-browser";
 import { cn } from "@/lib/utils";
 import { WordLookup } from "@/components/shared/word-lookup";
+import { RelatedContent } from "@/components/shared/related-content";
 
 /**
  * The reading a learner has been set, and the reader they read it in.
@@ -648,6 +649,8 @@ export function StudentMaterialsClient({
                 </div>
               </WordLookup>
             )}
+
+            {detail && <RelatedContent kind="MATERIAL" id={detail.id} />}
 
             {detail?.body && (
               <div className="space-y-2 rounded-xl border p-3">

@@ -42,6 +42,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { StatCards } from "@/components/shared/stat-cards";
 import { ExportDialog } from "@/components/shared/export-dialog";
 import { ImportButton } from "@/components/shared/import-button";
+import { RelatedContent } from "@/components/shared/related-content";
 import type { ImportMode } from "@/lib/validations/import-mode";
 import {
   MATERIAL_EXPORT_COLUMNS,
@@ -1325,6 +1326,11 @@ export function MaterialsClient({
                   Pick a course or a batch — material with neither reaches no
                   learners.
                 </p>
+              )}
+
+              {/* Only once it exists: a link needs something to point at. */}
+              {form.id && (
+                <RelatedContent kind="MATERIAL" id={form.id} canEdit />
               )}
 
               <div className="grid gap-3 sm:grid-cols-2">
