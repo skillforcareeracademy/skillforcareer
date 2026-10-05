@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 import { requirePermission } from "@/lib/auth/require";
 import { PERMISSIONS } from "@/config/roles";
-import { getChatbotBoard } from "@/server/services/chatbot-service";
+import {
+  getChatbotBoard,
+  listAbstracts,
+} from "@/server/services/chatbot-service";
 import { getSettings } from "@/server/services/settings-service";
 import { ChatbotClient } from "@/components/admin/chatbot/chatbot-client";
 
@@ -15,6 +18,16 @@ export const dynamic = "force-dynamic";
  */
 export default async function ChatbotPage() {
   await requirePermission(PERMISSIONS.MANAGE_HOMEPAGE);
-  const [board, { settings }] = await Promise.all([getChatbotBoard(), getSettings()]);
-  return <ChatbotClient board={board} assistantName={settings.chatbotName} />;
+  const [board, abstracts, { settings }] = await Promise.all([
+    getChatbotBoard(),
+    listAbstracts(),
+    getSettings(),
+  ]);
+  return (
+    <ChatbotClient
+      board={board}
+      abstracts={abstracts}
+      assistantName={settings.chatbotName}
+    />
+  );
 }

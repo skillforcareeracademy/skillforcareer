@@ -97,6 +97,10 @@ export function IntentImportDialog({
         actionUrl: pick(row, "Action URL", "Link", "URL"),
         isSuggested: pick(row, "Suggested", "Starter", "Chip"),
         isActive: pick(row, "Active", "Live", "Enabled"),
+        // Blank means the website assistant, which is where an imported FAQ
+        // nearly always belongs.
+        audience: pick(row, "Audience", "Assistant", "Who"),
+        roles: pick(row, "Roles", "Role"),
       }))
       .filter((r) => r.question.trim() || r.answer.trim());
 

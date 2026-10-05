@@ -10,12 +10,14 @@ import {
   HelpCircle,
   Loader2,
   MessageCircleQuestion,
+  NotebookPen,
   Pencil,
   Plus,
   Search,
   Sparkles,
   Trash2,
   Upload,
+  UserPlus,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -32,6 +34,13 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -50,8 +59,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { CHAT_AUDIENCES, CHAT_AUDIENCE_LABEL } from "@/lib/validations/chatbot";
+import { ROLES, ROLE_LABELS } from "@/config/roles";
 import { findBestMatch } from "@/lib/chatbot/match";
 import type {
+  AbstractRow,
   AdminIntent,
   ChatbotBoard,
 } from "@/server/services/chatbot-service";
@@ -65,6 +77,12 @@ import type {
  * which is the loop that makes the assistant worth having.
  */
 
+/** The roles an internal answer can be aimed at. */
+const ROLE_CHOICES = Object.values(ROLES).map((value) => ({
+  value,
+  label: ROLE_LABELS[value],
+}));
+
 interface FormState {
   question: string;
   patterns: string;
@@ -74,6 +92,8 @@ interface FormState {
   category: string;
   isSuggested: boolean;
   isActive: boolean;
+  audience: string;
+  roles: string[];
 }
 
 const EMPTY: FormState = {
@@ -85,6 +105,8 @@ const EMPTY: FormState = {
   category: "",
   isSuggested: false,
   isActive: true,
+  audience: "PUBLIC",
+  roles: [],
 };
 
 function toForm(intent: AdminIntent): FormState {
@@ -97,14 +119,19 @@ function toForm(intent: AdminIntent): FormState {
     category: intent.category ?? "",
     isSuggested: intent.isSuggested,
     isActive: intent.isActive,
+    audience: intent.audience,
+    roles: intent.roles,
   };
 }
 
 export function ChatbotClient({
   board,
+  abstracts,
   assistantName,
 }: {
   board: ChatbotBoard;
+  /** Details picked out of conversations — the academy's "abstract". */
+  abstracts: AbstractRow[];
   assistantName: string;
 }) {
   const router = useRouter();
@@ -115,6 +142,25 @@ export function ChatbotClient({
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<AdminIntent | null>(null);
   const [test, setTest] = useState("");
+  const [audienceFilter, setAudienceFilter] = useState<string>("ALL");
+  const [busyAbstract, setBusyAbstract] = useState<string | null>(null);
+
+  /** Put one on the lead sheet, or take it off the list. */
+  async function abstractAction(id: string, action: "lead" | "dismiss") {
+    setBusyAbstract(id);
+    try {
+      const res = await api.post<{ message: string }>(
+        `/api/chatbot/abstracts/${id}`,
+        { action },
+      );
+      toast.success(res.message);
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Couldn't do that.");
+    } finally {
+      setBusyAbstract(null);
+    }
+  }
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -122,14 +168,22 @@ export function ChatbotClient({
 
   const intents = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return board.intents;
-    return board.intents.filter(
+    // The two assistants are trained separately, so the list is read one at a
+    // time rather than as one undifferentiated pile.
+    const scoped =
+      audienceFilter === "ALL"
+        ? board.intents
+        : board.intents.filter(
+            (i) => i.audience === audienceFilter || i.audience === "BOTH",
+          );
+    if (!q) return scoped;
+    return scoped.filter(
       (i) =>
         i.question.toLowerCase().includes(q) ||
         i.answer.toLowerCase().includes(q) ||
         i.patterns.some((p) => p.toLowerCase().includes(q)),
     );
-  }, [board.intents, search]);
+  }, [board.intents, search, audienceFilter]);
 
   /**
    * The same matcher the server runs, so "try it" here answers exactly as the
@@ -177,6 +231,8 @@ export function ChatbotClient({
       category: form.category || undefined,
       isSuggested: form.isSuggested,
       isActive: form.isActive,
+      audience: form.audience,
+      roles: form.audience === "PUBLIC" ? [] : form.roles,
     };
     try {
       if (editing) {
@@ -206,7 +262,9 @@ export function ChatbotClient({
       setDeleting(null);
       router.refresh();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Couldn't remove it.");
+      toast.error(
+        err instanceof ApiError ? err.message : "Couldn't remove it.",
+      );
     }
   }
 
@@ -220,7 +278,8 @@ export function ChatbotClient({
   }
 
   const [importOpen, setImportOpen] = useState(false);
-  const canSave = form.question.trim().length >= 3 && form.answer.trim().length >= 2;
+  const canSave =
+    form.question.trim().length >= 3 && form.answer.trim().length >= 2;
 
   return (
     <div className="space-y-6">
@@ -275,7 +334,10 @@ export function ChatbotClient({
         <TabsList>
           <TabsTrigger value="answers">
             Answers
-            <Badge variant="secondary" className="ml-1.5 h-5 px-1.5 text-[10px]">
+            <Badge
+              variant="secondary"
+              className="ml-1.5 h-5 px-1.5 text-[10px]"
+            >
               {board.intents.length}
             </Badge>
           </TabsTrigger>
@@ -284,6 +346,17 @@ export function ChatbotClient({
             {board.unanswered.length > 0 && (
               <Badge className="ml-1.5 h-5 bg-amber-500 px-1.5 text-[10px] text-white">
                 {board.unanswered.length}
+              </Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="abstract">
+            Abstract
+            {abstracts.length > 0 && (
+              <Badge
+                variant="secondary"
+                className="ml-1.5 h-5 px-1.5 text-[10px]"
+              >
+                {abstracts.length}
               </Badge>
             )}
           </TabsTrigger>
@@ -312,12 +385,30 @@ export function ChatbotClient({
             </div>
           </div>
 
+          {/* The two assistants are trained separately, so the list can be read
+              one at a time. */}
+          <div className="flex flex-wrap gap-2">
+            {[
+              { value: "ALL", label: "All answers" },
+              { value: "PUBLIC", label: "Website assistant" },
+              { value: "INTERNAL", label: "Panel assistant" },
+            ].map((f) => (
+              <Button
+                key={f.value}
+                type="button"
+                size="sm"
+                variant={audienceFilter === f.value ? "default" : "outline"}
+                onClick={() => setAudienceFilter(f.value)}
+              >
+                {f.label}
+              </Button>
+            ))}
+          </div>
+
           {test.trim() && (
             <Card
               className={
-                testResult
-                  ? "border-emerald-500/40"
-                  : "border-amber-500/40"
+                testResult ? "border-emerald-500/40" : "border-amber-500/40"
               }
             >
               <CardContent className="space-y-1.5">
@@ -338,7 +429,11 @@ export function ChatbotClient({
                     <p className="text-muted-foreground text-sm">
                       It would go into the teach queue.
                     </p>
-                    <Button size="sm" variant="outline" onClick={() => openNew(test)}>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => openNew(test)}
+                    >
                       <GraduationCap className="size-4" /> Teach it now
                     </Button>
                   </div>
@@ -350,7 +445,11 @@ export function ChatbotClient({
           {intents.length === 0 ? (
             <EmptyState
               icon={Bot}
-              title={search ? "Nothing matches that search" : `${assistantName} knows nothing yet`}
+              title={
+                search
+                  ? "Nothing matches that search"
+                  : `${assistantName} knows nothing yet`
+              }
               description={
                 search
                   ? "Try a different word."
@@ -380,6 +479,10 @@ export function ChatbotClient({
                             Starter chip
                           </Badge>
                         )}
+                        <Badge variant="secondary" className="mr-1">
+                          {CHAT_AUDIENCE_LABEL[intent.audience] ??
+                            intent.audience}
+                        </Badge>
                         <Badge variant="secondary">{intent.hits} asked</Badge>
                         <Button
                           variant="ghost"
@@ -434,8 +537,8 @@ export function ChatbotClient({
           ) : (
             <div className="space-y-3">
               <p className="text-muted-foreground text-sm">
-                Real questions visitors asked that {assistantName} couldn&apos;t answer.
-                Teaching one writes it into the answers above.
+                Real questions visitors asked that {assistantName} couldn&apos;t
+                answer. Teaching one writes it into the answers above.
               </p>
               {board.unanswered.map((q) => (
                 <Card key={q.id}>
@@ -467,13 +570,96 @@ export function ChatbotClient({
             </div>
           )}
         </TabsContent>
+
+        {/* ── What the conversations gave away ───────────────────────────── */}
+        <TabsContent value="abstract" className="mt-6">
+          {abstracts.length === 0 ? (
+            <EmptyState
+              icon={NotebookPen}
+              title="Nothing picked up yet"
+              description={`When someone gives ${assistantName} a name, a number, an email or the course they're after, it lands here.`}
+            />
+          ) : (
+            <div className="space-y-3">
+              <p className="text-muted-foreground text-sm">
+                Details {assistantName} picked out of conversations. Adding one
+                to Leads puts it in front of the counsellors.
+              </p>
+              {abstracts.map((a) => (
+                <Card key={a.id}>
+                  <CardContent className="flex flex-wrap items-start gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium">
+                        {a.name ?? a.userName ?? "Unnamed visitor"}
+                        {a.phone && (
+                          <span className="text-muted-foreground font-normal">
+                            {" · "}
+                            {a.phone}
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-muted-foreground text-xs">
+                        {[
+                          a.email,
+                          a.courseInterest &&
+                            `interested in ${a.courseInterest}`,
+                          a.surface === "panel"
+                            ? "from a panel"
+                            : "from the website",
+                          `${a.messageCount} message${a.messageCount === 1 ? "" : "s"}`,
+                          format(new Date(a.updatedAt), "d MMM yyyy, h:mm a"),
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </p>
+                      {a.lastQuestion && (
+                        <p className="text-muted-foreground mt-1 line-clamp-2 text-sm italic">
+                          “{a.lastQuestion}”
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      {a.leadId ? (
+                        <Badge variant="secondary">On the lead sheet</Badge>
+                      ) : (
+                        <Button
+                          size="sm"
+                          disabled={busyAbstract === a.id}
+                          onClick={() => abstractAction(a.id, "lead")}
+                        >
+                          {busyAbstract === a.id ? (
+                            <Loader2 className="size-4 animate-spin" />
+                          ) : (
+                            <UserPlus className="size-4" />
+                          )}
+                          Add to Leads
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Clear"
+                        disabled={busyAbstract === a.id}
+                        onClick={() => abstractAction(a.id, "dismiss")}
+                      >
+                        <X className="size-4" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </TabsContent>
       </Tabs>
 
       {/* ── The editor ──────────────────────────────────────────────────── */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>{editing ? "Edit answer" : `Teach ${assistantName}`}</DialogTitle>
+            <DialogTitle>
+              {editing ? "Edit answer" : `Teach ${assistantName}`}
+            </DialogTitle>
             <DialogDescription>
               Write it the way a counsellor would say it on the phone.
             </DialogDescription>
@@ -508,11 +694,14 @@ export function ChatbotClient({
                 value={form.patterns}
                 onChange={(e) => set("patterns", e.target.value)}
                 rows={4}
-                placeholder={"One per line, e.g.\nfees kitni hai\ncourse price\nhow much does it cost"}
+                placeholder={
+                  "One per line, e.g.\nfees kitni hai\ncourse price\nhow much does it cost"
+                }
               />
               <p className="text-muted-foreground text-xs">
                 One phrasing per line. A single word on its own line (like
-                &ldquo;refund&rdquo;) is treated as a keyword and will match on its own.
+                &ldquo;refund&rdquo;) is treated as a keyword and will match on
+                its own.
               </p>
             </div>
 
@@ -547,6 +736,66 @@ export function ChatbotClient({
               />
             </div>
 
+            {/* Which assistant may give this answer — "can you keep internal
+                and external chatbot seperate". */}
+            <div className="space-y-1.5">
+              <Label>Who hears this answer</Label>
+              <Select
+                value={form.audience}
+                onValueChange={(v) => v && set("audience", v)}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue>
+                    {(v) => CHAT_AUDIENCE_LABEL[String(v)] ?? String(v)}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {CHAT_AUDIENCES.map((a) => (
+                    <SelectItem key={a} value={a}>
+                      {CHAT_AUDIENCE_LABEL[a]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-muted-foreground text-xs">
+                The website assistant answers people who haven&apos;t enrolled.
+                The one inside the panels also reads the learner&apos;s own
+                notes, quizzes and assignments.
+              </p>
+            </div>
+
+            {form.audience !== "PUBLIC" && (
+              <div className="space-y-1.5">
+                <Label>Only these roles</Label>
+                <div className="flex flex-wrap gap-2">
+                  {ROLE_CHOICES.map((r) => {
+                    const on = form.roles.includes(r.value);
+                    return (
+                      <Button
+                        key={r.value}
+                        type="button"
+                        size="sm"
+                        variant={on ? "default" : "outline"}
+                        onClick={() =>
+                          set(
+                            "roles",
+                            on
+                              ? form.roles.filter((x) => x !== r.value)
+                              : [...form.roles, r.value],
+                          )
+                        }
+                      >
+                        {r.label}
+                      </Button>
+                    );
+                  })}
+                </div>
+                <p className="text-muted-foreground text-xs">
+                  Pick none to let anyone signed in hear it.
+                </p>
+              </div>
+            )}
+
             <div className="space-y-2">
               <label className="flex items-center gap-2 text-sm">
                 <Switch
@@ -565,7 +814,11 @@ export function ChatbotClient({
             </div>
 
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setDialogOpen(false)}
+              >
                 Cancel
               </Button>
               <Button type="submit" disabled={!canSave || saving}>
@@ -577,7 +830,10 @@ export function ChatbotClient({
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>
+      <AlertDialog
+        open={!!deleting}
+        onOpenChange={(o) => !o && setDeleting(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Remove this answer?</AlertDialogTitle>

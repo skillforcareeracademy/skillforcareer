@@ -11,6 +11,8 @@ const schema = z.object({
   name: z.string().trim().max(80).optional(),
   phone: z.string().trim().max(20).optional(),
   email: z.string().trim().max(120).optional(),
+  /** Which programme they asked about — one of the three the office wants. */
+  courseInterest: z.string().trim().max(120).optional(),
   note: z.string().trim().max(500).optional(),
   sessionId: z.string().trim().max(64).optional(),
 });
@@ -24,7 +26,10 @@ const schema = z.object({
 export const POST = withRoute(async (req) => {
   const input = schema.parse(await req.json().catch(() => ({})));
   const user = await getSessionUser();
-  const result = await requestCounsellor({ ...input, userId: user?.id ?? null });
+  const result = await requestCounsellor({
+    ...input,
+    userId: user?.id ?? null,
+  });
   return ok({
     ...result,
     message: `Thanks ${result.name.split(" ")[0]} — a counsellor will call you on ${result.phone}.`,

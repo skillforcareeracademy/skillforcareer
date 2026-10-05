@@ -26,6 +26,10 @@ export const POST = withRoute(async (req) => {
     question: input.question,
     sessionId: input.sessionId,
     userId: user?.id ?? null,
+    // The panel assistant is only ever the panel assistant for somebody signed
+    // in; a signed-out caller claiming "panel" gets the website one.
+    surface: user ? input.surface : "public",
+    screen: input.screen || null,
   });
   return ok(reply);
 });

@@ -3,7 +3,10 @@ import { created, ok } from "@/lib/api/response";
 import { requireApiPermission } from "@/lib/auth/api-guard";
 import { PERMISSIONS } from "@/config/roles";
 import { chatIntentSchema } from "@/lib/validations/chatbot";
-import { createIntent, getChatbotBoard } from "@/server/services/chatbot-service";
+import {
+  createIntent,
+  getChatbotBoard,
+} from "@/server/services/chatbot-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

@@ -482,6 +482,7 @@ model User {
   quizzesSet           QuizStudent[]          @relation("QuizAssignee")
   lessonAccess         LessonAccess[]         @relation("LessonAccessUser")
   chatMessages         ChatMessage[]          @relation("ChatMessageUser")
+  chatAbstracts        ChatAbstract[]         @relation("ChatAbstractUser")
   recordingAccess      RecordingAccess[]      @relation("RecordingAccessUser")
   recordingViews       RecordingView[]        @relation("RecordingViewUser")
   recordingDevices     RecordingDevice[]      @relation("RecordingDeviceUser")
@@ -3254,6 +3255,20 @@ model BlogPost {
 /// behind it, in keeping with the plan's "no third party" rule. Matching is
 /// keyword scoring over `question` + `patterns` (see lib/chatbot/match.ts), so
 /// an answer is only ever the words staff typed.
+/// Who an answer is meant for.
+///
+/// "Can you keep internal and external chatbot seperate. Internal chatbot
+/// answers educational and all internal questions as per their profile roles
+/// and permissions… External chatbot answers preaddmision answers only. Only
+/// from outside website."
+enum ChatAudience {
+  /// The website, where nobody has signed in — fees, admissions, placement.
+  PUBLIC
+  /// Inside a panel, where the asker is known and their role is known with them.
+  INTERNAL
+  BOTH
+}
+
 model ChatIntent {
   id          String  @id @default(cuid())
   /// The canonical way a visitor asks this.
@@ -3266,6 +3281,11 @@ model ChatIntent {
   actionUrl   String? @db.VarChar(500)
   /// Grouping for the admin list ("Fees", "Placement", …).
   category    String?
+  /// Which assistant may give this answer — see `ChatAudience`.
+  audience    ChatAudience @default(PUBLIC)
+  /// Role slugs that may be given it inside the panels, as a JSON array.
+  /// Empty or absent means anyone signed in.
+  roles       Json?
   /// Offered as a starter chip when the window opens.
   isSuggested Boolean @default(false)
   isActive    Boolean @default(true)
@@ -3280,6 +3300,7 @@ model ChatIntent {
 
   @@index([isActive])
   @@index([isSuggested])
+  @@index([audience])
 }
 
 /// A line of a conversation, kept so admins can read what was asked and teach
@@ -3297,6 +3318,13 @@ model ChatMessage {
   matched   Boolean @default(true)
   /// Set once staff have turned this unanswered question into an intent.
   resolved  Boolean @default(false)
+  /// Which assistant was being talked to: "public" on the website, "panel"
+  /// inside a signed-in workspace. The two are read and trained separately.
+  surface   String  @default("public") @db.VarChar(10)
+  /// The page that was open at the time — "internal chatbot can detect screen
+  /// which is opened when someone is asking for answers from chatbot" — so an
+  /// answer can be about what the learner is actually looking at.
+  screen    String? @db.VarChar(160)
 
   createdAt DateTime @default(now())
 
@@ -3307,6 +3335,43 @@ model ChatMessage {
   @@index([userId])
   @@index([intentId])
   @@index([matched, resolved])
+  @@index([createdAt])
+  @@index([surface])
+}
+
+/// What a conversation gave away about the person having it.
+///
+/// "It also detects basic details coming in the chat and updates this in a
+/// different section named abstract." One row per conversation, filled in as
+/// a name, a number, an email or a course is mentioned, so the office has
+/// somewhere to work from even when nobody pressed "talk to a counsellor".
+/// Uniqueness on `sessionId` is kept in code: a unique index needs a data-loss
+/// flag on `db push`.
+model ChatAbstract {
+  id             String  @id @default(cuid())
+  sessionId      String  @db.VarChar(64)
+  userId         String?
+  name           String?
+  phone          String? @db.VarChar(24)
+  email          String?
+  courseInterest String?
+  /// The last thing they asked, so the row reads as something.
+  lastQuestion   String? @db.Text
+  messageCount   Int     @default(0)
+  surface        String  @default("public") @db.VarChar(10)
+  /// Set once somebody has turned this into a lead, so it is not chased twice.
+  leadId         String?
+  /// Cleared from the list without creating anything.
+  dismissed      Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User? @relation("ChatAbstractUser", fields: [userId], references: [id], onUpdate: NoAction)
+
+  @@index([sessionId])
+  @@index([userId])
+  @@index([dismissed])
   @@index([createdAt])
 }
 

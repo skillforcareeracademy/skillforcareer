@@ -22,6 +22,8 @@ export const GET = withRoute(async () => {
     "/courses",
     "Yes",
     "Yes",
+    "Website",
+    "",
   ];
   return csvResponse(
     "ami-answers-template.csv",

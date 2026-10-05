@@ -11,9 +11,14 @@ import {
   CHAT_INTENT_CSV_COLUMNS,
   PATTERN_SEPARATOR,
   type ChatIntentInput,
+  type ChatSurface,
   type ImportIntentsInput,
 } from "@/lib/validations/chatbot";
 import { createLead } from "./lead-service";
+import { notifyStaff } from "./notification-service";
+import { sendMail } from "@/lib/mail/mailer";
+import { env } from "@/lib/env";
+import { answerFromKnowledge, searchKnowledge } from "./chat-knowledge-service";
 
 /**
  * "Ami" — the site assistant, trained entirely from Admin → Assistant.
@@ -33,15 +38,23 @@ export function invalidateChatbot(): void {
 
 function toPatterns(raw: unknown): string[] {
   if (!Array.isArray(raw)) return [];
-  return raw.filter((p): p is string => typeof p === "string" && p.trim().length > 0);
+  return raw.filter(
+    (p): p is string => typeof p === "string" && p.trim().length > 0,
+  );
 }
 
 /**
  * The active knowledge base. Held in process for a minute: the widget is on
  * every public page, the set is small, and the database is a region away.
  */
-async function activeIntents(): Promise<MatchableIntent[]> {
-  const cached = readMemo<MatchableIntent[]>(MEMO_KEY);
+/** An answer, with the two things that decide who may be given it. */
+type ScopedIntent = MatchableIntent & {
+  audience: "PUBLIC" | "INTERNAL" | "BOTH";
+  roles: string[];
+};
+
+async function activeIntents(): Promise<ScopedIntent[]> {
+  const cached = readMemo<ScopedIntent[]>(MEMO_KEY);
   if (cached) return cached;
 
   const rows = await prisma.chatIntent.findMany({
@@ -53,18 +66,60 @@ async function activeIntents(): Promise<MatchableIntent[]> {
       answer: true,
       actionLabel: true,
       actionUrl: true,
+      audience: true,
+      roles: true,
     },
   });
-  const value: MatchableIntent[] = rows.map((r) => ({
+  const value: ScopedIntent[] = rows.map((r) => ({
     id: r.id,
     question: r.question,
     patterns: toPatterns(r.patterns),
     answer: r.answer,
     actionLabel: r.actionLabel,
     actionUrl: r.actionUrl,
+    audience: r.audience,
+    roles: toPatterns(r.roles),
   }));
   writeMemo(MEMO_KEY, value, TTL_MS);
   return value;
+}
+
+/**
+ * The answers this asker may be given.
+ *
+ * Outside, only the public set — "external chatbot answers preaddmision answers
+ * only". Inside, the internal set as well, narrowed to the roles each answer
+ * was written for, so a learner is never handed an answer meant for staff.
+ */
+function intentsFor(
+  all: ScopedIntent[],
+  surface: ChatSurface,
+  roles: string[],
+): ScopedIntent[] {
+  if (surface === "public") {
+    return all.filter((i) => i.audience === "PUBLIC" || i.audience === "BOTH");
+  }
+  return all.filter((i) => {
+    if (i.audience === "PUBLIC") return false;
+    if (i.roles.length === 0) return true;
+    return i.roles.some((r) => roles.includes(r));
+  });
+}
+
+/** Every role slug a person holds — their own, plus any extra ones. */
+async function rolesOf(userId: string | null | undefined): Promise<string[]> {
+  if (!userId) return [];
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      role: { select: { slug: true } },
+      extraRoles: { select: { role: { select: { slug: true } } } },
+    },
+  });
+  if (!user) return [];
+  return [user.role?.slug, ...user.extraRoles.map((r) => r.role.slug)].filter(
+    (s): s is string => Boolean(s),
+  );
 }
 
 /**
@@ -103,7 +158,9 @@ export interface ChatGreeting {
 }
 
 /** What the widget shows before anyone has typed. */
-export async function getChatGreeting(userId?: string | null): Promise<ChatGreeting> {
+export async function getChatGreeting(
+  userId?: string | null,
+): Promise<ChatGreeting> {
   const [{ settings }, suggested, viewer] = await Promise.all([
     getSettings(),
     prisma.chatIntent.findMany({
@@ -139,40 +196,106 @@ export async function askAmi(input: {
   question: string;
   sessionId: string;
   userId?: string | null;
+  /** Which assistant is being talked to. Defaults to the website one. */
+  surface?: ChatSurface;
+  /** The page open at the time, so an answer can be about what they see. */
+  screen?: string | null;
 }): Promise<ChatReply> {
   const question = input.question.trim().slice(0, 500);
   if (!question) throw AppError.badRequest("Ask me something.");
 
-  const intents = await activeIntents();
+  const surface: ChatSurface =
+    input.userId && input.surface === "panel" ? "panel" : "public";
+  const sessionId = input.sessionId.slice(0, 64);
+  const screen = (input.screen ?? "").slice(0, 160) || null;
+
+  const [all, roles] = await Promise.all([
+    activeIntents(),
+    rolesOf(input.userId),
+  ]);
+  const intents = intentsFor(all, surface, roles);
   const match = findBestMatch(question, intents);
 
   // The visitor's line is stored either way — an unmatched one is the queue.
   await prisma.chatMessage.create({
     data: {
-      sessionId: input.sessionId.slice(0, 64),
+      sessionId,
       userId: input.userId ?? null,
       role: "user",
       text: question,
       intentId: match?.intent.id ?? null,
       matched: match != null,
+      surface,
+      screen,
     },
   });
 
+  // Whatever the conversation gave away about who is having it. Awaited, not
+  // left floating: a serverless function stops when it answers, and a promise
+  // still in flight goes with it.
+  await noteAbstract({
+    sessionId,
+    userId: input.userId ?? null,
+    question,
+    surface,
+  });
+
   if (!match) {
+    // Inside a panel there is a second place to look: the learner's own
+    // reading, papers and assignments — "internal chatbot picks our notes,
+    // quiz and assignments to answer educational questions".
+    if (surface === "panel" && input.userId) {
+      const hits = await searchKnowledge({
+        question,
+        userId: input.userId,
+        screen,
+        take: 3,
+      });
+      if (hits.length > 0) {
+        const answer = answerFromKnowledge(hits);
+        await prisma.chatMessage.create({
+          data: {
+            sessionId,
+            userId: input.userId,
+            role: "bot",
+            text: answer,
+            matched: true,
+            surface,
+            screen,
+          },
+        });
+        return {
+          answer,
+          matched: true,
+          intentId: null,
+          action: {
+            label: `Open ${hits[0].title}`,
+            url: hits[0].url,
+            kind: "link" as const,
+          },
+          suggestions: [],
+        };
+      }
+    }
+
     const { settings } = await getSettings();
     const near = nearMisses(question, intents);
     const answer =
       near.length > 0
         ? `I'm not sure about that one yet — I've passed it to the team. Meanwhile, I can help with any of these:`
-        : `I'm not sure about that one yet, so I've passed it to the team. You can also call the office and someone will get straight back to you.`;
+        : surface === "panel"
+          ? `I'm not sure about that one yet, so I've passed it to your instructor. They'll add it to the course notes.`
+          : `I'm not sure about that one yet, so I've passed it to the team. You can also call the office and someone will get straight back to you.`;
 
     await prisma.chatMessage.create({
       data: {
-        sessionId: input.sessionId.slice(0, 64),
+        sessionId,
         userId: input.userId ?? null,
         role: "bot",
         text: answer,
         matched: true,
+        surface,
+        screen,
       },
     });
 
@@ -180,9 +303,16 @@ export async function askAmi(input: {
       answer,
       matched: false,
       intentId: null,
-      action: settings.chatbotEnabled
-        ? { label: "Talk to a counsellor", url: "/contact", kind: "counsellor" as const }
-        : null,
+      // Only the website assistant offers to put someone through to admissions;
+      // inside a panel there is nothing to sell.
+      action:
+        settings.chatbotEnabled && surface === "public"
+          ? {
+              label: "Talk to a counsellor",
+              url: "/contact",
+              kind: "counsellor" as const,
+            }
+          : null,
       suggestions: near.map((n) => ({ id: n.id, question: n.question })),
     };
   }
@@ -193,12 +323,14 @@ export async function askAmi(input: {
   await Promise.all([
     prisma.chatMessage.create({
       data: {
-        sessionId: input.sessionId.slice(0, 64),
+        sessionId,
         userId: input.userId ?? null,
         role: "bot",
         text: intent.answer,
         intentId: intent.id,
         matched: true,
+        surface,
+        screen,
       },
     }),
     // Raw counter bump: `chatIntent.update` is fine here (few relations), but
@@ -215,10 +347,111 @@ export async function askAmi(input: {
     intentId: intent.id,
     action:
       intent.actionLabel && intent.actionUrl
-        ? { label: intent.actionLabel, url: intent.actionUrl, kind: "link" as const }
+        ? {
+            label: intent.actionLabel,
+            url: intent.actionUrl,
+            kind: "link" as const,
+          }
         : null,
     suggestions: [],
   };
+}
+
+// ── The abstract ─────────────────────────────────────────────────────────────
+
+const COURSE_MEMO_KEY = "chatbot:course-titles";
+
+/**
+ * The published course names, held for a few minutes. Every message is checked
+ * against them, and the list barely changes between terms.
+ */
+async function courseTitles(): Promise<string[]> {
+  const cached = readMemo<string[]>(COURSE_MEMO_KEY);
+  if (cached) return cached;
+  const rows = await prisma.course.findMany({
+    where: { status: "PUBLISHED" },
+    select: { title: true },
+    orderBy: { title: "asc" },
+    take: 200,
+  });
+  // Longest first: "Advanced Data Analysis" should win over "Data Analysis".
+  const titles = rows.map((r) => r.title).sort((a, b) => b.length - a.length);
+  writeMemo(COURSE_MEMO_KEY, titles, 5 * 60_000);
+  return titles;
+}
+
+const PHONE_RE = /(?:\+?91[\s-]?)?([6-9]\d{9})\b/;
+const EMAIL_RE = /[\w.+-]+@[\w-]+\.[\w.-]{2,}/;
+const NAME_RE =
+  /\b(?:my name is|i am|i'm|this is|myself)\s+([\p{L}][\p{L}\s.'-]{1,48})/iu;
+
+/**
+ * Pick the useful details out of what somebody typed.
+ *
+ * "It also detects basic details coming in the chat and updates this in a
+ * different section named abstract." Nothing here is clever: a phone number, an
+ * email, a name offered in the ordinary way, and a course the academy actually
+ * runs. What it finds is written to one row per conversation, which the office
+ * works from under Assistant → Abstract.
+ */
+export async function noteAbstract(input: {
+  sessionId: string;
+  userId: string | null;
+  question: string;
+  surface: ChatSurface;
+}): Promise<void> {
+  try {
+    const text = input.question;
+    const phone = text.match(PHONE_RE)?.[1] ?? null;
+    const email = text.match(EMAIL_RE)?.[0] ?? null;
+    const name = text.match(NAME_RE)?.[1]?.trim().replace(/\s+/g, " ") ?? null;
+
+    // A course only counts when the academy runs one by that name.
+    const titles = await courseTitles();
+    const lower = text.toLowerCase();
+    const courseInterest =
+      titles.find((t) => t.length > 3 && lower.includes(t.toLowerCase())) ??
+      null;
+
+    const existing = await prisma.chatAbstract.findFirst({
+      where: { sessionId: input.sessionId },
+      select: {
+        id: true,
+        name: true,
+        phone: true,
+        email: true,
+        courseInterest: true,
+      },
+    });
+
+    // Only ever fills blanks: the first number somebody gives is the one the
+    // office should ring, not whatever was typed last.
+    const data = {
+      userId: input.userId,
+      surface: input.surface,
+      lastQuestion: text.slice(0, 1000),
+      ...(name && !existing?.name ? { name } : {}),
+      ...(phone && !existing?.phone ? { phone } : {}),
+      ...(email && !existing?.email ? { email } : {}),
+      ...(courseInterest && !existing?.courseInterest
+        ? { courseInterest }
+        : {}),
+    };
+
+    if (existing) {
+      await prisma.chatAbstract.update({
+        where: { id: existing.id },
+        data: { ...data, messageCount: { increment: 1 } },
+      });
+    } else {
+      await prisma.chatAbstract.create({
+        data: { ...data, sessionId: input.sessionId, messageCount: 1 },
+      });
+    }
+  } catch {
+    // The abstract is a convenience. A conversation must never fail because
+    // a detail could not be filed.
+  }
 }
 
 /**
@@ -235,6 +468,8 @@ export async function requestCounsellor(input: {
   name?: string;
   phone?: string;
   email?: string;
+  /** Which programme they were asking about, so the counsellor opens knowing. */
+  courseInterest?: string;
   note?: string;
   sessionId?: string;
 }): Promise<{ name: string; phone: string; leadId: string }> {
@@ -251,9 +486,12 @@ export async function requestCounsellor(input: {
   const phone = (input.phone?.trim() || account?.phone || "").slice(0, 20);
   const email = (input.email?.trim() || account?.email || "").slice(0, 120);
 
-  if (!name) throw AppError.badRequest("Tell me your name and I'll pass it on.");
+  if (!name)
+    throw AppError.badRequest("Tell me your name and I'll pass it on.");
   if (phone.replace(/\D/g, "").length < 6) {
-    throw AppError.badRequest("I need a phone number the office can call you on.");
+    throw AppError.badRequest(
+      "I need a phone number the office can call you on.",
+    );
   }
 
   // The last thing they asked, so the counsellor opens the conversation knowing
@@ -275,17 +513,125 @@ export async function requestCounsellor(input: {
     .join("\n")
     .slice(0, 2000);
 
+  // What they said they were interested in, or what the conversation gave away.
+  const abstract = input.sessionId
+    ? await prisma.chatAbstract.findFirst({
+        where: { sessionId: input.sessionId.slice(0, 64) },
+        select: { id: true, courseInterest: true },
+      })
+    : null;
+  const courseInterest = (
+    input.courseInterest?.trim() ||
+    abstract?.courseInterest ||
+    ""
+  ).slice(0, 120);
+
   const leadId = await createLead(
     {
       name,
       phone,
       email: email || "",
-      courseInterest: "",
+      courseInterest,
       message: message || "Asked to speak to a counsellor from the assistant.",
     },
     "WEBSITE",
   );
+
+  // The office was not hearing about these — "m not receiving live agent
+  // requests now, previously I was getting requests but not receiving now".
+  // `createLead` raises an in-panel notice; somebody who is not looking at the
+  // panel needs the email, and the email needs to carry the three things they
+  // asked for by name: "a detail name, number and interested course".
+  await notifyCounsellorRequest({
+    name,
+    phone,
+    email,
+    courseInterest,
+    leadId,
+    note: message,
+  });
+
+  if (abstract) {
+    await prisma.chatAbstract.update({
+      where: { id: abstract.id },
+      data: { leadId, name, phone, ...(email ? { email } : {}) },
+    });
+  }
+
   return { name, phone, leadId };
+}
+
+/**
+ * Tell the office somebody is waiting to be called — in the panel and by email.
+ *
+ * Addressed to whoever Settings names for enquiries, falling back to the
+ * academy's own address, so turning it on is a settings change rather than a
+ * deploy. A mail server that is down must not lose the lead, which is already
+ * saved by the time this runs.
+ */
+async function notifyCounsellorRequest(input: {
+  name: string;
+  phone: string;
+  email: string;
+  courseInterest: string;
+  leadId: string;
+  note: string;
+}): Promise<void> {
+  const line = [
+    input.name,
+    input.phone,
+    input.email || null,
+    input.courseInterest || null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  await notifyStaff({
+    type: "SYSTEM",
+    title: "Live agent requested",
+    message: `${line} — asked to be connected from the assistant.`,
+    actionUrl: `/admin/leads?lead=${input.leadId}`,
+  });
+
+  const { settings } = await getSettings();
+  const to = settings.supportEmail || env.SMTP_FROM_EMAIL || env.SMTP_USER;
+  if (!to) return;
+
+  const rows = [
+    ["Name", input.name],
+    ["Phone", input.phone],
+    ["Email", input.email || "—"],
+    ["Interested in", input.courseInterest || "—"],
+    ["What they asked", input.note || "—"],
+  ]
+    .map(
+      ([k, v]) =>
+        `<tr><td style="padding:4px 12px 4px 0;color:#666">${k}</td><td style="padding:4px 0"><strong>${v}</strong></td></tr>`,
+    )
+    .join("");
+
+  try {
+    await sendMail({
+      to,
+      subject: `Live agent requested — ${input.name} (${input.phone})`,
+      html: `
+      <div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;color:#111">
+        <h2 style="color:#e11d48">Someone wants to talk to a counsellor</h2>
+        <table style="font-size:14px;border-collapse:collapse">${rows}</table>
+        <p style="margin:20px 0">
+          <a href="${env.NEXT_PUBLIC_APP_URL}/admin/leads?lead=${input.leadId}"
+             style="background:#e11d48;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none">
+            Open the lead
+          </a>
+        </p>
+        <p style="color:#666;font-size:13px">Sent by the site assistant.</p>
+      </div>`,
+      text: `Live agent requested.\n${line}\nAsked: ${input.note || "—"}\n${env.NEXT_PUBLIC_APP_URL}/admin/leads?lead=${input.leadId}`,
+    });
+  } catch {
+    // The lead is saved; a mail failure must not fail the request the visitor
+    // made, and the in-panel notice has already gone out.
+  }
 }
 
 // ── Admin side ───────────────────────────────────────────────────────────────
@@ -300,6 +646,10 @@ export interface AdminIntent {
   category: string | null;
   isSuggested: boolean;
   isActive: boolean;
+  /** Which assistant may give it — "PUBLIC" | "INTERNAL" | "BOTH". */
+  audience: string;
+  /** Role slugs it is written for; empty means anyone signed in. */
+  roles: string[];
   hits: number;
   updatedAt: string;
 }
@@ -311,17 +661,28 @@ export interface UnansweredQuestion {
   /** How many times this exact question has come up unanswered. */
   count: number;
   userName: string | null;
+  /** Which assistant was asked, so the two queues can be told apart. */
+  surface: string;
+  /** The page open at the time, when there was one. */
+  screen: string | null;
 }
 
 export interface ChatbotBoard {
   intents: AdminIntent[];
   unanswered: UnansweredQuestion[];
-  stats: { intents: number; active: number; answered: number; unanswered: number };
+  stats: {
+    intents: number;
+    active: number;
+    answered: number;
+    unanswered: number;
+  };
 }
 
 export async function getChatbotBoard(): Promise<ChatbotBoard> {
   const [rows, unmatched, answered, unansweredCount] = await Promise.all([
-    prisma.chatIntent.findMany({ orderBy: [{ hits: "desc" }, { updatedAt: "desc" }] }),
+    prisma.chatIntent.findMany({
+      orderBy: [{ hits: "desc" }, { updatedAt: "desc" }],
+    }),
     prisma.chatMessage.findMany({
       where: { role: "user", matched: false, resolved: false },
       orderBy: { createdAt: "desc" },
@@ -330,11 +691,15 @@ export async function getChatbotBoard(): Promise<ChatbotBoard> {
         id: true,
         text: true,
         createdAt: true,
+        surface: true,
+        screen: true,
         user: { select: { name: true } },
       },
     }),
     prisma.chatMessage.count({ where: { role: "user", matched: true } }),
-    prisma.chatMessage.count({ where: { role: "user", matched: false, resolved: false } }),
+    prisma.chatMessage.count({
+      where: { role: "user", matched: false, resolved: false },
+    }),
   ]);
 
   // Collapse repeats so the queue is a list of *questions*, not of askings.
@@ -352,6 +717,8 @@ export async function getChatbotBoard(): Promise<ChatbotBoard> {
       askedAt: m.createdAt.toISOString(),
       count: 1,
       userName: m.user?.name ?? null,
+      surface: m.surface,
+      screen: m.screen,
     });
   }
 
@@ -366,6 +733,8 @@ export async function getChatbotBoard(): Promise<ChatbotBoard> {
       category: r.category,
       isSuggested: r.isSuggested,
       isActive: r.isActive,
+      audience: r.audience,
+      roles: toPatterns(r.roles),
       hits: r.hits,
       updatedAt: r.updatedAt.toISOString(),
     })),
@@ -400,6 +769,8 @@ export async function intentsForExport(): Promise<{
       r.actionUrl ?? "",
       r.isSuggested ? "Yes" : "No",
       r.isActive ? "Yes" : "No",
+      r.audience,
+      toPatterns(r.roles).join(` ${PATTERN_SEPARATOR} `),
     ]),
   };
 }
@@ -416,6 +787,22 @@ const YES = new Set(["yes", "y", "true", "1", "active", "on"]);
 const NO = new Set(["no", "n", "false", "0", "inactive", "off"]);
 
 /** A blank cell keeps whatever the column already meant. */
+/**
+ * Read an audience out of a spreadsheet cell. People write "internal", "panel",
+ * "website", "both" — all of which mean something obvious — so the sheet is not
+ * made to speak in enum constants.
+ */
+function audienceOf(value: string, fallback: "PUBLIC" | "INTERNAL" | "BOTH") {
+  const v = value.trim().toLowerCase();
+  if (!v) return fallback;
+  if (v.startsWith("int") || v.startsWith("pan") || v.startsWith("ins"))
+    return "INTERNAL";
+  if (v.startsWith("bot") || v.startsWith("all")) return "BOTH";
+  if (v.startsWith("pub") || v.startsWith("web") || v.startsWith("ext"))
+    return "PUBLIC";
+  return fallback;
+}
+
 function flag(value: string, fallback: boolean): boolean {
   const v = value.trim().toLowerCase();
   if (YES.has(v)) return true;
@@ -435,7 +822,13 @@ export async function importIntents(
   input: ImportIntentsInput,
 ): Promise<ImportIntentsResult> {
   const existing = await prisma.chatIntent.findMany({
-    select: { id: true, question: true, isSuggested: true, isActive: true },
+    select: {
+      id: true,
+      question: true,
+      isSuggested: true,
+      isActive: true,
+      audience: true,
+    },
   });
   const key = (v: string) => v.trim().toLowerCase().replace(/\s+/g, " ");
   const byQuestion = new Map(existing.map((r) => [key(r.question), r]));
@@ -468,6 +861,12 @@ export async function importIntents(
       .filter(Boolean)
       .slice(0, 25);
 
+    const roles = row.roles
+      .split(/[|,\n]/)
+      .map((r) => r.trim().toUpperCase())
+      .filter(Boolean)
+      .slice(0, 12);
+
     const data = {
       question,
       patterns,
@@ -475,6 +874,7 @@ export async function importIntents(
       category: row.category.trim() || null,
       actionLabel: row.actionLabel.trim() || null,
       actionUrl: row.actionUrl.trim() || null,
+      roles,
     };
 
     try {
@@ -486,6 +886,7 @@ export async function importIntents(
             ...data,
             isSuggested: flag(row.isSuggested, hit.isSuggested),
             isActive: flag(row.isActive, hit.isActive),
+            audience: audienceOf(row.audience, hit.audience),
           },
         });
         updated += 1;
@@ -496,12 +897,16 @@ export async function importIntents(
             isSuggested: flag(row.isSuggested, false),
             // A new answer goes live unless the sheet says otherwise.
             isActive: flag(row.isActive, true),
+            // …and belongs to the website assistant, which is where an
+            // imported FAQ almost always belongs.
+            audience: audienceOf(row.audience, "PUBLIC"),
           },
           select: {
             id: true,
             question: true,
             isSuggested: true,
             isActive: true,
+            audience: true,
           },
         });
         // Guard against a sheet that lists the same question twice — the second
@@ -543,6 +948,8 @@ export async function createIntent(input: ChatIntentInput): Promise<string> {
       category: input.category || null,
       isSuggested: input.isSuggested,
       isActive: input.isActive,
+      audience: input.audience,
+      roles: input.roles,
     },
     select: { id: true },
   });
@@ -550,8 +957,14 @@ export async function createIntent(input: ChatIntentInput): Promise<string> {
   return row.id;
 }
 
-export async function updateIntent(id: string, input: ChatIntentInput): Promise<void> {
-  const existing = await prisma.chatIntent.findUnique({ where: { id }, select: { id: true } });
+export async function updateIntent(
+  id: string,
+  input: ChatIntentInput,
+): Promise<void> {
+  const existing = await prisma.chatIntent.findUnique({
+    where: { id },
+    select: { id: true },
+  });
   if (!existing) throw AppError.notFound("That answer no longer exists.");
   await prisma.chatIntent.update({
     where: { id },
@@ -564,6 +977,8 @@ export async function updateIntent(id: string, input: ChatIntentInput): Promise<
       category: input.category || null,
       isSuggested: input.isSuggested,
       isActive: input.isActive,
+      audience: input.audience,
+      roles: input.roles,
     },
   });
   invalidateChatbot();
@@ -572,7 +987,10 @@ export async function updateIntent(id: string, input: ChatIntentInput): Promise<
 export async function deleteIntent(id: string): Promise<void> {
   // The transcript keeps its rows; only the pointer goes, so an old
   // conversation still reads back correctly.
-  await prisma.chatMessage.updateMany({ where: { intentId: id }, data: { intentId: null } });
+  await prisma.chatMessage.updateMany({
+    where: { intentId: id },
+    data: { intentId: null },
+  });
   await prisma.chatIntent.deleteMany({ where: { id } });
   invalidateChatbot();
 }
@@ -600,5 +1018,119 @@ export async function resolveUnanswered(texts: string[]): Promise<void> {
   await prisma.chatMessage.updateMany({
     where: { role: "user", matched: false, text: { in: texts } },
     data: { resolved: true },
+  });
+}
+
+// ── Abstract ─────────────────────────────────────────────────────────────────
+
+export interface AbstractRow {
+  id: string;
+  sessionId: string;
+  name: string | null;
+  phone: string | null;
+  email: string | null;
+  courseInterest: string | null;
+  lastQuestion: string | null;
+  messageCount: number;
+  surface: string;
+  /** Set once somebody has turned this into a lead. */
+  leadId: string | null;
+  userName: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * What the conversations gave away, newest first.
+ *
+ * Only rows that actually say something are listed: a chat that never mentioned
+ * a name, a number, an email or a course is a chat, not a lead, and the office
+ * has the transcript for those.
+ */
+export async function listAbstracts(
+  opts: { take?: number } = {},
+): Promise<AbstractRow[]> {
+  const rows = await prisma.chatAbstract.findMany({
+    where: {
+      dismissed: false,
+      OR: [
+        { name: { not: null } },
+        { phone: { not: null } },
+        { email: { not: null } },
+        { courseInterest: { not: null } },
+      ],
+    },
+    orderBy: { updatedAt: "desc" },
+    take: Math.min(200, opts.take ?? 100),
+    include: { user: { select: { name: true } } },
+  });
+
+  return rows.map((r) => ({
+    id: r.id,
+    sessionId: r.sessionId,
+    name: r.name,
+    phone: r.phone,
+    email: r.email,
+    courseInterest: r.courseInterest,
+    lastQuestion: r.lastQuestion,
+    messageCount: r.messageCount,
+    surface: r.surface,
+    leadId: r.leadId,
+    userName: r.user?.name ?? null,
+    createdAt: r.createdAt.toISOString(),
+    updatedAt: r.updatedAt.toISOString(),
+  }));
+}
+
+/** Everything said in one conversation, for reading beside the abstract. */
+export async function abstractTranscript(
+  sessionId: string,
+): Promise<{ id: string; role: string; text: string; createdAt: string }[]> {
+  const rows = await prisma.chatMessage.findMany({
+    where: { sessionId: sessionId.slice(0, 64) },
+    orderBy: { createdAt: "asc" },
+    take: 200,
+    select: { id: true, role: true, text: true, createdAt: true },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    role: r.role,
+    text: r.text,
+    createdAt: r.createdAt.toISOString(),
+  }));
+}
+
+/** Put one on the lead sheet, where the office actually works. */
+export async function abstractToLead(id: string): Promise<string> {
+  const row = await prisma.chatAbstract.findUnique({ where: { id } });
+  if (!row) throw AppError.notFound("That conversation is no longer here.");
+  if (row.leadId) return row.leadId;
+  if (!row.name && !row.phone) {
+    throw AppError.badRequest(
+      "There's no name or number in that conversation yet.",
+    );
+  }
+
+  const leadId = await createLead(
+    {
+      name: row.name || "Website visitor",
+      phone: row.phone || "",
+      email: row.email || "",
+      courseInterest: row.courseInterest || "",
+      message: row.lastQuestion
+        ? `From the assistant. Last asked: “${row.lastQuestion}”`
+        : "Picked up from a conversation with the assistant.",
+    },
+    "WEBSITE",
+  );
+  await prisma.chatAbstract.update({ where: { id }, data: { leadId } });
+  return leadId;
+}
+
+/** Take one off the list without creating anything. */
+export async function dismissAbstract(id: string): Promise<void> {
+  await prisma.chatAbstract.updateMany({
+    where: { id },
+    data: { dismissed: true },
   });
 }

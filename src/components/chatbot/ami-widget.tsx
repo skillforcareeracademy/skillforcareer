@@ -17,6 +17,7 @@ import {
   X,
 } from "lucide-react";
 import { api } from "@/lib/api-client";
+import type { ChatSurface } from "@/lib/validations/chatbot";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { speak, stopSpeaking, speechSupported } from "@/lib/speech";
@@ -137,7 +138,8 @@ function readSavedPosition(): Point | null {
     const raw = window.localStorage.getItem(POSITION_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<Point>;
-    if (typeof parsed?.x !== "number" || typeof parsed?.y !== "number") return null;
+    if (typeof parsed?.x !== "number" || typeof parsed?.y !== "number")
+      return null;
     return { x: parsed.x, y: parsed.y };
   } catch {
     // Private windows and blocked site data both land here; the default corner
@@ -155,7 +157,10 @@ function savePosition(point: Point) {
 }
 
 /** Keep the launcher fully on screen, whatever the window has been resized to. */
-function clampToViewport(point: Point, size: { width: number; height: number }): Point {
+function clampToViewport(
+  point: Point,
+  size: { width: number; height: number },
+): Point {
   const maxX = Math.max(EDGE, window.innerWidth - size.width - EDGE);
   const maxY = Math.max(EDGE, window.innerHeight - size.height - EDGE);
   return {
@@ -164,7 +169,7 @@ function clampToViewport(point: Point, size: { width: number; height: number }):
   };
 }
 
-export function AmiWidget() {
+export function AmiWidget({ surface = "public" }: { surface?: ChatSurface }) {
   const pathname = usePathname();
   const [greeting, setGreeting] = useState<Greeting | null>(null);
   const [open, setOpen] = useState(false);
@@ -173,7 +178,11 @@ export function AmiWidget() {
   const [sending, setSending] = useState(false);
   const [voice, setVoice] = useState(false);
   /** Set when a stranger has asked for a counsellor and has to say who they are. */
-  const [handover, setHandover] = useState<{ name: string; phone: string } | null>(null);
+  const [handover, setHandover] = useState<{
+    name: string;
+    phone: string;
+    courseInterest: string;
+  } | null>(null);
   const [handingOver, setHandingOver] = useState(false);
   const [position, setPosition] = useState<Point | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -249,14 +258,18 @@ export function AmiWidget() {
     if (!greeting?.enabled) return;
     const saved = readSavedPosition();
     if (!saved) return;
-    const id = setTimeout(() => setPosition(clampToViewport(saved, LAUNCHER)), 0);
+    const id = setTimeout(
+      () => setPosition(clampToViewport(saved, LAUNCHER)),
+      0,
+    );
     return () => clearTimeout(id);
   }, [greeting?.enabled]);
 
   // A narrower window can leave a remembered spot off-screen.
   useEffect(() => {
     if (!position) return;
-    const onResize = () => setPosition((p) => (p ? clampToViewport(p, LAUNCHER) : p));
+    const onResize = () =>
+      setPosition((p) => (p ? clampToViewport(p, LAUNCHER) : p));
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, [position]);
@@ -288,7 +301,10 @@ export function AmiWidget() {
     }
     movedRef.current = true;
     setPosition(
-      clampToViewport({ x: e.clientX - grabRef.current.x, y: e.clientY - grabRef.current.y }, LAUNCHER),
+      clampToViewport(
+        { x: e.clientX - grabRef.current.x, y: e.clientY - grabRef.current.y },
+        LAUNCHER,
+      ),
     );
   }
 
@@ -327,9 +343,15 @@ export function AmiWidget() {
     const from = position ?? {
       // Never moved yet: start from the corner the classes put it in.
       x: window.innerWidth - LAUNCHER.width - EDGE,
-      y: window.innerHeight - LAUNCHER.height - (window.innerWidth < 768 ? 80 : 24),
+      y:
+        window.innerHeight -
+        LAUNCHER.height -
+        (window.innerWidth < 768 ? 80 : 24),
     };
-    const next = clampToViewport({ x: from.x + delta.x, y: from.y + delta.y }, LAUNCHER);
+    const next = clampToViewport(
+      { x: from.x + delta.x, y: from.y + delta.y },
+      LAUNCHER,
+    );
     setPosition(next);
     savePosition(next);
   }
@@ -366,7 +388,15 @@ export function AmiWidget() {
         answer: string;
         action: { label: string; url: string } | null;
         suggestions: Suggestion[];
-      }>("/api/chat", { question: text, sessionId: sessionRef.current });
+      }>("/api/chat", {
+        question: text,
+        sessionId: sessionRef.current,
+        // Which assistant, and what the asker was looking at — the panel one
+        // answers from the learner's own material and leans on the page they
+        // are on to decide what they probably meant.
+        surface,
+        screen: pathname,
+      });
 
       setLines((prev) => [
         ...prev,
@@ -408,18 +438,30 @@ export function AmiWidget() {
   async function askCounsellor() {
     const viewer = greeting?.viewer;
     if (!viewer?.signedIn || !viewer.phone) {
-      setHandover({ name: viewer?.name ?? "", phone: viewer?.phone ?? "" });
+      setHandover({
+        name: viewer?.name ?? "",
+        phone: viewer?.phone ?? "",
+        courseInterest: "",
+      });
       say(
         viewer?.signedIn
           ? "I have your name — what number should the office call you on?"
-          : "Of course. What's your name and the best number to call you on?",
+          : "Of course. What's your name, the best number to call you on, and which course you're interested in?",
       );
       return;
     }
-    await sendHandover({ name: viewer.name ?? "", phone: viewer.phone });
+    await sendHandover({
+      name: viewer.name ?? "",
+      phone: viewer.phone,
+      courseInterest: "",
+    });
   }
 
-  async function sendHandover(details: { name: string; phone: string }) {
+  async function sendHandover(details: {
+    name: string;
+    phone: string;
+    courseInterest: string;
+  }) {
     setHandingOver(true);
     try {
       const res = await api.post<{ message: string }>("/api/chat/counsellor", {
@@ -498,11 +540,19 @@ export function AmiWidget() {
     return below
       ? {
           left,
-          top: Math.min(position.y + LAUNCHER.height + 12, window.innerHeight - 160),
+          top: Math.min(
+            position.y + LAUNCHER.height + 12,
+            window.innerHeight - 160,
+          ),
           right: "auto",
           bottom: "auto",
         }
-      : { left, bottom: Math.max(window.innerHeight - position.y + 12, EDGE), right: "auto", top: "auto" };
+      : {
+          left,
+          bottom: Math.max(window.innerHeight - position.y + 12, EDGE),
+          right: "auto",
+          top: "auto",
+        };
   })();
 
   return (
@@ -521,12 +571,19 @@ export function AmiWidget() {
           title="Drag to move"
           style={
             position
-              ? { left: position.x, top: position.y, right: "auto", bottom: "auto" }
+              ? {
+                  left: position.x,
+                  top: position.y,
+                  right: "auto",
+                  bottom: "auto",
+                }
               : undefined
           }
           className={cn(
             "bg-primary text-primary-foreground fixed z-40 flex touch-none items-center gap-2 rounded-full py-3 pr-4 pl-3 shadow-lg",
-            dragging ? "cursor-grabbing scale-105" : "cursor-grab transition-transform hover:scale-105",
+            dragging
+              ? "scale-105 cursor-grabbing"
+              : "cursor-grab transition-transform hover:scale-105",
             // Until it has been moved it sits where it always has: clear of the
             // mobile tab bar, low right on a desktop.
             position ? "" : "right-4 bottom-20 md:bottom-6",
@@ -544,7 +601,9 @@ export function AmiWidget() {
           style={windowStyle ?? undefined}
           className={cn(
             "bg-card fixed z-50 flex max-h-[75vh] flex-col overflow-hidden rounded-2xl border shadow-2xl sm:w-96",
-            windowStyle ? "inset-x-3 sm:inset-x-auto" : "inset-x-3 bottom-20 sm:inset-x-auto sm:right-4 md:bottom-6",
+            windowStyle
+              ? "inset-x-3 sm:inset-x-auto"
+              : "inset-x-3 bottom-20 sm:inset-x-auto sm:right-4 md:bottom-6",
           )}
         >
           <div className="bg-primary text-primary-foreground flex items-center gap-2.5 px-4 py-3">
@@ -576,7 +635,11 @@ export function AmiWidget() {
                 aria-pressed={voice}
                 className="rounded-lg p-1.5 hover:bg-white/15"
               >
-                {voice ? <Volume2 className="size-4" /> : <VolumeX className="size-4" />}
+                {voice ? (
+                  <Volume2 className="size-4" />
+                ) : (
+                  <VolumeX className="size-4" />
+                )}
               </button>
             )}
             <button
@@ -658,7 +721,9 @@ export function AmiWidget() {
               >
                 <Input
                   value={handover.name}
-                  onChange={(e) => setHandover({ ...handover, name: e.target.value })}
+                  onChange={(e) =>
+                    setHandover({ ...handover, name: e.target.value })
+                  }
                   placeholder="Your name"
                   aria-label="Your name"
                   maxLength={80}
@@ -666,16 +731,32 @@ export function AmiWidget() {
                 />
                 <Input
                   value={handover.phone}
-                  onChange={(e) => setHandover({ ...handover, phone: e.target.value })}
+                  onChange={(e) =>
+                    setHandover({ ...handover, phone: e.target.value })
+                  }
                   placeholder="Phone number"
                   aria-label="Phone number"
                   inputMode="tel"
                   maxLength={20}
                   className="bg-background h-9"
                 />
+                {/* The third thing the office asked to be given up front:
+                    "name, number and interested course". */}
+                <Input
+                  value={handover.courseInterest}
+                  onChange={(e) =>
+                    setHandover({ ...handover, courseInterest: e.target.value })
+                  }
+                  placeholder="Course you're interested in (optional)"
+                  aria-label="Course you're interested in"
+                  maxLength={120}
+                  className="bg-background h-9"
+                />
                 <div className="flex items-center gap-2">
                   <Button type="submit" size="sm" disabled={handingOver}>
-                    {handingOver && <Loader2 className="size-3.5 animate-spin" />}
+                    {handingOver && (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    )}
                     Ask them to call me
                   </Button>
                   <Button
@@ -712,7 +793,11 @@ export function AmiWidget() {
               maxLength={500}
               aria-label="Your question"
             />
-            <Button type="submit" size="icon" disabled={sending || !draft.trim()}>
+            <Button
+              type="submit"
+              size="icon"
+              disabled={sending || !draft.trim()}
+            >
               <Send className="size-4" />
               <span className="sr-only">Send</span>
             </Button>

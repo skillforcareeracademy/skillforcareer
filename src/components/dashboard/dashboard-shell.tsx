@@ -60,7 +60,7 @@ export function DashboardShell({
         <PanelTour role={user.role} voiceEnabled={voiceGuideEnabled} />
       )}
       {/* Ami rides along inside the panels too, not only on the public site. */}
-      {assistantEnabled && <AmiWidget />}
+      {assistantEnabled && <AmiWidget surface="panel" />}
     </SidebarProvider>
   );
 }
