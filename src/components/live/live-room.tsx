@@ -997,12 +997,14 @@ function DeviceControl({
             <ChevronDown className="size-3" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="max-w-[18rem]">
-            <DropdownMenuLabel>{pickerLabel}</DropdownMenuLabel>
-            <DropdownMenuSeparator />
+            {/* The label lives inside the radio group: Base UI throws
+                "MenuGroupContext is missing" for one standing on its own. */}
             <DropdownMenuRadioGroup
               value={deviceId ?? ""}
               onValueChange={(v) => void onSelect(String(v))}
             >
+              <DropdownMenuLabel>{pickerLabel}</DropdownMenuLabel>
+              <DropdownMenuSeparator />
               {devices.map((d) => (
                 <DropdownMenuRadioItem key={d.deviceId} value={d.deviceId}>
                   <span className="truncate">{d.label}</span>

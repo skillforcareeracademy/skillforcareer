@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -42,18 +43,22 @@ export function SampleSheetMenu({
         }
       />
       <DropdownMenuContent align="start">
-        <DropdownMenuLabel>Sample sheet for…</DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        {(TEMPLATE_KINDS as readonly TemplateKind[]).map((kind) => (
-          <DropdownMenuItem
-            key={kind}
-            render={
-              <a href={`${endpoint}?type=${kind}`} download>
-                {TEMPLATE_KIND_LABEL[kind]}
-              </a>
-            }
-          />
-        ))}
+        {/* Base UI requires a label to sit inside a group — on its own it
+            throws "MenuGroupContext is missing" and takes the page down. */}
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>Sample sheet for…</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          {(TEMPLATE_KINDS as readonly TemplateKind[]).map((kind) => (
+            <DropdownMenuItem
+              key={kind}
+              render={
+                <a href={`${endpoint}?type=${kind}`} download>
+                  {TEMPLATE_KIND_LABEL[kind]}
+                </a>
+              }
+            />
+          ))}
+        </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   );

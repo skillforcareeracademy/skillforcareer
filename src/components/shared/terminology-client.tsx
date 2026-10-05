@@ -56,6 +56,7 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -252,24 +253,28 @@ export function TerminologyClient({ canManage }: { canManage: boolean }) {
                     }
                   />
                   <DropdownMenuSeparator />
-                  <DropdownMenuLabel>Blank sample sheet</DropdownMenuLabel>
-                  <DropdownMenuItem
-                    render={
-                      <a href="/api/terms/export?sample=1" download>
-                        One of every kind
-                      </a>
-                    }
-                  />
-                  {TERM_KINDS.map((k) => (
+                  {/* The label has to sit inside a group — Base UI throws
+                      "MenuGroupContext is missing" otherwise. */}
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel>Blank sample sheet</DropdownMenuLabel>
                     <DropdownMenuItem
-                      key={k}
                       render={
-                        <a href={`/api/terms/export?sample=1&kind=${k}`} download>
-                          {TERM_KIND_LABEL[k]} only
+                        <a href="/api/terms/export?sample=1" download>
+                          One of every kind
                         </a>
                       }
                     />
-                  ))}
+                    {TERM_KINDS.map((k) => (
+                      <DropdownMenuItem
+                        key={k}
+                        render={
+                          <a href={`/api/terms/export?sample=1&kind=${k}`} download>
+                            {TERM_KIND_LABEL[k]} only
+                          </a>
+                        }
+                      />
+                    ))}
+                  </DropdownMenuGroup>
                 </DropdownMenuContent>
               </DropdownMenu>
               <ImportButton

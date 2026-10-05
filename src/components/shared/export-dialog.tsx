@@ -16,6 +16,7 @@ import { Separator } from "@/components/ui/separator";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -241,6 +242,7 @@ export function ExportDialog({
                 }
               />
               <DropdownMenuContent align="start">
+                <DropdownMenuGroup>
                 <DropdownMenuLabel>Sample sheet for…</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 {sampleKinds.map((k) => (
@@ -253,6 +255,7 @@ export function ExportDialog({
                     }
                   />
                 ))}
+                </DropdownMenuGroup>
               </DropdownMenuContent>
             </DropdownMenu>
           ) : sampleSheet ? (
