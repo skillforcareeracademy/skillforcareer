@@ -359,25 +359,81 @@ export async function askAmi(input: {
 
 // ── The abstract ─────────────────────────────────────────────────────────────
 
-const COURSE_MEMO_KEY = "chatbot:course-titles";
+const COURSE_MEMO_KEY = "chatbot:course-keys";
+
+/** Words that say nothing about which course somebody means. */
+const TITLE_NOISE =
+  /\b(advanced|basic|complete|professional|certified|certificate|course|courses|program|programme|training|classes|class|batch|with|and|for|the|in|of|students?|business|owners?|beginners?|20\d\d)\b/gi;
 
 /**
- * The published course names, held for a few minutes. Every message is checked
- * against them, and the list barely changes between terms.
+ * The phrase a person would actually use for a course.
+ *
+ * Titles on the catalogue read like "Advanced Digital Marketing Course For
+ * Students and Business Owners, 2026", and nobody types that — they type
+ * "digital marketing". So each course is reduced to what is distinctive about
+ * it, and the category it sits under is offered as a key of its own.
  */
-async function courseTitles(): Promise<string[]> {
-  const cached = readMemo<string[]>(COURSE_MEMO_KEY);
+function courseKey(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[,.()[\]/|–—-]+/g, " ")
+    .replace(TITLE_NOISE, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+interface CourseKey {
+  /** What to look for in the message. */
+  key: string;
+  /** What to file against the conversation — the real name. */
+  title: string;
+}
+
+/**
+ * The published courses and their categories as searchable phrases, held for a
+ * few minutes. Every message is checked against them and the list barely
+ * changes between terms.
+ */
+async function courseKeys(): Promise<CourseKey[]> {
+  const cached = readMemo<CourseKey[]>(COURSE_MEMO_KEY);
   if (cached) return cached;
-  const rows = await prisma.course.findMany({
-    where: { status: "PUBLISHED" },
-    select: { title: true },
-    orderBy: { title: "asc" },
-    take: 200,
-  });
-  // Longest first: "Advanced Data Analysis" should win over "Data Analysis".
-  const titles = rows.map((r) => r.title).sort((a, b) => b.length - a.length);
-  writeMemo(COURSE_MEMO_KEY, titles, 5 * 60_000);
-  return titles;
+
+  const [courses, categories] = await Promise.all([
+    prisma.course.findMany({
+      where: { status: "PUBLISHED" },
+      select: { title: true, category: { select: { name: true } } },
+      take: 200,
+    }),
+    prisma.category.findMany({ select: { name: true }, take: 100 }),
+  ]);
+
+  const keys: CourseKey[] = [];
+  for (const c of courses) {
+    keys.push({ key: c.title.toLowerCase(), title: c.title });
+    const short = courseKey(c.title);
+    if (short.length >= 5) keys.push({ key: short, title: c.title });
+    // People name a course by its first couple of words — "spoken english" for
+    // "Spoken English With Personality Development" — so that is a key too.
+    const words = short.split(" ").filter(Boolean);
+    if (words.length > 2) {
+      const lead = words.slice(0, 2).join(" ");
+      if (lead.length >= 6) keys.push({ key: lead, title: c.title });
+    }
+    if (c.category?.name) {
+      keys.push({ key: c.category.name.toLowerCase(), title: c.category.name });
+    }
+  }
+  for (const cat of categories) {
+    keys.push({ key: cat.name.toLowerCase(), title: cat.name });
+  }
+
+  // Longest first, so "advanced data analysis" is preferred over "data".
+  const unique = [...new Map(keys.map((k) => [k.key, k])).values()]
+    .filter((k) => k.key.length >= 5)
+    .sort((a, b) => b.key.length - a.key.length);
+
+  writeMemo(COURSE_MEMO_KEY, unique, 5 * 60_000);
+  return unique;
 }
 
 const PHONE_RE = /(?:\+?91[\s-]?)?([6-9]\d{9})\b/;
@@ -406,12 +462,11 @@ export async function noteAbstract(input: {
     const email = text.match(EMAIL_RE)?.[0] ?? null;
     const name = text.match(NAME_RE)?.[1]?.trim().replace(/\s+/g, " ") ?? null;
 
-    // A course only counts when the academy runs one by that name.
-    const titles = await courseTitles();
+    // A course only counts when the academy runs one somebody could mean.
+    const keys = await courseKeys();
     const lower = text.toLowerCase();
     const courseInterest =
-      titles.find((t) => t.length > 3 && lower.includes(t.toLowerCase())) ??
-      null;
+      keys.find((k) => lower.includes(k.key))?.title ?? null;
 
     const existing = await prisma.chatAbstract.findFirst({
       where: { sessionId: input.sessionId },

@@ -164,6 +164,12 @@ export const settingsSchema = z.object({
   /// What a late instalment is charged — "penalty of 10% penalty would be
   /// charged. We can also edit that penalty percentage or amount." A flat
   /// figure wins over the percentage when it is set.
+  ///
+  /// Ships at zero on purpose. Charging is not retrospective-aware: the first
+  /// sweep after a rate is set charges *every* instalment already past its
+  /// grace period, which on an academy with historical dues means late fees
+  /// appearing against learners nobody warned. Typing a rate is the academy
+  /// saying it means to do that.
   feePenaltyPercent: z.coerce.number().min(0).max(100),
   feePenaltyFlat: z.coerce.number().min(0).max(1_000_000),
   /// Whether the scheduled nudges go out at all — 7 days, 3 days, 1 day and
@@ -269,7 +275,7 @@ export const DEFAULT_SETTINGS: Settings = {
   emiInterestPercent: 12,
   emiMaxInstallments: 12,
   feeGraceDays: 5,
-  feePenaltyPercent: 10,
+  feePenaltyPercent: 0,
   feePenaltyFlat: 0,
   feeRemindersEnabled: true,
 

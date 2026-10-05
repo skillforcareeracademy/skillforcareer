@@ -30,6 +30,7 @@ import { SearchSelect } from "@/components/shared/search-select";
 import {
   COURSE_LEVELS,
   DELIVERY_MODES,
+  DELIVERY_MODE_LABEL,
   PRICING_TYPES,
   type CoursePageDisplay,
 } from "@/lib/validations/course";
@@ -41,12 +42,7 @@ const LEVEL_LABEL: Record<string, string> = {
   ADVANCED: "Advanced",
   ALL_LEVELS: "All levels",
 };
-const MODE_LABEL: Record<string, string> = {
-  SELF_PACED: "Self-paced",
-  LIVE: "Live",
-  HYBRID: "Hybrid",
-  OFFLINE: "Offline",
-};
+
 const PRICING_LABEL: Record<string, string> = {
   FREE: "Free",
   PAID: "Paid",
@@ -352,12 +348,12 @@ export function CourseDetailsForm({
               }))}
             />
             <SelectField
-              label="Delivery"
+              label="Class mode"
               value={watch("deliveryMode")}
               onChange={(v) => setValue("deliveryMode", v)}
               options={DELIVERY_MODES.map((m) => ({
                 value: m,
-                label: MODE_LABEL[m],
+                label: DELIVERY_MODE_LABEL[m],
               }))}
             />
             <Field label="Language">

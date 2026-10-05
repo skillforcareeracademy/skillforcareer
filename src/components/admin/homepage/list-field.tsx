@@ -1,10 +1,20 @@
 "use client";
 
-import { useState } from "react";
-import { ChevronDown, ChevronUp, GripVertical, Plus, Trash2 } from "lucide-react";
+import { useRef, useState } from "react";
+import {
+  ChevronDown,
+  ChevronUp,
+  GripVertical,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { isListField, type Field, type ListField } from "@/lib/validations/homepage";
+import {
+  isListField,
+  type Field,
+  type ListField,
+} from "@/lib/validations/homepage";
 import { cn } from "@/lib/utils";
 import { FieldControl } from "./field-control";
 import { IconGlyph } from "./icon-glyph";
@@ -19,8 +29,10 @@ function blankItem(fields: (Field | ListField)[]): Item {
     else if (field.type === "switch") item[field.name] = false;
     else if (field.type === "number") item[field.name] = 1;
     else if (field.type === "icon") item[field.name] = "Sparkles";
-    else if (field.type === "tint" || field.type === "tone") item[field.name] = "rose";
-    else if (field.type === "select") item[field.name] = field.options?.[0]?.value ?? "";
+    else if (field.type === "tint" || field.type === "tone")
+      item[field.name] = "rose";
+    else if (field.type === "select")
+      item[field.name] = field.options?.[0]?.value ?? "";
     else item[field.name] = "";
   }
   return item;
@@ -73,11 +85,18 @@ export function ListFieldEditor({
   }
 
   function setField(index: number, name: string, fieldValue: unknown) {
-    replace(items.map((item, i) => (i === index ? { ...item, [name]: fieldValue } : item)));
+    replace(
+      items.map((item, i) =>
+        i === index ? { ...item, [name]: fieldValue } : item,
+      ),
+    );
   }
 
   function add() {
-    replace([...items, blankItem(spec.fields)], new Set([...open, items.length]));
+    replace(
+      [...items, blankItem(spec.fields)],
+      new Set([...open, items.length]),
+    );
   }
 
   function remove(index: number) {
@@ -110,6 +129,67 @@ export function ListFieldEditor({
     replace(next, reopen);
   }
 
+  /** Lift one row out and put it back down at `to`, open rows following along. */
+  function moveTo(from: number, to: number) {
+    if (from === to || to < 0 || to >= items.length) return;
+    const next = [...items];
+    const [lifted] = next.splice(from, 1);
+    next.splice(to, 0, lifted);
+
+    // Every index between the two ends shifts by one; the lifted row lands on
+    // `to`. Without this the wrong cards spring open after a drop.
+    const reopen = new Set<number>();
+    for (const i of open) {
+      if (i === from) reopen.add(to);
+      else if (from < to && i > from && i <= to) reopen.add(i - 1);
+      else if (to < from && i >= to && i < from) reopen.add(i + 1);
+      else reopen.add(i);
+    }
+    replace(next, reopen);
+  }
+
+  /**
+   * Which row is being dragged, in a ref rather than state.
+   *
+   * `dragover` fires before React has flushed a `setState`, so a handler that
+   * read the dragged row from state would see null, skip `preventDefault`, and
+   * the browser would silently refuse every drop. The same trap the folder tree
+   * hit. State is kept alongside only so the row can be drawn as lifted.
+   */
+  const draggingRef = useRef<number | null>(null);
+  const [dragging, setDragging] = useState<number | null>(null);
+  const [over, setOver] = useState<number | null>(null);
+
+  function onDragStart(index: number, e: React.DragEvent) {
+    draggingRef.current = index;
+    setDragging(index);
+    e.dataTransfer.effectAllowed = "move";
+    // Firefox refuses to start a drag unless something is carried.
+    e.dataTransfer.setData("text/plain", String(index));
+  }
+
+  function onDragOver(index: number, e: React.DragEvent) {
+    if (draggingRef.current == null) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    if (over !== index) setOver(index);
+  }
+
+  function onDrop(index: number, e: React.DragEvent) {
+    e.preventDefault();
+    const from = draggingRef.current;
+    draggingRef.current = null;
+    setDragging(null);
+    setOver(null);
+    if (from != null) moveTo(from, index);
+  }
+
+  function endDrag() {
+    draggingRef.current = null;
+    setDragging(null);
+    setOver(null);
+  }
+
   const full = items.length >= spec.max;
 
   return (
@@ -117,7 +197,9 @@ export function ListFieldEditor({
       <div className="flex items-end justify-between gap-3">
         <div>
           <Label>{spec.label}</Label>
-          {spec.hint && <p className="text-muted-foreground mt-0.5 text-xs">{spec.hint}</p>}
+          {spec.hint && (
+            <p className="text-muted-foreground mt-0.5 text-xs">{spec.hint}</p>
+          )}
         </div>
         <span className="text-muted-foreground shrink-0 text-xs tabular-nums">
           {items.length} / {spec.max}
@@ -129,17 +211,45 @@ export function ListFieldEditor({
           const expanded = open.has(index);
           const glyph = typeof item.icon === "string" ? item.icon : null;
           return (
-            <div key={index} className="bg-card overflow-hidden rounded-lg border">
+            <div
+              key={index}
+              onDragOver={(e) => onDragOver(index, e)}
+              onDrop={(e) => onDrop(index, e)}
+              onDragEnd={endDrag}
+              className={cn(
+                "bg-card overflow-hidden rounded-lg border transition-colors",
+                dragging === index && "opacity-50",
+                over === index &&
+                  dragging !== index &&
+                  "border-primary border-dashed",
+              )}
+            >
               <div className="flex items-center gap-1 pr-1.5">
+                {/* The handle, and only the handle, starts a drag — the row
+                    holds text boxes, and making the whole thing draggable would
+                    stop anyone selecting a word inside one. The up and down
+                    buttons stay for touch, where browsers do not drag at all. */}
+                <span
+                  draggable
+                  onDragStart={(e) => onDragStart(index, e)}
+                  onDragEnd={endDrag}
+                  aria-label={`Drag to reorder ${spec.itemLabel}`}
+                  title="Drag to reorder"
+                  className="text-muted-foreground hover:text-foreground flex cursor-grab items-center self-stretch px-2 active:cursor-grabbing"
+                >
+                  <GripVertical className="size-4 shrink-0" aria-hidden />
+                </span>
                 <button
                   type="button"
                   onClick={() => toggle(index)}
                   aria-expanded={expanded}
-                  className="hover:bg-accent/50 flex min-w-0 flex-1 items-center gap-2 px-3 py-2.5 text-left transition-colors"
+                  className="hover:bg-accent/50 flex min-w-0 flex-1 items-center gap-2 py-2.5 pr-3 text-left transition-colors"
                 >
-                  <GripVertical className="text-muted-foreground size-4 shrink-0" aria-hidden />
                   {glyph && (
-                    <IconGlyph name={glyph} className="text-primary size-4 shrink-0" />
+                    <IconGlyph
+                      name={glyph}
+                      className="text-primary size-4 shrink-0"
+                    />
                   )}
                   <span className="truncate text-sm font-medium">
                     {rowTitle(item, spec, index)}
@@ -190,7 +300,10 @@ export function ListFieldEditor({
                     // A row can itself hold a list — a footer column holds its
                     // links — so the editor draws itself again one level down.
                     isListField(field) ? (
-                      <div key={field.name} className="bg-muted/30 min-w-0 rounded-lg p-3 sm:col-span-2">
+                      <div
+                        key={field.name}
+                        className="bg-muted/30 min-w-0 rounded-lg p-3 sm:col-span-2"
+                      >
                         <ListFieldEditor
                           spec={field}
                           path={[...path, 0, field.name]}
@@ -200,7 +313,10 @@ export function ListFieldEditor({
                         />
                       </div>
                     ) : (
-                      <div key={field.name} className={cn("min-w-0", field.wide && "sm:col-span-2")}>
+                      <div
+                        key={field.name}
+                        className={cn("min-w-0", field.wide && "sm:col-span-2")}
+                      >
                         <FieldControl
                           field={field}
                           value={item[field.name]}
@@ -217,7 +333,13 @@ export function ListFieldEditor({
         })}
       </div>
 
-      <Button type="button" variant="outline" size="sm" onClick={add} disabled={full}>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={add}
+        disabled={full}
+      >
         <Plus className="size-4" /> Add {spec.itemLabel}
       </Button>
       {full && (

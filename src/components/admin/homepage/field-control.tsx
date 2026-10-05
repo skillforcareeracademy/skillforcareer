@@ -50,7 +50,9 @@ export function FieldControl({
       <div className="flex items-start justify-between gap-4 rounded-lg border p-3">
         <div className="space-y-0.5">
           <Label htmlFor={id}>{field.label}</Label>
-          {field.hint && <p className="text-muted-foreground text-xs">{field.hint}</p>}
+          {field.hint && (
+            <p className="text-muted-foreground text-xs">{field.hint}</p>
+          )}
         </div>
         <Switch
           id={id}
@@ -123,7 +125,8 @@ export function FieldControl({
           <SelectTrigger id={id} className="w-full">
             <SelectValue placeholder="Choose one">
               {(v) =>
-                (field.options ?? []).find((o) => o.value === v)?.label ?? "Choose one"
+                (field.options ?? []).find((o) => o.value === v)?.label ??
+                "Choose one"
               }
             </SelectValue>
           </SelectTrigger>
@@ -192,7 +195,10 @@ export function FieldControl({
                 return (
                   <>
                     <span
-                      className={cn("size-3 rounded-full bg-current", TONES[name].className)}
+                      className={cn(
+                        "size-3 rounded-full bg-current",
+                        TONES[name].className,
+                      )}
                       aria-hidden
                     />
                     {TONES[name].label}
@@ -205,7 +211,10 @@ export function FieldControl({
             {TONE_NAMES.map((name) => (
               <SelectItem key={name} value={name}>
                 <span
-                  className={cn("size-3 rounded-full bg-current", TONES[name].className)}
+                  className={cn(
+                    "size-3 rounded-full bg-current",
+                    TONES[name].className,
+                  )}
                   aria-hidden
                 />
                 {TONES[name].label}

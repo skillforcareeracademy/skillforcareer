@@ -67,14 +67,28 @@ export function ChapterDialog({
         <form onSubmit={onSubmit} className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="ch-title">Title</Label>
-            <Input id="ch-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Getting started" />
+            <Input
+              id="ch-title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="e.g. Getting started"
+            />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="ch-desc">Description (optional)</Label>
-            <Textarea id="ch-desc" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
+            <Textarea
+              id="ch-desc"
+              rows={2}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+            >
               Cancel
             </Button>
             <Button type="submit" disabled={saving || title.trim().length < 2}>

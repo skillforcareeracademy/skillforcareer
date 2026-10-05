@@ -3,7 +3,11 @@
 import { useState } from "react";
 import { Check, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { ICON_NAMES } from "@/config/icons";
 import { cn } from "@/lib/utils";
 import { IconGlyph } from "./icon-glyph";
@@ -64,7 +68,10 @@ export function IconPicker({
               >
                 <IconGlyph name={name} className="size-4.5" />
                 {active && (
-                  <Check className="absolute -top-0.5 -right-0.5 size-3" aria-hidden />
+                  <Check
+                    className="absolute -top-0.5 -right-0.5 size-3"
+                    aria-hidden
+                  />
                 )}
               </button>
             );

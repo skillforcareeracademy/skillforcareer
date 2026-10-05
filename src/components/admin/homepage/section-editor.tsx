@@ -67,7 +67,9 @@ export function SectionEditor({
       toast.success(`${spec.label} saved.`);
       router.refresh();
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : "Couldn't save. Try again.");
+      toast.error(
+        e instanceof ApiError ? e.message : "Couldn't save. Try again.",
+      );
     } finally {
       setSaving(false);
     }
@@ -82,7 +84,9 @@ export function SectionEditor({
       setConfirmReset(false);
       router.refresh();
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : "Couldn't reset. Try again.");
+      toast.error(
+        e instanceof ApiError ? e.message : "Couldn't reset. Try again.",
+      );
     } finally {
       setResetting(false);
     }
@@ -103,7 +107,10 @@ export function SectionEditor({
               />
             </div>
           ) : (
-            <div key={field.name} className={cn("min-w-0", field.wide && "sm:col-span-2")}>
+            <div
+              key={field.name}
+              className={cn("min-w-0", field.wide && "sm:col-span-2")}
+            >
               <FieldControl
                 field={field}
                 value={form[field.name]}
@@ -140,7 +147,11 @@ export function SectionEditor({
             </Button>
           )}
           <Button type="button" onClick={save} disabled={!dirty || saving}>
-            {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+            {saving ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Save className="size-4" />
+            )}
             Save changes
           </Button>
         </div>
@@ -149,7 +160,9 @@ export function SectionEditor({
       <AlertDialog open={confirmReset} onOpenChange={setConfirmReset}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Reset “{spec.label}” to the original content?</AlertDialogTitle>
+            <AlertDialogTitle>
+              Reset “{spec.label}” to the original content?
+            </AlertDialogTitle>
             <AlertDialogDescription>
               Every edit made to this section goes back to the copy the site
               launched with. Where it sits on the page, and whether it&apos;s

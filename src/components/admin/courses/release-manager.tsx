@@ -29,7 +29,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { ReleaseBoard, ReleaseMode } from "@/server/services/release-service";
+import type {
+  ReleaseBoard,
+  ReleaseMode,
+} from "@/server/services/release-service";
 import { cn } from "@/lib/utils";
 
 /**
@@ -68,7 +71,8 @@ const MODES: { value: ReleaseMode; label: string; hint: string }[] = [
 const MODE_BADGE: Record<ReleaseMode, { label: string; className: string }> = {
   IMMEDIATE: {
     label: "Open",
-    className: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
+    className:
+      "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
   },
   SCHEDULED: {
     label: "Scheduled",
@@ -76,11 +80,13 @@ const MODE_BADGE: Record<ReleaseMode, { label: string; className: string }> = {
   },
   DRIP: {
     label: "Drip",
-    className: "bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300",
+    className:
+      "bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300",
   },
   MANUAL: {
     label: "Locked",
-    className: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
+    className:
+      "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
   },
 };
 
@@ -111,18 +117,16 @@ export function ReleaseManager({ courseId }: { courseId: string }) {
   // Inline `.then` with the setState inside the callbacks — the shape the
   // react-hooks lint rules accept for a fetch-on-mount (see lead-detail-sheet).
   useEffect(() => {
-    api
-      .get<ReleaseBoard>(`/api/courses/${courseId}/release`)
-      .then(
-        (data) => {
-          setBoard(data);
-          setLoading(false);
-        },
-        () => {
-          toast.error("Couldn't load the access settings.");
-          setLoading(false);
-        },
-      );
+    api.get<ReleaseBoard>(`/api/courses/${courseId}/release`).then(
+      (data) => {
+        setBoard(data);
+        setLoading(false);
+      },
+      () => {
+        toast.error("Couldn't load the access settings.");
+        setLoading(false);
+      },
+    );
   }, [courseId]);
 
   const lessons = useMemo(() => {
@@ -131,7 +135,8 @@ export function ReleaseManager({ courseId }: { courseId: string }) {
     if (!q) return board.lessons;
     return board.lessons.filter(
       (l) =>
-        l.title.toLowerCase().includes(q) || l.chapterTitle.toLowerCase().includes(q),
+        l.title.toLowerCase().includes(q) ||
+        l.chapterTitle.toLowerCase().includes(q),
     );
   }, [board, search]);
 
@@ -166,7 +171,11 @@ export function ReleaseManager({ courseId }: { courseId: string }) {
     });
   }
 
-  function toggleIn(set: Set<string>, setter: (s: Set<string>) => void, id: string) {
+  function toggleIn(
+    set: Set<string>,
+    setter: (s: Set<string>) => void,
+    id: string,
+  ) {
     const next = new Set(set);
     if (next.has(id)) next.delete(id);
     else next.add(id);
@@ -198,7 +207,9 @@ export function ReleaseManager({ courseId }: { courseId: string }) {
       return;
     }
     if (mode === "MANUAL" && batchIds.size === 0 && studentIds.size === 0) {
-      toast.error("Choose at least one batch or learner — or these stay shut to everyone.");
+      toast.error(
+        "Choose at least one batch or learner — or these stay shut to everyone.",
+      );
       return;
     }
 
@@ -209,17 +220,21 @@ export function ReleaseManager({ courseId }: { courseId: string }) {
         {
           lessonIds: [...selected],
           releaseMode: mode,
-          releaseAt: mode === "SCHEDULED" ? new Date(releaseAt).toISOString() : null,
+          releaseAt:
+            mode === "SCHEDULED" ? new Date(releaseAt).toISOString() : null,
           dripDays: mode === "DRIP" ? Number(dripDays) || 0 : null,
           viewLimit: viewLimit.trim() === "" ? null : Number(viewLimit),
-          downloadLimit: downloadLimit.trim() === "" ? null : Number(downloadLimit),
+          downloadLimit:
+            downloadLimit.trim() === "" ? null : Number(downloadLimit),
           downloadsEnabled,
           batchIds: mode === "MANUAL" ? [...batchIds] : [],
           studentIds: mode === "MANUAL" ? [...studentIds] : [],
         },
       );
       toast.success(res.message);
-      const fresh = await api.get<ReleaseBoard>(`/api/courses/${courseId}/release`);
+      const fresh = await api.get<ReleaseBoard>(
+        `/api/courses/${courseId}/release`,
+      );
       setBoard(fresh);
       setSelected(new Set());
     } catch (e) {
@@ -247,7 +262,9 @@ export function ReleaseManager({ courseId }: { courseId: string }) {
     );
   }
 
-  const chapterTitles = new Map(board.lessons.map((l) => [l.chapterId, l.chapterTitle]));
+  const chapterTitles = new Map(
+    board.lessons.map((l) => [l.chapterId, l.chapterTitle]),
+  );
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_22rem] lg:items-start">
@@ -267,7 +284,9 @@ export function ReleaseManager({ courseId }: { courseId: string }) {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setSelected(new Set(board.lessons.map((l) => l.id)))}
+              onClick={() =>
+                setSelected(new Set(board.lessons.map((l) => l.id)))
+              }
             >
               <CheckSquare className="size-4" /> Select all
             </Button>
@@ -293,7 +312,11 @@ export function ReleaseManager({ courseId }: { courseId: string }) {
                   onClick={() => toggleChapter(ids)}
                   className="text-muted-foreground hover:text-foreground flex w-full items-center gap-2 px-1 py-1 text-left text-xs font-medium tracking-wide uppercase"
                 >
-                  {allOn ? <CheckSquare className="size-3.5" /> : <Square className="size-3.5" />}
+                  {allOn ? (
+                    <CheckSquare className="size-3.5" />
+                  ) : (
+                    <Square className="size-3.5" />
+                  )}
                   {chapterTitles.get(chapterId)}
                 </button>
 
@@ -308,13 +331,18 @@ export function ReleaseManager({ courseId }: { courseId: string }) {
                         on && "border-primary/40 bg-primary/5",
                       )}
                     >
-                      <Checkbox checked={on} onCheckedChange={() => toggle(l.id)} />
+                      <Checkbox
+                        checked={on}
+                        onCheckedChange={() => toggle(l.id)}
+                      />
                       <button
                         type="button"
                         onClick={() => loadFrom(l.id)}
                         className="min-w-0 flex-1 text-left"
                       >
-                        <p className="truncate text-sm font-medium">{l.title}</p>
+                        <p className="truncate text-sm font-medium">
+                          {l.title}
+                        </p>
                         <p className="text-muted-foreground truncate text-xs">
                           {l.releaseMode === "SCHEDULED" && l.releaseAt
                             ? `Opens ${new Date(l.releaseAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}`
@@ -333,7 +361,10 @@ export function ReleaseManager({ courseId }: { courseId: string }) {
                               : ""}
                         </p>
                       </button>
-                      <Badge variant="secondary" className={cn("shrink-0", badge.className)}>
+                      <Badge
+                        variant="secondary"
+                        className={cn("shrink-0", badge.className)}
+                      >
                         {badge.label}
                       </Badge>
                     </div>
@@ -359,7 +390,10 @@ export function ReleaseManager({ courseId }: { courseId: string }) {
 
           <div className="space-y-1.5">
             <Label>When it opens</Label>
-            <Select value={mode} onValueChange={(v) => v && setMode(v as ReleaseMode)}>
+            <Select
+              value={mode}
+              onValueChange={(v) => v && setMode(v as ReleaseMode)}
+            >
               <SelectTrigger>
                 <SelectValue>
                   {(v) => MODES.find((m) => m.value === v)?.label ?? "Choose"}
@@ -427,9 +461,13 @@ export function ReleaseManager({ courseId }: { courseId: string }) {
                       >
                         <Checkbox
                           checked={batchIds.has(b.id)}
-                          onCheckedChange={() => toggleIn(batchIds, setBatchIds, b.id)}
+                          onCheckedChange={() =>
+                            toggleIn(batchIds, setBatchIds, b.id)
+                          }
                         />
-                        <span className="min-w-0 flex-1 truncate">{b.name}</span>
+                        <span className="min-w-0 flex-1 truncate">
+                          {b.name}
+                        </span>
                         <span className="text-muted-foreground text-xs">
                           {b.learners}
                         </span>
@@ -443,7 +481,8 @@ export function ReleaseManager({ courseId }: { courseId: string }) {
                 <Label>Individual learners</Label>
                 {board.students.length === 0 ? (
                   <p className="text-muted-foreground text-xs">
-                    Nobody has taken this course yet. Anyone who enrols — or whom you add from
+                    Nobody has taken this course yet. Anyone who enrols — or
+                    whom you add from
                     <strong> Batches</strong> — appears here.
                   </p>
                 ) : (
@@ -455,9 +494,13 @@ export function ReleaseManager({ courseId }: { courseId: string }) {
                       >
                         <Checkbox
                           checked={studentIds.has(s.id)}
-                          onCheckedChange={() => toggleIn(studentIds, setStudentIds, s.id)}
+                          onCheckedChange={() =>
+                            toggleIn(studentIds, setStudentIds, s.id)
+                          }
                         />
-                        <span className="min-w-0 flex-1 truncate">{s.name}</span>
+                        <span className="min-w-0 flex-1 truncate">
+                          {s.name}
+                        </span>
                         {/* "Enrolled" was ambiguous: this says whether the
                             academy has actually been paid. */}
                         <span
@@ -474,8 +517,9 @@ export function ReleaseManager({ courseId }: { courseId: string }) {
                   </div>
                 )}
                 <p className="text-muted-foreground text-xs">
-                  <strong>Paid</strong> = the academy has a payment against their seat.{" "}
-                  <strong>Registered</strong> = they signed up but haven&apos;t paid yet.
+                  <strong>Paid</strong> = the academy has a payment against
+                  their seat. <strong>Registered</strong> = they signed up but
+                  haven&apos;t paid yet.
                 </p>
               </div>
             </div>
@@ -516,7 +560,10 @@ export function ReleaseManager({ courseId }: { courseId: string }) {
                 "nobody downloads this" needed its own control. */}
             <label className="flex items-center justify-between gap-4 text-xs">
               <span>Allow downloads of this material</span>
-              <Switch checked={downloadsEnabled} onCheckedChange={setDownloadsEnabled} />
+              <Switch
+                checked={downloadsEnabled}
+                onCheckedChange={setDownloadsEnabled}
+              />
             </label>
             <p className="text-muted-foreground text-xs">
               Blank uses the platform default from Settings → Learning. 0 means
@@ -524,7 +571,11 @@ export function ReleaseManager({ courseId }: { courseId: string }) {
             </p>
           </div>
 
-          <Button onClick={save} disabled={saving || selected.size === 0} className="w-full">
+          <Button
+            onClick={save}
+            disabled={saving || selected.size === 0}
+            className="w-full"
+          >
             {saving ? (
               <Loader2 className="size-4 animate-spin" />
             ) : mode === "IMMEDIATE" ? (
@@ -532,7 +583,8 @@ export function ReleaseManager({ courseId }: { courseId: string }) {
             ) : (
               <Lock className="size-4" />
             )}
-            Apply to {selected.size || "…"} lesson{selected.size === 1 ? "" : "s"}
+            Apply to {selected.size || "…"} lesson
+            {selected.size === 1 ? "" : "s"}
           </Button>
         </CardContent>
       </Card>

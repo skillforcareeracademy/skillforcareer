@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { isOfflineOnly } from "@/lib/validations/course";
 import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
 import { logger } from "@/lib/logger";
@@ -22,7 +23,10 @@ import {
   type ReminderRunResult,
   type WishesRunResult,
 } from "./class-notifications";
-import { sendBirthdayGreetings, type BirthdayRunResult } from "./referral-service";
+import {
+  sendBirthdayGreetings,
+  type BirthdayRunResult,
+} from "./referral-service";
 
 /**
  * A batch's class timetable.
@@ -80,11 +84,17 @@ interface BatchSchedule {
 function readSchedule(json: Prisma.JsonValue | null): BatchSchedule | null {
   if (!json || typeof json !== "object" || Array.isArray(json)) return null;
   const o = json as Record<string, unknown>;
-  const days = Array.isArray(o.days) ? o.days.filter((d): d is string => typeof d === "string") : [];
+  const days = Array.isArray(o.days)
+    ? o.days.filter((d): d is string => typeof d === "string")
+    : [];
   const startTime = typeof o.startTime === "string" ? o.startTime : "";
   const endTime = typeof o.endTime === "string" ? o.endTime : "";
   if (days.length === 0 || !/^\d{2}:\d{2}$/.test(startTime)) return null;
-  return { days, startTime, endTime: /^\d{2}:\d{2}$/.test(endTime) ? endTime : "" };
+  return {
+    days,
+    startTime,
+    endTime: /^\d{2}:\d{2}$/.test(endTime) ? endTime : "",
+  };
 }
 
 /** One date on the timetable. `ordinal` is null on a no-classes holiday. */
@@ -105,13 +115,20 @@ interface BatchForTimetable {
 }
 
 /** First and last timetable day for a batch, in academy days. */
-function timetableWindow(batch: BatchForTimetable, now: Date): { from: string; to: string } {
+function timetableWindow(
+  batch: BatchForTimetable,
+  now: Date,
+): { from: string; to: string } {
   const today = istToday(now);
   // A batch with no start date counts its classes from the day it was made, so
   // "Class 7" stays "Class 7" on every rebuild.
-  const from = batch.startDate ? utcMidnightToDateKey(batch.startDate) : istDateKey(batch.createdAt);
+  const from = batch.startDate
+    ? utcMidnightToDateKey(batch.startDate)
+    : istDateKey(batch.createdAt);
   const cap = addDaysToKey(today, MAX_WINDOW_DAYS);
-  let to = batch.endDate ? utcMidnightToDateKey(batch.endDate) : addDaysToKey(today, ROLLING_WEEKS * 7);
+  let to = batch.endDate
+    ? utcMidnightToDateKey(batch.endDate)
+    : addDaysToKey(today, ROLLING_WEEKS * 7);
   if (to > cap) to = cap;
   return { from, to };
 }
@@ -124,7 +141,11 @@ function buildSlots(
   const slots: Slot[] = [];
   let ordinal = 0;
   // Guard against a start date typed decades back.
-  for (let key = window.from, i = 0; key <= window.to && i < 3_000; key = addDaysToKey(key, 1), i += 1) {
+  for (
+    let key = window.from, i = 0;
+    key <= window.to && i < 3_000;
+    key = addDaysToKey(key, 1), i += 1
+  ) {
     if (!schedule.days.includes(weekdayOfKey(key))) continue;
     const start = istWallClockToUtc(key, schedule.startTime);
     const end =
@@ -132,13 +153,20 @@ function buildSlots(
         ? istWallClockToUtc(key, schedule.endTime)
         : new Date(start.getTime() + DEFAULT_CLASS_MINUTES * 60_000);
     const holiday = holidays.get(key) ?? null;
-    slots.push({ key, start, end, holiday, ordinal: holiday ? null : ++ordinal });
+    slots.push({
+      key,
+      start,
+      end,
+      holiday,
+      ordinal: holiday ? null : ++ordinal,
+    });
   }
   return slots;
 }
 
 function classTitle(courseTitle: string, ordinal: number): string {
-  const name = courseTitle.length > 150 ? `${courseTitle.slice(0, 147)}…` : courseTitle;
+  const name =
+    courseTitle.length > 150 ? `${courseTitle.slice(0, 147)}…` : courseTitle;
   return `${name} — Class ${ordinal}`;
 }
 
@@ -265,10 +293,17 @@ export function planTimetable(
   const window = timetableWindow(batch, now);
 
   // A cancelled or finished batch has no timetable: its future classes go.
-  const slots = schedule && running && window.from <= window.to ? buildSlots(schedule, window, holidays) : [];
+  const slots =
+    schedule && running && window.from <= window.to
+      ? buildSlots(schedule, window, holidays)
+      : [];
   const hostId = batch.instructorId ?? batch.course.instructorId ?? null;
-  const provider = batch.course.deliveryMode === "OFFLINE" ? "offline" : "webrtc";
-  const sorted = [...existing].sort((a, b) => a.scheduledStart.getTime() - b.scheduledStart.getTime());
+  const provider = isOfflineOnly(batch.course.deliveryMode)
+    ? "offline"
+    : "webrtc";
+  const sorted = [...existing].sort(
+    (a, b) => a.scheduledStart.getTime() - b.scheduledStart.getTime(),
+  );
 
   // 1. A class on a timetable date belongs to that date. Prefer an untouched
   //    one, so a class moved *onto* a busy day stays spare for step 2.
@@ -282,7 +317,8 @@ export function planTimetable(
   for (const s of slots) {
     const onDay = byKey.get(s.key) ?? [];
     const pick =
-      onDay.find((m) => isFree(m, now) && !used.has(m.id)) ?? onDay.find((m) => !used.has(m.id));
+      onDay.find((m) => isFree(m, now) && !used.has(m.id)) ??
+      onDay.find((m) => !used.has(m.id));
     if (pick) {
       matched.set(s.key, pick);
       used.add(pick.id);
@@ -292,9 +328,14 @@ export function planTimetable(
   // 2. A rescheduled (overridden) class that sits off its own date still
   //    covers the slot it was moved from — the nearest open one within a week.
   //    Slots from before this batch ever had an auto class can't be its origin.
-  const firstAutoKey = sorted.length ? istDateKey(sorted[0].scheduledStart) : null;
+  const firstAutoKey = sorted.length
+    ? istDateKey(sorted[0].scheduledStart)
+    : null;
   const open = slots.filter(
-    (s) => s.ordinal !== null && !matched.has(s.key) && (!firstAutoKey || s.key >= firstAutoKey),
+    (s) =>
+      s.ordinal !== null &&
+      !matched.has(s.key) &&
+      (!firstAutoKey || s.key >= firstAutoKey),
   );
   for (const m of sorted) {
     if (used.has(m.id) || !m.manualOverride) continue;
@@ -305,7 +346,10 @@ export function planTimetable(
       const gap = Math.abs(s.start.getTime() - m.scheduledStart.getTime());
       if (gap > MOVED_CLASS_REACH_DAYS * DAY_MS) continue;
       // Ties go to the later slot: a class is more often brought forward.
-      if (gap < bestGap || (gap === bestGap && best !== null && s.start > best.start)) {
+      if (
+        gap < bestGap ||
+        (gap === bestGap && best !== null && s.start > best.start)
+      ) {
         best = s;
         bestGap = gap;
       }
@@ -350,7 +394,8 @@ export function planTimetable(
           cancelReason: reason,
           resetReminder: false,
         });
-        if (m.status === "SCHEDULED") result.holidayCancelled.push({ id: m.id, reason });
+        if (m.status === "SCHEDULED")
+          result.holidayCancelled.push({ id: m.id, reason });
       }
       continue;
     }
@@ -385,7 +430,9 @@ export function planTimetable(
     else result.updated += 1;
   }
 
-  const toDelete = sorted.filter((m) => !used.has(m.id) && isFree(m, now)).map((m) => m.id);
+  const toDelete = sorted
+    .filter((m) => !used.has(m.id) && isFree(m, now))
+    .map((m) => m.id);
   return { toCreate, patches, toDelete, hostId, provider, result };
 }
 
@@ -402,20 +449,26 @@ async function loadTimetableInputs(batchId: string, now: Date) {
       schedule: true,
       instructorId: true,
       courseId: true,
-      course: { select: { title: true, instructorId: true, deliveryMode: true } },
+      course: {
+        select: { title: true, instructorId: true, deliveryMode: true },
+      },
     },
   });
   if (!batch) throw AppError.notFound("Batch not found.");
 
   const window = timetableWindow(batch, now);
   const needsHolidays =
-    readSchedule(batch.schedule) !== null && (batch.status === "UPCOMING" || batch.status === "ONGOING");
+    readSchedule(batch.schedule) !== null &&
+    (batch.status === "UPCOMING" || batch.status === "ONGOING");
   const [holidayRows, existing] = await Promise.all([
     needsHolidays
       ? prisma.holiday.findMany({
           where: {
             noClasses: true,
-            date: { gte: dateKeyToUtcMidnight(window.from), lte: dateKeyToUtcMidnight(window.to) },
+            date: {
+              gte: dateKeyToUtcMidnight(window.from),
+              lte: dateKeyToUtcMidnight(window.to),
+            },
           },
           select: { date: true, name: true },
           orderBy: { createdAt: "asc" },
@@ -447,7 +500,10 @@ async function loadTimetableInputs(batchId: string, now: Date) {
 }
 
 /** Read-only: what a sync of this batch would do right now. */
-export async function previewBatchTimetable(batchId: string, now: Date = new Date()): Promise<TimetablePlan> {
+export async function previewBatchTimetable(
+  batchId: string,
+  now: Date = new Date(),
+): Promise<TimetablePlan> {
   const { batch, holidays, existing } = await loadTimetableInputs(batchId, now);
   return planTimetable(batch, holidays, existing, now);
 }
@@ -507,19 +563,29 @@ export async function syncBatchTimetable(
 type SyncMode = "created" | "updated" | "rebuilt" | "holiday" | "cron";
 
 /** Tell people what a sync changed, in the way that suits what caused it. */
-function announceSync(batchId: string, r: TimetableSyncResult, mode: SyncMode, actorId?: string): void {
+function announceSync(
+  batchId: string,
+  r: TimetableSyncResult,
+  mode: SyncMode,
+  actorId?: string,
+): void {
   // A class the holiday took away is its own news, whatever caused the sync.
   for (const c of r.holidayCancelled) {
     announceClassEventLater(c.id, { kind: "cancelled", reason: c.reason });
   }
   const perClassRevivals = mode === "holiday" || mode === "cron";
   if (perClassRevivals) {
-    for (const id of r.revivedIds) announceClassEventLater(id, { kind: "restored" });
+    for (const id of r.revivedIds)
+      announceClassEventLater(id, { kind: "restored" });
   }
   // The morning cron rolling an open-ended timetable forward is not news;
   // the reminder the day before each class covers it.
   const created = mode === "cron" ? 0 : r.created;
-  const changed = created + r.removed + r.updated + (perClassRevivals ? 0 : r.revivedIds.length);
+  const changed =
+    created +
+    r.removed +
+    r.updated +
+    (perClassRevivals ? 0 : r.revivedIds.length);
   if (changed > 0) {
     announceTimetable(batchId, {
       reason: mode === "created" ? "created" : "updated",
@@ -563,7 +629,11 @@ export async function refreshBatchTimetable(
 
 // ── Holidays ────────────────────────────────────────────────────────────────
 
-async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+async function mapLimit<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
   const out: R[] = [];
   for (let i = 0; i < items.length; i += limit) {
     out.push(...(await Promise.all(items.slice(i, i + limit).map(fn))));
@@ -608,7 +678,14 @@ export async function applyHolidayToTimetables(
     if (!s) continue;
     const from = b.startDate ? utcMidnightToDateKey(b.startDate) : null;
     const to = b.endDate ? utcMidnightToDateKey(b.endDate) : null;
-    if (keys.some((k) => s.days.includes(weekdayOfKey(k)) && (!from || k >= from) && (!to || k <= to))) {
+    if (
+      keys.some(
+        (k) =>
+          s.days.includes(weekdayOfKey(k)) &&
+          (!from || k >= from) &&
+          (!to || k <= to),
+      )
+    ) {
       affected.add(b.id);
     }
   }
@@ -626,7 +703,10 @@ export async function applyHolidayToTimetables(
   });
   return {
     batches: affected.size,
-    cancelled: results.reduce((n, r) => n + (r?.holidayCancelled.length ?? 0), 0),
+    cancelled: results.reduce(
+      (n, r) => n + (r?.holidayCancelled.length ?? 0),
+      0,
+    ),
     restored: results.reduce((n, r) => n + (r?.revivedIds.length ?? 0), 0),
   };
 }
@@ -642,7 +722,11 @@ export interface BatchClassStats {
   live: number;
 }
 
-type StatRow = { status: string; scheduledStart: Date; scheduledEnd: Date | null };
+type StatRow = {
+  status: string;
+  scheduledStart: Date;
+  scheduledEnd: Date | null;
+};
 
 /**
  * "Completed" is a class that ended, or whose time has simply passed — an
@@ -650,13 +734,21 @@ type StatRow = { status: string; scheduledStart: Date; scheduledEnd: Date | null
  * pending either. "Pending" is everything still to come.
  */
 function computeStats(rows: StatRow[], now: Date): BatchClassStats {
-  const s: BatchClassStats = { total: 0, completed: 0, pending: 0, cancelled: 0, live: 0 };
+  const s: BatchClassStats = {
+    total: 0,
+    completed: 0,
+    pending: 0,
+    cancelled: 0,
+    live: 0,
+  };
   for (const m of rows) {
     if (m.status === "CANCELLED") s.cancelled += 1;
     else if (m.status === "LIVE") s.live += 1;
     else if (m.status === "ENDED") s.completed += 1;
     else {
-      const end = m.scheduledEnd ?? new Date(m.scheduledStart.getTime() + DEFAULT_CLASS_MINUTES * 60_000);
+      const end =
+        m.scheduledEnd ??
+        new Date(m.scheduledStart.getTime() + DEFAULT_CLASS_MINUTES * 60_000);
       if (end.getTime() < now.getTime()) s.completed += 1;
       else s.pending += 1;
     }
@@ -665,7 +757,9 @@ function computeStats(rows: StatRow[], now: Date): BatchClassStats {
   return s;
 }
 
-export async function getBatchClassStats(batchId: string): Promise<BatchClassStats> {
+export async function getBatchClassStats(
+  batchId: string,
+): Promise<BatchClassStats> {
   const rows = await prisma.meeting.findMany({
     where: { batchId, provider: { not: "webinar" } },
     select: { status: true, scheduledStart: true, scheduledEnd: true },
@@ -713,12 +807,16 @@ function phaseOf(m: StatRow, now: Date): BatchClassPhase {
   if (m.status === "CANCELLED") return "cancelled";
   if (m.status === "LIVE") return "live";
   if (m.status === "ENDED") return "past";
-  const end = m.scheduledEnd ?? new Date(m.scheduledStart.getTime() + DEFAULT_CLASS_MINUTES * 60_000);
+  const end =
+    m.scheduledEnd ??
+    new Date(m.scheduledStart.getTime() + DEFAULT_CLASS_MINUTES * 60_000);
   return end.getTime() < now.getTime() ? "past" : "upcoming";
 }
 
 /** Every class of a batch — upcoming first (soonest first), then the rest (latest first). */
-export async function listBatchClasses(batchId: string): Promise<BatchClassesView> {
+export async function listBatchClasses(
+  batchId: string,
+): Promise<BatchClassesView> {
   const [batch, rows] = await Promise.all([
     prisma.batch.findUnique({
       where: { id: batchId },
@@ -776,7 +874,9 @@ export async function listBatchClasses(batchId: string): Promise<BatchClassesVie
     reminderSent: m.reminderSentAt != null,
   }));
 
-  const ahead = mapped.filter((m) => m.phase === "live" || m.phase === "upcoming");
+  const ahead = mapped.filter(
+    (m) => m.phase === "live" || m.phase === "upcoming",
+  );
   const behind = mapped
     .filter((m) => m.phase === "past" || m.phase === "cancelled")
     .sort((a, b) => b.scheduledStart.localeCompare(a.scheduledStart));
@@ -810,8 +910,12 @@ export interface BatchClassProgress {
  * progress" list. Two queries whatever the number of batches. An instructor
  * sees the batches they lead or assist on.
  */
-export async function listBatchClassProgress(scope: { instructorId?: string } = {}): Promise<BatchClassProgress[]> {
-  const where: Prisma.BatchWhereInput = { status: { in: ["UPCOMING", "ONGOING"] } };
+export async function listBatchClassProgress(
+  scope: { instructorId?: string } = {},
+): Promise<BatchClassProgress[]> {
+  const where: Prisma.BatchWhereInput = {
+    status: { in: ["UPCOMING", "ONGOING"] },
+  };
   if (scope.instructorId) {
     where.OR = [
       { instructorId: scope.instructorId },
@@ -822,23 +926,43 @@ export async function listBatchClassProgress(scope: { instructorId?: string } = 
     where,
     orderBy: [{ startDate: "asc" }, { createdAt: "asc" }],
     take: 50,
-    select: { id: true, name: true, status: true, course: { select: { title: true } } },
+    select: {
+      id: true,
+      name: true,
+      status: true,
+      course: { select: { title: true } },
+    },
   });
   if (batches.length === 0) return [];
 
   const rows = await prisma.meeting.findMany({
-    where: { batchId: { in: batches.map((b) => b.id) }, provider: { not: "webinar" } },
-    select: { batchId: true, status: true, scheduledStart: true, scheduledEnd: true },
+    where: {
+      batchId: { in: batches.map((b) => b.id) },
+      provider: { not: "webinar" },
+    },
+    select: {
+      batchId: true,
+      status: true,
+      scheduledStart: true,
+      scheduledEnd: true,
+    },
   });
   const byBatch = new Map<string, StatRow[]>();
-  for (const r of rows) byBatch.set(r.batchId!, [...(byBatch.get(r.batchId!) ?? []), r]);
+  for (const r of rows)
+    byBatch.set(r.batchId!, [...(byBatch.get(r.batchId!) ?? []), r]);
 
   const now = new Date();
   return batches.map((b) => {
     const list = byBatch.get(b.id) ?? [];
     const next = list
-      .filter((m) => m.status === "SCHEDULED" && m.scheduledStart.getTime() > now.getTime())
-      .sort((x, y) => x.scheduledStart.getTime() - y.scheduledStart.getTime())[0];
+      .filter(
+        (m) =>
+          m.status === "SCHEDULED" &&
+          m.scheduledStart.getTime() > now.getTime(),
+      )
+      .sort(
+        (x, y) => x.scheduledStart.getTime() - y.scheduledStart.getTime(),
+      )[0];
     return {
       batchId: b.id,
       batchName: b.name,
@@ -856,7 +980,13 @@ export async function upcomingBatchClasses(batchId: string, take = 10) {
     where: { batchId, status: "SCHEDULED", scheduledStart: { gt: new Date() } },
     orderBy: { scheduledStart: "asc" },
     take,
-    select: { id: true, title: true, scheduledStart: true, scheduledEnd: true, provider: true },
+    select: {
+      id: true,
+      title: true,
+      scheduledStart: true,
+      scheduledEnd: true,
+      provider: true,
+    },
   });
 }
 
@@ -878,7 +1008,9 @@ export async function addBatchClass(
     select: {
       instructorId: true,
       courseId: true,
-      course: { select: { title: true, instructorId: true, deliveryMode: true } },
+      course: {
+        select: { title: true, instructorId: true, deliveryMode: true },
+      },
     },
   });
   if (!batch) throw AppError.notFound("Batch not found.");
@@ -889,7 +1021,9 @@ export async function addBatchClass(
       ? istWallClockToUtc(input.date, input.endTime)
       : new Date(start.getTime() + DEFAULT_CLASS_MINUTES * 60_000);
   if (start.getTime() < Date.now() - 5 * 60_000) {
-    throw AppError.badRequest("That time has already passed — pick a time in the future.");
+    throw AppError.badRequest(
+      "That time has already passed — pick a time in the future.",
+    );
   }
 
   const [code] = await uniqueRoomCodes(1);
@@ -901,7 +1035,7 @@ export async function addBatchClass(
       batchId,
       hostId: batch.instructorId ?? batch.course.instructorId ?? actorId,
       status: "SCHEDULED",
-      provider: batch.course.deliveryMode === "OFFLINE" ? "offline" : "webrtc",
+      provider: isOfflineOnly(batch.course.deliveryMode) ? "offline" : "webrtc",
       roomCode: code,
       scheduledStart: start,
       scheduledEnd: end,
@@ -910,14 +1044,23 @@ export async function addBatchClass(
     select: { id: true },
   });
 
-  const notified = await announceClassEvent(m.id, { kind: "scheduled" }, { actorId });
+  const notified = await announceClassEvent(
+    m.id,
+    { kind: "scheduled" },
+    { actorId },
+  );
   return { id: m.id, notified };
 }
 
 // ── Daily cron ──────────────────────────────────────────────────────────────
 
 export interface DailyClassJobsResult {
-  timetables: { batches: number; created: number; removed: number; holidayCancelled: number } | null;
+  timetables: {
+    batches: number;
+    created: number;
+    removed: number;
+    holidayCancelled: number;
+  } | null;
   reminders: ReminderRunResult | null;
   wishes: WishesRunResult | null;
   birthdays: BirthdayRunResult | null;
@@ -929,9 +1072,14 @@ export interface DailyClassJobsResult {
  * open-ended timetables forward, and catches holidays that were loaded straight
  * into the database rather than through the admin page.
  */
-async function syncRunningTimetables(now: Date): Promise<NonNullable<DailyClassJobsResult["timetables"]>> {
+async function syncRunningTimetables(
+  now: Date,
+): Promise<NonNullable<DailyClassJobsResult["timetables"]>> {
   const batches = await prisma.batch.findMany({
-    where: { status: { in: ["UPCOMING", "ONGOING"] }, NOT: { schedule: { equals: Prisma.AnyNull } } },
+    where: {
+      status: { in: ["UPCOMING", "ONGOING"] },
+      NOT: { schedule: { equals: Prisma.AnyNull } },
+    },
     select: { id: true },
   });
   const deadline = now.getTime() + 40_000;
@@ -957,7 +1105,9 @@ async function syncRunningTimetables(now: Date): Promise<NonNullable<DailyClassJ
 }
 
 /** The morning job: timetables, then tomorrow's reminders, then festival wishes. */
-export async function runDailyClassJobs(now: Date = new Date()): Promise<DailyClassJobsResult> {
+export async function runDailyClassJobs(
+  now: Date = new Date(),
+): Promise<DailyClassJobsResult> {
   const result: DailyClassJobsResult = {
     timetables: null,
     reminders: null,
@@ -965,7 +1115,10 @@ export async function runDailyClassJobs(now: Date = new Date()): Promise<DailyCl
     birthdays: null,
     errors: [],
   };
-  const step = async <T>(name: string, fn: () => Promise<T>): Promise<T | null> => {
+  const step = async <T>(
+    name: string,
+    fn: () => Promise<T>,
+  ): Promise<T | null> => {
     try {
       return await fn();
     } catch (error) {
@@ -975,7 +1128,9 @@ export async function runDailyClassJobs(now: Date = new Date()): Promise<DailyCl
       return null;
     }
   };
-  result.timetables = await step("timetables", () => syncRunningTimetables(now));
+  result.timetables = await step("timetables", () =>
+    syncRunningTimetables(now),
+  );
   result.reminders = await step("reminders", () => sendClassReminders(now));
   result.wishes = await step("wishes", () => sendFestivalWishes(now));
   // Birthdays ride along with the morning sweep — it is the one job that runs

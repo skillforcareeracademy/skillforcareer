@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatDistanceToNow } from "date-fns";
 import {
@@ -9,6 +9,7 @@ import {
   ExternalLink,
   Eye,
   EyeOff,
+  GripVertical,
   Loader2,
   Pencil,
 } from "lucide-react";
@@ -54,7 +55,8 @@ export function HomepageClient({ initial }: { initial: EditableSection[] }) {
   const everywhere = sections
     .filter((s) => isGlobalSection(s.key))
     .sort(
-      (a, b) => GLOBAL_SECTION_KEYS.indexOf(a.key) - GLOBAL_SECTION_KEYS.indexOf(b.key),
+      (a, b) =>
+        GLOBAL_SECTION_KEYS.indexOf(a.key) - GLOBAL_SECTION_KEYS.indexOf(b.key),
     );
 
   async function toggleVisible(section: EditableSection, enabled: boolean) {
@@ -70,20 +72,19 @@ export function HomepageClient({ initial }: { initial: EditableSection[] }) {
       router.refresh();
     } catch (e) {
       setSections((prev) =>
-        prev.map((s) => (s.key === section.key ? { ...s, enabled: !enabled } : s)),
+        prev.map((s) =>
+          s.key === section.key ? { ...s, enabled: !enabled } : s,
+        ),
       );
-      toast.error(e instanceof ApiError ? e.message : "Couldn't save. Try again.");
+      toast.error(
+        e instanceof ApiError ? e.message : "Couldn't save. Try again.",
+      );
     } finally {
       setBusy(null);
     }
   }
 
-  async function move(index: number, delta: number) {
-    const target = index + delta;
-    if (target < 0 || target >= inPage.length) return;
-
-    const reordered = [...inPage];
-    [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
+  async function saveOrder(reordered: EditableSection[]) {
     const previous = sections;
     const next = [...reordered, ...everywhere];
     setSections(next);
@@ -94,10 +95,47 @@ export function HomepageClient({ initial }: { initial: EditableSection[] }) {
       router.refresh();
     } catch (e) {
       setSections(previous);
-      toast.error(e instanceof ApiError ? e.message : "Couldn't save the new order.");
+      toast.error(
+        e instanceof ApiError ? e.message : "Couldn't save the new order.",
+      );
     } finally {
       setBusy(null);
     }
+  }
+
+  async function move(index: number, delta: number) {
+    const target = index + delta;
+    if (target < 0 || target >= inPage.length) return;
+    const reordered = [...inPage];
+    [reordered[index], reordered[target]] = [
+      reordered[target],
+      reordered[index],
+    ];
+    await saveOrder(reordered);
+  }
+
+  /** Lift a band out of the running order and put it back down at `to`. */
+  async function moveTo(from: number, to: number) {
+    if (from === to || to < 0 || to >= inPage.length) return;
+    const reordered = [...inPage];
+    const [lifted] = reordered.splice(from, 1);
+    reordered.splice(to, 0, lifted);
+    await saveOrder(reordered);
+  }
+
+  /**
+   * Which band is being dragged, in a ref rather than state: `dragover` fires
+   * before React flushes, so a handler reading state would see null and never
+   * call `preventDefault`, and the browser would refuse the drop in silence.
+   */
+  const draggingRef = useRef<number | null>(null);
+  const [dragging, setDragging] = useState<number | null>(null);
+  const [over, setOver] = useState<number | null>(null);
+
+  function endDrag() {
+    draggingRef.current = null;
+    setDragging(null);
+    setOver(null);
   }
 
   function renderCard(
@@ -110,13 +148,50 @@ export function HomepageClient({ initial }: { initial: EditableSection[] }) {
     return (
       <div
         key={section.key}
+        onDragOver={(e) => {
+          if (!position || draggingRef.current == null) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+          if (over !== position.index) setOver(position.index);
+        }}
+        onDrop={(e) => {
+          if (!position) return;
+          e.preventDefault();
+          const from = draggingRef.current;
+          endDrag();
+          if (from != null) void moveTo(from, position.index);
+        }}
+        onDragEnd={endDrag}
         className={cn(
           "bg-card overflow-hidden rounded-xl border transition-colors",
           open && "border-primary/40 shadow-sm",
           !section.enabled && !open && "bg-muted/30",
+          position && dragging === position.index && "opacity-50",
+          position &&
+            over === position.index &&
+            dragging !== position.index &&
+            "border-primary border-dashed",
         )}
       >
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 p-3 sm:p-4">
+          {position && (
+            <span
+              draggable
+              onDragStart={(e) => {
+                draggingRef.current = position.index;
+                setDragging(position.index);
+                e.dataTransfer.effectAllowed = "move";
+                // Firefox will not start a drag unless something is carried.
+                e.dataTransfer.setData("text/plain", section.key);
+              }}
+              onDragEnd={endDrag}
+              aria-label={`Drag to reorder ${spec.label}`}
+              title="Drag to reorder"
+              className="text-muted-foreground hover:text-foreground hidden cursor-grab self-stretch active:cursor-grabbing sm:flex sm:items-center"
+            >
+              <GripVertical className="size-4 shrink-0" aria-hidden />
+            </span>
+          )}
           {position && (
             <div className="flex shrink-0 flex-col">
               <Button
@@ -134,7 +209,9 @@ export function HomepageClient({ initial }: { initial: EditableSection[] }) {
                 size="icon-sm"
                 className="h-5"
                 onClick={() => move(position.index, 1)}
-                disabled={position.index === position.total - 1 || busy === "order"}
+                disabled={
+                  position.index === position.total - 1 || busy === "order"
+                }
                 aria-label={`Move ${spec.label} down`}
               >
                 <ChevronDown className="size-4" />
@@ -163,7 +240,10 @@ export function HomepageClient({ initial }: { initial: EditableSection[] }) {
               )}
               {section.customised && section.updatedAt && (
                 <span className="text-muted-foreground text-xs">
-                  edited {formatDistanceToNow(new Date(section.updatedAt), { addSuffix: true })}
+                  edited{" "}
+                  {formatDistanceToNow(new Date(section.updatedAt), {
+                    addSuffix: true,
+                  })}
                 </span>
               )}
             </div>
@@ -224,11 +304,14 @@ export function HomepageClient({ initial }: { initial: EditableSection[] }) {
       <div className="flex items-center gap-2">
         <Eye className="text-muted-foreground size-4" aria-hidden />
         <p className="text-muted-foreground text-sm">
-          Sections appear top to bottom in this order. Changes go live as soon as
-          you save.
+          Sections appear top to bottom in this order. Changes go live as soon
+          as you save.
         </p>
         {busy === "order" && (
-          <Loader2 className="text-muted-foreground size-4 animate-spin" aria-hidden />
+          <Loader2
+            className="text-muted-foreground size-4 animate-spin"
+            aria-hidden
+          />
         )}
       </div>
 

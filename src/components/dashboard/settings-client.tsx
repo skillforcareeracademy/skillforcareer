@@ -631,6 +631,14 @@ export function SettingsClient({
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              {/* Said out loud because it is not obvious and it involves money:
+                  charging is not dated, so the first run after a rate is set
+                  reaches back over everything already overdue. */}
+              <p className="rounded-lg border border-amber-500/30 bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
+                Setting a penalty above zero charges <strong>every</strong>{" "}
+                instalment already past its grace period, not only the ones that
+                fall due from now on. Leave it at 0 until you mean to.
+              </p>
               <div className="divide-y">
                 <ToggleRow
                   label="Send payment reminders"
@@ -659,7 +667,7 @@ export function SettingsClient({
                 <Field
                   label="Penalty (%)"
                   htmlFor="feePenaltyPercent"
-                  hint="Charged on the overdue instalment once the grace period runs out."
+                  hint="Charged on the overdue instalment once the grace period runs out. 0 charges nothing."
                 >
                   <Input
                     id="feePenaltyPercent"

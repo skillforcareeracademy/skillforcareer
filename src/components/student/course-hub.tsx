@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DELIVERY_MODE_LABEL } from "@/lib/validations/course";
 import { format } from "date-fns";
 import {
   BookMarked,
@@ -41,13 +42,16 @@ import { scheduleLabel } from "@/components/admin/batches/profile/format";
  * Each section is a summary that links on to the page that owns the detail.
  */
 
-const day = (iso: string | null) => (iso ? format(new Date(iso), "d MMM yyyy") : "—");
+const day = (iso: string | null) =>
+  iso ? format(new Date(iso), "d MMM yyyy") : "—";
 const dayTime = (iso: string) => format(new Date(iso), "EEE d MMM, h:mm a");
 
 function minutes(seconds: number): string {
   if (seconds <= 0) return "";
   const m = Math.round(seconds / 60);
-  return m < 60 ? `${m} min` : `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m`;
+  return m < 60
+    ? `${m} min`
+    : `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m`;
 }
 
 function Section({
@@ -104,8 +108,8 @@ export function CourseHubView({ hub }: { hub: CourseHub }) {
                   </Badge>
                 )}
                 <Badge variant="secondary" className="text-[10px]">
-                  {course.deliveryMode.charAt(0) +
-                    course.deliveryMode.slice(1).toLowerCase().replace(/_/g, " ")}
+                  {DELIVERY_MODE_LABEL[course.deliveryMode] ??
+                    course.deliveryMode}
                 </Badge>
                 {percent >= 100 && (
                   <Badge
@@ -118,7 +122,9 @@ export function CourseHubView({ hub }: { hub: CourseHub }) {
               </div>
               <h2 className="text-xl font-semibold">{course.title}</h2>
               <p className="text-muted-foreground text-sm">
-                {course.instructorName ? `Taught by ${course.instructorName} · ` : ""}
+                {course.instructorName
+                  ? `Taught by ${course.instructorName} · `
+                  : ""}
                 Joined {day(enrolment.enrolledAt)}
               </p>
             </div>
@@ -132,7 +138,10 @@ export function CourseHubView({ hub }: { hub: CourseHub }) {
               <Progress value={percent} />
             </div>
           </div>
-          <ButtonLink href={`/student/learn/${course.slug}`} className="shrink-0">
+          <ButtonLink
+            href={`/student/learn/${course.slug}`}
+            className="shrink-0"
+          >
             <PlayCircle className="size-4" />
             {percent > 0 ? "Continue learning" : "Start learning"}
           </ButtonLink>
@@ -144,7 +153,9 @@ export function CourseHubView({ hub }: { hub: CourseHub }) {
         <Section
           icon={Users}
           title="Your batch"
-          description={batch ? batch.name : "You aren't in a cohort for this course."}
+          description={
+            batch ? batch.name : "You aren't in a cohort for this course."
+          }
         >
           {batch ? (
             <dl className="space-y-1.5 text-sm">
@@ -157,7 +168,9 @@ export function CourseHubView({ hub }: { hub: CourseHub }) {
               {scheduleLabel(batch.schedule) && (
                 <div className="flex justify-between gap-3">
                   <dt className="text-muted-foreground">Timetable</dt>
-                  <dd className="text-right">{scheduleLabel(batch.schedule)}</dd>
+                  <dd className="text-right">
+                    {scheduleLabel(batch.schedule)}
+                  </dd>
                 </div>
               )}
               {batch.instructorName && (
@@ -176,7 +189,9 @@ export function CourseHubView({ hub }: { hub: CourseHub }) {
               </div>
             </dl>
           ) : (
-            <Empty>Ask the office to place you in a batch to get a timetable.</Empty>
+            <Empty>
+              Ask the office to place you in a batch to get a timetable.
+            </Empty>
           )}
         </Section>
 
@@ -220,7 +235,8 @@ export function CourseHubView({ hub }: { hub: CourseHub }) {
                     </ButtonLink>
                   ) : (
                     <span className="text-muted-foreground shrink-0 text-xs">
-                      Link opens {format(new Date(c.joinLinkOpensAt), "d MMM, h:mm a")}
+                      Link opens{" "}
+                      {format(new Date(c.joinLinkOpensAt), "d MMM, h:mm a")}
                     </span>
                   )}
                 </li>
@@ -244,7 +260,11 @@ export function CourseHubView({ hub }: { hub: CourseHub }) {
         >
           <Accordion className="space-y-2">
             {hub.curriculums.map((c) => (
-              <AccordionItem key={c.id} value={c.id} className="rounded-xl border px-3">
+              <AccordionItem
+                key={c.id}
+                value={c.id}
+                className="rounded-xl border px-3"
+              >
                 <AccordionTrigger className="py-3 text-sm font-medium">
                   {c.title}
                   {c.year ? ` · ${c.year}` : ""}
@@ -279,7 +299,11 @@ export function CourseHubView({ hub }: { hub: CourseHub }) {
         title="Lectures"
         description={`${enrolment.lessonsTotal} lessons across ${hub.chapters.length} sections`}
         action={
-          <ButtonLink href={`/student/learn/${course.slug}`} variant="ghost" size="sm">
+          <ButtonLink
+            href={`/student/learn/${course.slug}`}
+            variant="ghost"
+            size="sm"
+          >
             Open player
           </ButtonLink>
         }
@@ -291,7 +315,11 @@ export function CourseHubView({ hub }: { hub: CourseHub }) {
             {hub.chapters.map((ch) => {
               const done = ch.lessons.filter((l) => l.completed).length;
               return (
-                <AccordionItem key={ch.id} value={ch.id} className="rounded-xl border px-3">
+                <AccordionItem
+                  key={ch.id}
+                  value={ch.id}
+                  className="rounded-xl border px-3"
+                >
                   <AccordionTrigger className="py-3 text-sm font-medium">
                     <span className="flex w-full items-center justify-between gap-3 pr-2">
                       <span className="truncate">{ch.title}</span>
@@ -313,7 +341,9 @@ export function CourseHubView({ hub }: { hub: CourseHub }) {
                             ) : (
                               <PlayCircle className="text-muted-foreground size-4 shrink-0" />
                             )}
-                            <span className="min-w-0 flex-1 truncate text-sm">{l.title}</span>
+                            <span className="min-w-0 flex-1 truncate text-sm">
+                              {l.title}
+                            </span>
                             <span className="text-muted-foreground shrink-0 text-xs">
                               {minutes(l.durationSeconds)}
                             </span>
@@ -351,13 +381,18 @@ export function CourseHubView({ hub }: { hub: CourseHub }) {
                     <p className="truncate text-sm font-medium">{a.title}</p>
                     <p className="text-muted-foreground text-xs">
                       {a.dueDate ? `Due ${day(a.dueDate)}` : "No due date"}
-                      {a.submission?.score != null ? ` · scored ${a.submission.score}/${a.maxScore}` : ""}
+                      {a.submission?.score != null
+                        ? ` · scored ${a.submission.score}/${a.maxScore}`
+                        : ""}
                     </p>
                   </div>
                   <Badge variant="secondary" className="shrink-0 text-[10px]">
                     {a.submission
                       ? a.submission.status.charAt(0) +
-                        a.submission.status.slice(1).toLowerCase().replace(/_/g, " ")
+                        a.submission.status
+                          .slice(1)
+                          .toLowerCase()
+                          .replace(/_/g, " ")
                       : a.isOverdue
                         ? "Overdue"
                         : "To do"}
@@ -407,7 +442,11 @@ export function CourseHubView({ hub }: { hub: CourseHub }) {
           title="Notes and material"
           description={`${hub.notes.length} shared with your batch`}
           action={
-            <ButtonLink href="/student/learning#batch-notes" variant="ghost" size="sm">
+            <ButtonLink
+              href="/student/learning#batch-notes"
+              variant="ghost"
+              size="sm"
+            >
               Open
             </ButtonLink>
           }
@@ -420,7 +459,9 @@ export function CourseHubView({ hub }: { hub: CourseHub }) {
                 <li key={n.id} className="flex items-center gap-3">
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{n.title}</p>
-                    <p className="text-muted-foreground text-xs">{day(n.createdAt)}</p>
+                    <p className="text-muted-foreground text-xs">
+                      {day(n.createdAt)}
+                    </p>
                   </div>
                   {n.readSeconds > 0 && (
                     <Badge variant="secondary" className="shrink-0 text-[10px]">
@@ -458,8 +499,9 @@ export function CourseHubView({ hub }: { hub: CourseHub }) {
                       {m.title}
                     </p>
                     <p className="text-muted-foreground truncate text-xs">
-                      {[m.categoryName, m.subCategoryName].filter(Boolean).join(" → ") ||
-                        "Ungrouped"}
+                      {[m.categoryName, m.subCategoryName]
+                        .filter(Boolean)
+                        .join(" → ") || "Ungrouped"}
                     </p>
                   </div>
                   {m.readSeconds > 0 && (
@@ -492,7 +534,9 @@ export function CourseHubView({ hub }: { hub: CourseHub }) {
                 <li key={r.id} className="flex items-center gap-3">
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{r.title}</p>
-                    <p className="text-muted-foreground text-xs">{day(r.scheduledStart)}</p>
+                    <p className="text-muted-foreground text-xs">
+                      {day(r.scheduledStart)}
+                    </p>
                   </div>
                   <Badge
                     variant="secondary"
@@ -525,7 +569,9 @@ export function CourseHubView({ hub }: { hub: CourseHub }) {
               <li key={w.id} className="flex items-center gap-3">
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{w.title}</p>
-                  <p className="text-muted-foreground text-xs">{dayTime(w.scheduledStart)}</p>
+                  <p className="text-muted-foreground text-xs">
+                    {dayTime(w.scheduledStart)}
+                  </p>
                 </div>
                 <Badge variant="secondary" className="shrink-0 text-[10px]">
                   {w.registered ? "Registered" : "Open"}
@@ -539,7 +585,10 @@ export function CourseHubView({ hub }: { hub: CourseHub }) {
       <p className="text-muted-foreground flex items-center gap-2 text-xs">
         <GraduationCap className="size-3.5" />
         Attendance, marks and reading time for every course are on your{" "}
-        <Link href="/student/report-card" className="text-primary hover:underline">
+        <Link
+          href="/student/report-card"
+          className="text-primary hover:underline"
+        >
           report card
         </Link>
         .

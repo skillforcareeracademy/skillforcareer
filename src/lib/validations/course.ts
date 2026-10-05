@@ -7,12 +7,40 @@ export const COURSE_LEVELS = [
   "ADVANCED",
   "ALL_LEVELS",
 ] as const;
+/**
+ * How a course is taught. The academy calls this the **class mode** and asked
+ * for these eight by name, in this order.
+ */
 export const DELIVERY_MODES = [
-  "SELF_PACED",
   "LIVE",
-  "HYBRID",
   "OFFLINE",
+  "SELF_PACED",
+  "ONLINE_OFFLINE",
+  "ONLINE_OFFLINE_RECORDED",
+  "ONLINE_RECORDED",
+  "OFFLINE_RECORDED",
+  "HYBRID",
 ] as const;
+
+export const DELIVERY_MODE_LABEL: Record<string, string> = {
+  LIVE: "Online Live",
+  OFFLINE: "Offline",
+  SELF_PACED: "Online Recorded",
+  ONLINE_OFFLINE: "Online/Offline",
+  ONLINE_OFFLINE_RECORDED: "Online/Offline/Recorded",
+  ONLINE_RECORDED: "Online/Recorded",
+  OFFLINE_RECORDED: "Offline/Recorded",
+  HYBRID: "Hybrid Classes",
+};
+
+/**
+ * Whether a class on this course happens in a room rather than in a call. Only
+ * the modes with no online half count: a course taught both ways still has
+ * online sessions to host.
+ */
+export function isOfflineOnly(mode: string): boolean {
+  return mode === "OFFLINE" || mode === "OFFLINE_RECORDED";
+}
 export const PRICING_TYPES = ["FREE", "PAID", "SUBSCRIPTION"] as const;
 
 const stringList = z.array(z.string().trim().min(1)).max(20).optional();

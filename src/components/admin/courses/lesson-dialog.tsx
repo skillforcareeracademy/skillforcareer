@@ -64,9 +64,13 @@ export function LessonDialog({
   const [type, setType] = useState(editing?.type ?? "VIDEO");
   const [videoUrl, setVideoUrl] = useState(editing?.videoUrl ?? "");
   const [content, setContent] = useState(editing?.content ?? "");
-  const [attachmentUrl, setAttachmentUrl] = useState(editing?.attachmentUrl ?? "");
+  const [attachmentUrl, setAttachmentUrl] = useState(
+    editing?.attachmentUrl ?? "",
+  );
   const [durationMin, setDurationMin] = useState(
-    editing?.durationSeconds ? String(Math.round(editing.durationSeconds / 60)) : "",
+    editing?.durationSeconds
+      ? String(Math.round(editing.durationSeconds / 60))
+      : "",
   );
   const [isPreview, setIsPreview] = useState(editing?.isPreview ?? false);
   const [saving, setSaving] = useState(false);
@@ -111,7 +115,12 @@ export function LessonDialog({
         <form onSubmit={onSubmit} className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="ls-title">Title</Label>
-            <Input id="ls-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Lesson title" />
+            <Input
+              id="ls-title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Lesson title"
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -132,7 +141,14 @@ export function LessonDialog({
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="ls-dur">Duration (minutes)</Label>
-              <Input id="ls-dur" type="number" min={0} value={durationMin} onChange={(e) => setDurationMin(e.target.value)} placeholder="0" />
+              <Input
+                id="ls-dur"
+                type="number"
+                min={0}
+                value={durationMin}
+                onChange={(e) => setDurationMin(e.target.value)}
+                placeholder="0"
+              />
             </div>
           </div>
 
@@ -159,13 +175,18 @@ export function LessonDialog({
           )}
           {(type === "PDF" || type === "ASSIGNMENT" || type === "QUIZ") && (
             <div className="space-y-2.5">
-              <Label>{type === "PDF" ? "Document" : "Reference material (optional)"}</Label>
+              <Label>
+                {type === "PDF" ? "Document" : "Reference material (optional)"}
+              </Label>
               <FileUpload
                 value={attachmentUrl}
                 onChange={(url) => setAttachmentUrl(url)}
               />
               <div className="space-y-1.5">
-                <Label htmlFor="ls-file" className="text-muted-foreground text-xs font-normal">
+                <Label
+                  htmlFor="ls-file"
+                  className="text-muted-foreground text-xs font-normal"
+                >
                   …or paste a link
                 </Label>
                 <Input
@@ -181,13 +202,23 @@ export function LessonDialog({
           <div className="flex items-center justify-between rounded-lg border p-3">
             <div>
               <Label htmlFor="ls-preview">Free preview</Label>
-              <p className="text-muted-foreground text-xs">Let non-enrolled learners watch this</p>
+              <p className="text-muted-foreground text-xs">
+                Let non-enrolled learners watch this
+              </p>
             </div>
-            <Switch id="ls-preview" checked={isPreview} onCheckedChange={setIsPreview} />
+            <Switch
+              id="ls-preview"
+              checked={isPreview}
+              onCheckedChange={setIsPreview}
+            />
           </div>
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+            >
               Cancel
             </Button>
             <Button type="submit" disabled={saving || title.trim().length < 2}>

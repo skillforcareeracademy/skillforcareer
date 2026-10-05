@@ -46,11 +46,25 @@ enum CourseLevel {
   ALL_LEVELS
 }
 
+/// How a course is actually taught — the academy calls this the class mode,
+/// and named the eight it wanted: "Online Live, Offline, Online Recorded,
+/// Online/Offline, Online/Offline/Recorded, Online/Recorded, Offline/Recorded,
+/// Hybrid Classes".
+///
+/// The four original members carry four of those meanings already, so they keep
+/// their names and gain the labels (SELF_PACED is "Online Recorded", LIVE is
+/// "Online Live", HYBRID is "Hybrid Classes"). Renaming them would have rewritten
+/// every course row for nothing. The combinations are the new ones.
 enum DeliveryMode {
-  SELF_PACED // pre-recorded
-  LIVE
-  HYBRID
+  SELF_PACED // "Online Recorded" — pre-recorded, nothing live
+  LIVE // "Online Live"
+  HYBRID // "Hybrid Classes"
   OFFLINE
+
+  ONLINE_OFFLINE
+  ONLINE_OFFLINE_RECORDED
+  ONLINE_RECORDED
+  OFFLINE_RECORDED
 }
 
 enum PricingType {

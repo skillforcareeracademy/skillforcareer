@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
+import { DELIVERY_MODES, DELIVERY_MODE_LABEL } from "@/lib/validations/course";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatCards, type StatCard } from "@/components/shared/stat-cards";
@@ -107,13 +108,6 @@ const STATUS_BADGE: Record<string, string> = {
   ARCHIVED: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300",
 };
 const STATUS_OPTIONS = ["DRAFT", "PENDING_REVIEW", "PUBLISHED", "ARCHIVED"];
-const DELIVERY_MODES = ["LIVE", "SELF_PACED", "HYBRID", "OFFLINE"] as const;
-const DELIVERY_MODE_LABEL: Record<string, string> = {
-  LIVE: "Live",
-  SELF_PACED: "Recorded",
-  HYBRID: "Hybrid",
-  OFFLINE: "Offline",
-};
 const LEVEL_LABEL: Record<string, string> = {
   BEGINNER: "Beginner",
   INTERMEDIATE: "Intermediate",
@@ -346,7 +340,7 @@ export function CoursesClient({
     },
     {
       key: "mode",
-      header: "Type",
+      header: "Class mode",
       cell: (c) => (
         <span className="text-muted-foreground text-sm">
           {DELIVERY_MODE_LABEL[c.deliveryMode] ?? c.deliveryMode}
@@ -533,8 +527,8 @@ export function CoursesClient({
                 ))}
               </SelectContent>
             </Select>
-            {/* Live, recorded, offline or hybrid — the academy couldn't tell
-                them apart in this list. */}
+            {/* The class mode — online, offline, recorded or a mix of them.
+                The academy couldn't tell them apart in this list. */}
             <Select
               value={query.deliveryMode ?? ALL}
               onValueChange={(v) =>
@@ -545,13 +539,13 @@ export function CoursesClient({
                 <SelectValue>
                   {(v) =>
                     !v || v === ALL
-                      ? "All types"
-                      : (DELIVERY_MODE_LABEL[String(v)] ?? "Type")
+                      ? "All class modes"
+                      : (DELIVERY_MODE_LABEL[String(v)] ?? "Class mode")
                   }
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={ALL}>All types</SelectItem>
+                <SelectItem value={ALL}>All class modes</SelectItem>
                 {DELIVERY_MODES.map((m) => (
                   <SelectItem key={m} value={m}>
                     {DELIVERY_MODE_LABEL[m]}

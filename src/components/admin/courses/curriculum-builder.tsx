@@ -58,15 +58,29 @@ export function CurriculumBuilder({
   chapters: Chapter[];
 }) {
   const router = useRouter();
-  const [chapterDialog, setChapterDialog] = useState<{ open: boolean; editing?: Chapter; nonce: number }>({ open: false, nonce: 0 });
-  const [lessonDialog, setLessonDialog] = useState<{ open: boolean; chapterId?: string; editing?: Lesson; nonce: number }>({ open: false, nonce: 0 });
+  const [chapterDialog, setChapterDialog] = useState<{
+    open: boolean;
+    editing?: Chapter;
+    nonce: number;
+  }>({ open: false, nonce: 0 });
+  const [lessonDialog, setLessonDialog] = useState<{
+    open: boolean;
+    chapterId?: string;
+    editing?: Lesson;
+    nonce: number;
+  }>({ open: false, nonce: 0 });
   const [delChapter, setDelChapter] = useState<Chapter | null>(null);
   const [delLesson, setDelLesson] = useState<Lesson | null>(null);
 
   const openChapter = (editing?: Chapter) =>
     setChapterDialog((s) => ({ open: true, editing, nonce: s.nonce + 1 }));
   const openLesson = (chapterId: string, editing?: Lesson) =>
-    setLessonDialog((s) => ({ open: true, chapterId, editing, nonce: s.nonce + 1 }));
+    setLessonDialog((s) => ({
+      open: true,
+      chapterId,
+      editing,
+      nonce: s.nonce + 1,
+    }));
 
   async function confirmDeleteChapter() {
     if (!delChapter) return;
@@ -120,13 +134,26 @@ export function CurriculumBuilder({
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-medium">{ch.title}</p>
                   {ch.description && (
-                    <p className="text-muted-foreground truncate text-xs">{ch.description}</p>
+                    <p className="text-muted-foreground truncate text-xs">
+                      {ch.description}
+                    </p>
                   )}
                 </div>
-                <Button variant="ghost" size="icon-sm" aria-label="Edit chapter" onClick={() => openChapter(ch)}>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Edit chapter"
+                  onClick={() => openChapter(ch)}
+                >
                   <Pencil className="size-4" />
                 </Button>
-                <Button variant="ghost" size="icon-sm" aria-label="Delete chapter" className="text-destructive" onClick={() => setDelChapter(ch)}>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Delete chapter"
+                  className="text-destructive"
+                  onClick={() => setDelChapter(ch)}
+                >
                   <Trash2 className="size-4" />
                 </Button>
               </div>
@@ -135,21 +162,40 @@ export function CurriculumBuilder({
                 {ch.lessons.map((l) => {
                   const Icon = LESSON_ICON[l.type] ?? PlayCircle;
                   return (
-                    <div key={l.id} className="hover:bg-muted/20 flex items-center gap-3 px-4 py-2.5">
+                    <div
+                      key={l.id}
+                      className="hover:bg-muted/20 flex items-center gap-3 px-4 py-2.5"
+                    >
                       <Icon className="text-muted-foreground size-4 shrink-0" />
-                      <span className="min-w-0 flex-1 truncate text-sm">{l.title}</span>
+                      <span className="min-w-0 flex-1 truncate text-sm">
+                        {l.title}
+                      </span>
                       {l.isPreview && (
-                        <Badge variant="secondary" className="h-5 gap-1 text-[10px]">
+                        <Badge
+                          variant="secondary"
+                          className="h-5 gap-1 text-[10px]"
+                        >
                           <Eye className="size-3" /> Preview
                         </Badge>
                       )}
                       <span className="text-muted-foreground hidden text-xs capitalize sm:inline">
                         {l.type.toLowerCase()}
                       </span>
-                      <Button variant="ghost" size="icon-sm" aria-label="Edit lesson" onClick={() => openLesson(ch.id, l)}>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Edit lesson"
+                        onClick={() => openLesson(ch.id, l)}
+                      >
                         <Pencil className="size-4" />
                       </Button>
-                      <Button variant="ghost" size="icon-sm" aria-label="Delete lesson" className="text-destructive" onClick={() => setDelLesson(l)}>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Delete lesson"
+                        className="text-destructive"
+                        onClick={() => setDelLesson(l)}
+                      >
                         <Trash2 className="size-4" />
                       </Button>
                     </div>
@@ -188,32 +234,47 @@ export function CurriculumBuilder({
         onSaved={() => router.refresh()}
       />
 
-      <AlertDialog open={!!delChapter} onOpenChange={(o) => !o && setDelChapter(null)}>
+      <AlertDialog
+        open={!!delChapter}
+        onOpenChange={(o) => !o && setDelChapter(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete “{delChapter?.title}”?</AlertDialogTitle>
             <AlertDialogDescription>
-              This removes the chapter and all its lessons. This can&apos;t be undone.
+              This removes the chapter and all its lessons. This can&apos;t be
+              undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDeleteChapter} className="bg-destructive hover:bg-destructive/90 text-white">
+            <AlertDialogAction
+              onClick={confirmDeleteChapter}
+              className="bg-destructive hover:bg-destructive/90 text-white"
+            >
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={!!delLesson} onOpenChange={(o) => !o && setDelLesson(null)}>
+      <AlertDialog
+        open={!!delLesson}
+        onOpenChange={(o) => !o && setDelLesson(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete “{delLesson?.title}”?</AlertDialogTitle>
-            <AlertDialogDescription>This can&apos;t be undone.</AlertDialogDescription>
+            <AlertDialogDescription>
+              This can&apos;t be undone.
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDeleteLesson} className="bg-destructive hover:bg-destructive/90 text-white">
+            <AlertDialogAction
+              onClick={confirmDeleteLesson}
+              className="bg-destructive hover:bg-destructive/90 text-white"
+            >
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>
