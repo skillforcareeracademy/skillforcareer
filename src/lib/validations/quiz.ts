@@ -187,6 +187,20 @@ export const questionSchema = z
         ctx.addIssue({ code: "custom", message: "Only one option can be correct.", path: ["options"] });
       }
     }
+  })
+  /**
+   * A question with one right answer is a single-answer question, whatever the
+   * row said it was.
+   *
+   * Imports and the generator both wrote MULTIPLE_CHOICE by default, so a
+   * thousand one-answer questions told the learner to "select all that apply"
+   * and let them tick three — "multiple options are getting selected. Only one
+   * allowed". The type is settled by the options rather than by the label.
+   */
+  .transform((q) => {
+    if (q.type !== "MULTIPLE_CHOICE") return q;
+    const correct = q.options.filter((o) => o.isCorrect).length;
+    return correct === 1 ? { ...q, type: "SINGLE_CHOICE" as const } : q;
   });
 
 export const reorderQuestionsSchema = z.object({

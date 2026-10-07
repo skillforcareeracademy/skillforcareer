@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useState } from "react";
 import { Flag, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
@@ -37,8 +37,16 @@ export function QuestionReportDialog({
   const [sending, setSending] = useState(false);
   const [raised, setRaised] = useState<{ ref: string; message: string } | null>(null);
 
-  async function submit(e: FormEvent) {
-    e.preventDefault();
+  /**
+   * Not a form submit.
+   *
+   * This dialog opens from inside the quiz, which is itself one big form — and
+   * React carries a submit event up through a portal to that form's handler, so
+   * reporting a mistake handed in the whole paper. "When we submit report a
+   * mistake in any question. Quiz automatically gets submit. It shouldn't
+   * happen." A plain button cannot raise the event at all.
+   */
+  async function submit() {
     setSending(true);
     try {
       const res = await api.post<{ ref: string; message: string }>(
@@ -90,7 +98,7 @@ export function QuestionReportDialog({
               </DialogFooter>
             </div>
           ) : (
-            <form onSubmit={submit} className="space-y-4">
+            <div className="space-y-4">
               <Textarea
                 rows={3}
                 value={message}
@@ -102,12 +110,12 @@ export function QuestionReportDialog({
                 <Button type="button" variant="outline" onClick={() => setOpen(false)}>
                   Cancel
                 </Button>
-                <Button type="submit" disabled={sending}>
+                <Button type="button" disabled={sending} onClick={() => void submit()}>
                   {sending && <Loader2 className="size-4 animate-spin" />}
                   Send for review
                 </Button>
               </DialogFooter>
-            </form>
+            </div>
           )}
         </DialogContent>
       </Dialog>
