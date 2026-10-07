@@ -2633,6 +2633,16 @@ model Broadcast {
   toDashboard Boolean @default(true)
   toEmail     Boolean @default(false)
 
+  /// A file to go out with the message — a notice, a timetable, a guideline
+  /// sheet. "In broadcast give me file upload option." The URL is one the
+  /// platform serves; the name is what the reader sees on the button.
+  fileUrl  String? @db.Text
+  fileName String?
+
+  /// Written but not sent. A draft has no recipients and never reaches anyone
+  /// until it is opened again and sent — "save draft option for the broadcast".
+  isDraft Boolean @default(false)
+
   /// What actually happened, filled in once the send finishes.
   recipientCount Int @default(0)
   notifiedCount  Int @default(0)
@@ -2645,6 +2655,7 @@ model Broadcast {
 
   @@index([sentById])
   @@index([createdAt])
+  @@index([isDraft])
 }
 
 /// The recycle bin: "Need a recycle bin for admin, student and instructor."
@@ -3252,6 +3263,10 @@ model BlogPost {
   /// Overrides for the page's <title> and description when set.
   metaTitle       String?
   metaDescription String?    @db.Text
+  /// A file offered on the post — "can we add a button in the blog to download
+  /// anything?" The label is the button's words; empty reads "Download".
+  downloadUrl     String?    @db.VarChar(512)
+  downloadLabel   String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -61,8 +61,15 @@ export const sendBroadcastSchema = z
     targetIds: z.array(z.string().min(1)).max(5000).default([]),
     toDashboard: z.boolean().default(true),
     toEmail: z.boolean().default(false),
+    /** A notice or timetable to send with it. */
+    fileUrl: z.string().trim().max(500).optional().or(z.literal("")),
+    fileName: z.string().trim().max(160).optional().or(z.literal("")),
+    /** Written now, sent later. A draft reaches nobody. */
+    isDraft: z.boolean().default(false),
   })
   .superRefine((v, ctx) => {
+    // A draft is a note to self: it need not say where it is going yet.
+    if (v.isDraft) return;
     if (!v.toDashboard && !v.toEmail) {
       ctx.addIssue({
         code: "custom",

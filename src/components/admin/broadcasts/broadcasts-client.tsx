@@ -3,7 +3,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
-import { Bell, Loader2, Mail, Megaphone, Send, Users } from "lucide-react";
+import {
+  Bell,
+  FileEdit,
+  Loader2,
+  Mail,
+  Megaphone,
+  Paperclip,
+  Send,
+  Trash2,
+  Users,
+} from "lucide-react";
 import { api, ApiError } from "@/lib/api-client";
 import {
   AUDIENCE_LABEL,
@@ -17,6 +27,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { FileUpload } from "@/components/shared/file-upload";
 import {
   Card,
   CardContent,
@@ -56,9 +67,14 @@ interface Row {
   id: string;
   title: string;
   message: string;
+  actionUrl: string;
   audience: BroadcastAudience;
+  targetIds: string[];
   toDashboard: boolean;
   toEmail: boolean;
+  fileUrl: string;
+  fileName: string;
+  isDraft: boolean;
   recipientCount: number;
   notifiedCount: number;
   emailedCount: number;
@@ -104,6 +120,12 @@ export function BroadcastsClient({ canChooseAll }: { canChooseAll: boolean }) {
   const [actionUrl, setActionUrl] = useState("");
   const [toDashboard, setToDashboard] = useState(true);
   const [toEmail, setToEmail] = useState(false);
+  /** A notice or timetable to go out with the message. */
+  const [fileUrl, setFileUrl] = useState("");
+  const [fileName, setFileName] = useState("");
+  const [savingDraft, setSavingDraft] = useState(false);
+  /** The draft being worked on, if this started life as one. */
+  const [draftId, setDraftId] = useState<string | null>(null);
 
   const [reach, setReach] = useState<Reach | null>(null);
   const [counting, setCounting] = useState(false);
@@ -199,32 +221,80 @@ export function BroadcastsClient({ canChooseAll }: { canChooseAll: boolean }) {
     if (EMAIL_ONLY_AUDIENCES.includes(next)) setToEmail(true);
   }
 
-  async function send() {
-    setSending(true);
+  function clearComposer() {
+    setTitle("");
+    setMessage("");
+    setActionUrl("");
+    setFileUrl("");
+    setFileName("");
+    setTargetIds([]);
+    setReach(null);
+    setDraftId(null);
+  }
+
+  /** Put a saved draft back in the composer to finish or send. */
+  function openDraft(row: Row) {
+    setDraftId(row.id);
+    setTitle(row.title);
+    setMessage(row.message);
+    setActionUrl(row.actionUrl);
+    setFileUrl(row.fileUrl);
+    setFileName(row.fileName);
+    setAudience(row.audience);
+    setTargetIds(row.targetIds);
+    setToDashboard(row.toDashboard);
+    setToEmail(row.toEmail);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function discardDraft(id: string) {
+    try {
+      await api.del(`/api/broadcasts/${id}`);
+      if (draftId === id) clearComposer();
+      toast.success("Draft deleted.");
+      void load();
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : "Couldn't delete that.");
+    }
+  }
+
+  /**
+   * Send it, or put it down for later.
+   *
+   * A draft is stored and reaches nobody — no notice, no mail, no recipients —
+   * so the academy can write a long notice over two sittings.
+   */
+  async function submit(isDraft: boolean) {
+    const busy = isDraft ? setSavingDraft : setSending;
+    busy(true);
     try {
       const res = await api.post<{ message: string }>("/api/broadcasts", {
         title: title.trim(),
         message: message.trim(),
         actionUrl: actionUrl.trim(),
+        fileUrl,
+        fileName,
         audience,
         targetIds,
         toDashboard,
         toEmail,
+        isDraft,
       });
+      // Opening a draft, changing it and saving or sending leaves one row, not
+      // two: the old draft is retired once the new one is safely written.
+      if (draftId) await api.del(`/api/broadcasts/${draftId}`).catch(() => {});
       toast.success(res.message);
-      setTitle("");
-      setMessage("");
-      setActionUrl("");
-      setTargetIds([]);
-      setReach(null);
+      clearComposer();
       void load();
     } catch (error) {
-      toast.error(error instanceof ApiError ? error.message : "Couldn't send that.");
+      toast.error(error instanceof ApiError ? error.message : "Couldn't save that.");
     } finally {
-      setSending(false);
+      busy(false);
       setConfirm(false);
     }
   }
+
+  const send = () => submit(false);
 
   return (
     <div className="space-y-6">
@@ -390,8 +460,33 @@ export function BroadcastsClient({ canChooseAll }: { canChooseAll: boolean }) {
             </div>
           </div>
 
-          <div className="flex justify-end">
-            <Button disabled={!ready || sending} onClick={() => setConfirm(true)}>
+          {/* A file to go with it — a notice, a timetable, a guideline sheet.
+              It is sent as a link rather than an attachment: the file is on the
+              academy's own storage, and mail servers turn away large ones. */}
+          <div className="space-y-1.5">
+            <Label>Attach a file</Label>
+            <FileUpload
+              value={fileUrl}
+              onChange={(url, name) => {
+                setFileUrl(url);
+                setFileName(name ?? "");
+              }}
+            />
+            <p className="text-muted-foreground text-xs">
+              Everyone gets a download button, in the notice and the email.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              variant="outline"
+              disabled={!title.trim() || !message.trim() || savingDraft || sending}
+              onClick={() => void submit(true)}
+            >
+              {savingDraft && <Loader2 className="size-4 animate-spin" />}
+              Save draft
+            </Button>
+            <Button disabled={!ready || sending || savingDraft} onClick={() => setConfirm(true)}>
               {sending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
               Send{reach?.total ? ` to ${reach.total}` : ""}
             </Button>
@@ -401,15 +496,17 @@ export function BroadcastsClient({ canChooseAll }: { canChooseAll: boolean }) {
 
       <Card>
         <CardHeader>
-          <CardTitle>Sent</CardTitle>
+          <CardTitle>Drafts and sent</CardTitle>
           <CardDescription>
-            {canChooseAll ? "Every broadcast sent from the panel." : "What you have sent."}
+            {canChooseAll
+              ? "Every broadcast from the panel, with unsent drafts first."
+              : "What you have sent, with your unsent drafts first."}
           </CardDescription>
         </CardHeader>
         <CardContent>
           {history.length === 0 ? (
             <p className="text-muted-foreground py-6 text-center text-sm">
-              Nothing sent yet.
+              Nothing here yet.
             </p>
           ) : (
             <ul className="divide-y">
@@ -417,24 +514,54 @@ export function BroadcastsClient({ canChooseAll }: { canChooseAll: boolean }) {
                 <li key={row.id} className="space-y-1 py-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-medium">{row.title}</span>
-                    <Badge variant="secondary">{AUDIENCE_LABEL[row.audience]}</Badge>
-                    {row.toDashboard && (
+                    {row.isDraft ? (
+                      <Badge className="gap-1 bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
+                        <FileEdit className="size-3" /> Draft
+                      </Badge>
+                    ) : (
+                      <Badge variant="secondary">{AUDIENCE_LABEL[row.audience]}</Badge>
+                    )}
+                    {row.fileName && (
+                      <Badge variant="outline" className="gap-1">
+                        <Paperclip className="size-3" /> {row.fileName}
+                      </Badge>
+                    )}
+                    {!row.isDraft && row.toDashboard && (
                       <Badge variant="outline" className="gap-1">
                         <Bell className="size-3" /> {row.notifiedCount}
                       </Badge>
                     )}
-                    {row.toEmail && (
+                    {!row.isDraft && row.toEmail && (
                       <Badge variant="outline" className="gap-1">
                         <Mail className="size-3" /> {row.emailedCount}
                       </Badge>
                     )}
                   </div>
                   <p className="text-muted-foreground line-clamp-2 text-xs">{row.message}</p>
-                  <p className="text-muted-foreground text-xs">
-                    {row.sentBy} · {row.recipientCount} recipient
-                    {row.recipientCount === 1 ? "" : "s"} ·{" "}
-                    {formatDistanceToNow(new Date(row.createdAt), { addSuffix: true })}
-                  </p>
+                  {row.isDraft ? (
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                      <span className="text-muted-foreground text-xs">
+                        {row.sentBy} · saved{" "}
+                        {formatDistanceToNow(new Date(row.createdAt), { addSuffix: true })}
+                      </span>
+                      <Button size="sm" variant="outline" onClick={() => openDraft(row)}>
+                        <FileEdit className="size-4" /> Open
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => void discardDraft(row.id)}
+                      >
+                        <Trash2 className="size-4" /> Delete
+                      </Button>
+                    </div>
+                  ) : (
+                    <p className="text-muted-foreground text-xs">
+                      {row.sentBy} · {row.recipientCount} recipient
+                      {row.recipientCount === 1 ? "" : "s"} ·{" "}
+                      {formatDistanceToNow(new Date(row.createdAt), { addSuffix: true })}
+                    </p>
+                  )}
                 </li>
               ))}
             </ul>

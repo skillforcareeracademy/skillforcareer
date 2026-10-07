@@ -39,6 +39,9 @@ export function broadcastEmail(d: {
   title: string;
   message: string;
   actionUrl?: string | null;
+  /** A notice or timetable sent with the message, as a link to download. */
+  fileUrl?: string | null;
+  fileName?: string | null;
   brand: MailBrand;
 }) {
   const greeting = d.name.trim()
@@ -54,15 +57,26 @@ export function broadcastEmail(d: {
       )
     : "";
 
+  // A link rather than a real attachment: the file is already on the academy's
+  // storage, and mail servers turn away anything large.
+  const fileHref = d.fileUrl?.trim()
+    ? /^https?:\/\//i.test(d.fileUrl.trim())
+      ? d.fileUrl.trim()
+      : `${d.brand.appUrl}${d.fileUrl.trim()}`
+    : "";
+  const attachment = fileHref
+    ? button(fileHref, `Download ${esc(d.fileName?.trim() || "the attachment")}`)
+    : "";
+
   return {
     subject: d.title,
     html: emailLayout({
       heading: d.title,
       previewText: d.message.slice(0, 120),
       brand: d.brand,
-      bodyHtml: `${greeting}${body(d.message)}${link}`,
+      bodyHtml: `${greeting}${body(d.message)}${link}${attachment}`,
     }),
     // Plain text for clients that won't render HTML.
-    text: `${d.title}\n\n${d.message}`,
+    text: `${d.title}\n\n${d.message}${fileHref ? `\n\n${d.fileName ?? "Attachment"}: ${fileHref}` : ""}`,
   };
 }

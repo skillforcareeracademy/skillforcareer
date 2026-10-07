@@ -287,6 +287,35 @@ export async function sendBroadcast(
   input: SendBroadcastInput,
   sender: Sender,
 ): Promise<BroadcastResult> {
+  // A draft is written and put down again. It is stored with no recipients, no
+  // notice and no mail — "save draft option for the broadcast" — and only
+  // becomes a send when somebody opens it and presses Send.
+  if (input.isDraft) {
+    const draft = await prisma.broadcast.create({
+      data: {
+        title: input.title,
+        message: input.message,
+        actionUrl: input.actionUrl || null,
+        audience: input.audience,
+        targetIds: input.targetIds,
+        toDashboard: input.toDashboard,
+        toEmail: input.toEmail,
+        fileUrl: input.fileUrl || null,
+        fileName: input.fileName || null,
+        isDraft: true,
+        sentById: sender.id,
+      },
+      select: { id: true },
+    });
+    return {
+      id: draft.id,
+      recipientCount: 0,
+      notifiedCount: 0,
+      queuedEmails: 0,
+      message: "Saved as a draft. Nobody has been sent anything.",
+    };
+  }
+
   const audience = await resolveAudience(
     { audience: input.audience, targetIds: input.targetIds },
     sender,
@@ -302,7 +331,7 @@ export async function sendBroadcast(
         type: "ANNOUNCEMENT",
         title: input.title,
         message: input.message,
-        actionUrl: input.actionUrl || undefined,
+        actionUrl: input.actionUrl || input.fileUrl || undefined,
       })
     : 0;
 
@@ -317,6 +346,8 @@ export async function sendBroadcast(
       targetIds: input.targetIds,
       toDashboard: input.toDashboard,
       toEmail: input.toEmail,
+      fileUrl: input.fileUrl || null,
+      fileName: input.fileName || null,
       recipientCount: audience.total,
       notifiedCount,
       // Filled in once the mail actually goes; the response must not wait.
@@ -393,6 +424,8 @@ async function deliverEmails(
             title: input.title,
             message: input.message,
             actionUrl: input.actionUrl,
+            fileUrl: input.fileUrl,
+            fileName: input.fileName,
             brand,
           });
           return sendMail({ to: person.email, ...mail });
@@ -420,9 +453,15 @@ export interface BroadcastRow {
   id: string;
   title: string;
   message: string;
+  actionUrl: string;
   audience: BroadcastAudience;
+  targetIds: string[];
   toDashboard: boolean;
   toEmail: boolean;
+  fileUrl: string;
+  fileName: string;
+  /** Written and put down — it has gone to nobody, and can be opened again. */
+  isDraft: boolean;
   recipientCount: number;
   notifiedCount: number;
   emailedCount: number;
@@ -430,7 +469,12 @@ export interface BroadcastRow {
   createdAt: string;
 }
 
-/** What has been sent. An instructor sees their own sends, staff see them all. */
+/**
+ * What has been sent, with the drafts first.
+ *
+ * Drafts lead the list however old they are: a half-written notice is a job
+ * still to do, while a sent one is only a record.
+ */
 export async function listBroadcasts(
   sender: Sender,
   page = 1,
@@ -440,16 +484,21 @@ export async function listBroadcasts(
   const [rows, total] = await Promise.all([
     prisma.broadcast.findMany({
       where,
-      orderBy: { createdAt: "desc" },
+      orderBy: [{ isDraft: "desc" }, { createdAt: "desc" }],
       skip: (page - 1) * pageSize,
       take: pageSize,
       select: {
         id: true,
         title: true,
         message: true,
+        actionUrl: true,
         audience: true,
+        targetIds: true,
         toDashboard: true,
         toEmail: true,
+        fileUrl: true,
+        fileName: true,
+        isDraft: true,
         recipientCount: true,
         notifiedCount: true,
         emailedCount: true,
@@ -465,9 +514,14 @@ export async function listBroadcasts(
       id: r.id,
       title: r.title,
       message: r.message,
+      actionUrl: r.actionUrl ?? "",
       audience: r.audience as BroadcastAudience,
+      targetIds: r.targetIds as string[],
       toDashboard: r.toDashboard,
       toEmail: r.toEmail,
+      fileUrl: r.fileUrl ?? "",
+      fileName: r.fileName ?? "",
+      isDraft: r.isDraft,
       recipientCount: r.recipientCount,
       notifiedCount: r.notifiedCount,
       emailedCount: r.emailedCount,
@@ -476,6 +530,25 @@ export async function listBroadcasts(
     })),
     total,
   };
+}
+
+/**
+ * Throw a draft away.
+ *
+ * Only a draft. A sent announcement is the record of what the academy told
+ * people and when, so it stays whatever anyone thinks of it afterwards.
+ */
+export async function deleteDraft(id: string, sender: Sender): Promise<void> {
+  const row = await prisma.broadcast.findUnique({
+    where: { id },
+    select: { isDraft: true, sentById: true },
+  });
+  if (!row) throw AppError.notFound("That draft is already gone.");
+  if (!row.isDraft) throw AppError.conflict("A sent announcement can't be deleted.");
+  if (!sender.staff && row.sentById !== sender.id) {
+    throw AppError.forbidden("That draft isn't yours.");
+  }
+  await prisma.broadcast.delete({ where: { id } });
 }
 
 // ── What the composer offers ─────────────────────────────────────────────────
