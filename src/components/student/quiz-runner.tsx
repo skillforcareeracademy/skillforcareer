@@ -360,6 +360,27 @@ const QuestionCard = memo(function QuestionCard({
 
 export function QuizRunner({ quiz }: { quiz: QuizData }) {
   const router = useRouter();
+  const [restarting, setRestarting] = useState(false);
+
+  /**
+   * Throw the paused answers away and begin again.
+   *
+   * The paused attempt is the IN_PROGRESS row, which `attemptsUsed` has never
+   * counted, so starting over costs the learner nothing.
+   */
+  async function startFresh() {
+    setRestarting(true);
+    try {
+      await api.del(`/api/quizzes/${quiz.id}/pause`);
+      router.refresh();
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError ? err.message : "Couldn't start again just now.",
+      );
+      setRestarting(false);
+    }
+  }
+
   const [answers, setAnswers] = useState<
     Record<string, { optionIds: string[]; text: string }>
   >(() =>
@@ -981,9 +1002,9 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
       </div>
 
       {quiz.paused && (
-        <p className="flex items-start gap-2 rounded-lg border border-dashed p-3 text-xs">
+        <div className="flex flex-wrap items-start gap-2 rounded-lg border border-dashed p-3 text-xs">
           <PauseCircle className="mt-0.5 size-3.5 shrink-0" />
-          <span>
+          <span className="min-w-40 flex-1">
             Picked up where you left off — your answers from{" "}
             {new Date(quiz.paused.pausedAt).toLocaleString("en-IN", {
               day: "numeric",
@@ -993,7 +1014,20 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
             })}{" "}
             are still here. This still counts as the same attempt.
           </span>
-        </p>
+          {/* The other half of pausing: "start where you left or start fresh
+              option should be there". Throwing the saved answers away does not
+              spend an attempt — the paused one was never counted. */}
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={restarting}
+            onClick={() => void startFresh()}
+          >
+            {restarting && <Loader2 className="size-3.5 animate-spin" />}
+            Start fresh
+          </Button>
+        </div>
       )}
 
       <QuizNotesBar quizId={quiz.id} bookmarked={quiz.bookmarked} />

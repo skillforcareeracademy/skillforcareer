@@ -252,6 +252,34 @@ export function RichTextEditor({
     ],
     content: value,
     editorProps: {
+      /**
+       * A screenshot pasted straight into the page.
+       *
+       * "M not able to paste images in study material box" — the clipboard
+       * carries the picture as a file, and tiptap drops anything it has no
+       * handler for. The same uploader the toolbar button uses puts it through
+       * the platform's storage, so the reading never carries a base64 blob.
+       */
+      handlePaste(_view, event) {
+        const files = Array.from(event.clipboardData?.files ?? []).filter((f) =>
+          f.type.startsWith("image/"),
+        );
+        if (files.length === 0) return false;
+        event.preventDefault();
+        void addImageRef.current(files[0]);
+        return true;
+      },
+      /** Dragged in from the desktop, by the same route. */
+      handleDrop(_view, event) {
+        const dt = (event as DragEvent).dataTransfer;
+        const files = Array.from(dt?.files ?? []).filter((f) =>
+          f.type.startsWith("image/"),
+        );
+        if (files.length === 0) return false;
+        event.preventDefault();
+        void addImageRef.current(files[0]);
+        return true;
+      },
       attributes: {
         class: cn(
           // `prose-blog` is the same stylesheet the published article uses, so
@@ -271,6 +299,10 @@ export function RichTextEditor({
 
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  // The handler the editor's paste/drop hooks call. Held in a ref because
+  // `editorProps` is read once, when the editor is created, and would otherwise
+  // close over the first render's copy of `addImage`.
+  const addImageRef = useRef<(file: File) => Promise<void>>(async () => {});
 
   /**
    * Put an image in the text. It goes through the platform's own uploader, so
@@ -295,6 +327,13 @@ export function RichTextEditor({
       setUploading(false);
     }
   }
+
+  // Paste and drop go through the very same uploader as the toolbar button.
+  // Assigned in an effect rather than during render: React forbids writing a
+  // ref while rendering, and the editor only ever reads it from a handler.
+  useEffect(() => {
+    addImageRef.current = addImage;
+  });
 
   /**
    * Follow the value when it is replaced from outside — opening a saved piece
