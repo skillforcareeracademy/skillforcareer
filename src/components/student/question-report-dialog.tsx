@@ -35,7 +35,9 @@ export function QuestionReportDialog({
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
-  const [raised, setRaised] = useState<{ ref: string; message: string } | null>(null);
+  const [raised, setRaised] = useState<{ ref: string; message: string } | null>(
+    null,
+  );
 
   /**
    * Not a form submit.
@@ -56,7 +58,9 @@ export function QuestionReportDialog({
       setRaised(res);
       toast.success(`Review request ${res.ref} submitted.`);
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Couldn't send that just now.");
+      toast.error(
+        err instanceof ApiError ? err.message : "Couldn't send that just now.",
+      );
     } finally {
       setSending(false);
     }
@@ -107,10 +111,18 @@ export function QuestionReportDialog({
                 maxLength={1000}
               />
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setOpen(false)}
+                >
                   Cancel
                 </Button>
-                <Button type="button" disabled={sending} onClick={() => void submit()}>
+                <Button
+                  type="button"
+                  disabled={sending}
+                  onClick={() => void submit()}
+                >
                   {sending && <Loader2 className="size-4 animate-spin" />}
                   Send for review
                 </Button>

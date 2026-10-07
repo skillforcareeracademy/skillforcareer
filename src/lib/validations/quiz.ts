@@ -117,7 +117,9 @@ export const quizSourceSchema = z
     text: z.string().trim().max(200_000).optional().or(z.literal("")),
   })
   .superRefine((v, ctx) => {
-    const picked = [v.batchNoteId, v.lessonId, v.studyMaterialId].filter(Boolean);
+    const picked = [v.batchNoteId, v.lessonId, v.studyMaterialId].filter(
+      Boolean,
+    );
     if (picked.length === 0 && !v.text) {
       ctx.addIssue({
         code: "custom",
@@ -126,7 +128,11 @@ export const quizSourceSchema = z
       });
     }
     if (picked.length > 1) {
-      ctx.addIssue({ code: "custom", message: "Pick one source at a time.", path: ["lessonId"] });
+      ctx.addIssue({
+        code: "custom",
+        message: "Pick one source at a time.",
+        path: ["lessonId"],
+      });
     }
     if (picked.length === 0 && v.text && v.text.length < 200) {
       ctx.addIssue({
@@ -137,7 +143,12 @@ export const quizSourceSchema = z
     }
   });
 
-export const GENERATE_STYLES = ["MIXED", "SINGLE_CHOICE", "MULTIPLE_CHOICE", "TRUE_FALSE"] as const;
+export const GENERATE_STYLES = [
+  "MIXED",
+  "SINGLE_CHOICE",
+  "MULTIPLE_CHOICE",
+  "TRUE_FALSE",
+] as const;
 export const GENERATE_STYLE_LABEL: Record<string, string> = {
   MIXED: "Mixed",
   SINGLE_CHOICE: "Single choice",
@@ -176,15 +187,27 @@ export const questionSchema = z
   .superRefine((q, ctx) => {
     if (q.type === "SHORT_ANSWER") return;
     if (q.options.length < 2) {
-      ctx.addIssue({ code: "custom", message: "Add at least 2 options.", path: ["options"] });
+      ctx.addIssue({
+        code: "custom",
+        message: "Add at least 2 options.",
+        path: ["options"],
+      });
     }
     const correct = q.options.filter((o) => o.isCorrect).length;
     if (correct < 1) {
-      ctx.addIssue({ code: "custom", message: "Mark at least one option correct.", path: ["options"] });
+      ctx.addIssue({
+        code: "custom",
+        message: "Mark at least one option correct.",
+        path: ["options"],
+      });
     }
     if (q.type === "SINGLE_CHOICE" || q.type === "TRUE_FALSE") {
       if (correct > 1) {
-        ctx.addIssue({ code: "custom", message: "Only one option can be correct.", path: ["options"] });
+        ctx.addIssue({
+          code: "custom",
+          message: "Only one option can be correct.",
+          path: ["options"],
+        });
       }
     }
   })

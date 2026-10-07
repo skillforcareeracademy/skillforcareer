@@ -12,7 +12,7 @@ import {
   History,
 } from "lucide-react";
 import type { StudentQuiz } from "@/server/services/student-quiz-service";
-import { QUIZ_DIFFICULTY_LABEL } from "@/lib/validations/quiz";
+import { QUIZ_DIFFICULTY_LABEL, QUIZ_TYPE_LABEL } from "@/lib/validations/quiz";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatCards, type StatCard } from "@/components/shared/stat-cards";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -31,16 +31,20 @@ export function StudentQuizzesClient({ quizzes }: { quizzes: StudentQuiz[] }) {
   const [search, setSearch] = useState("");
   /** Behind the figures above: all, only sat, or only passed. */
   const [only, setOnly] = useState<"all" | "attempted" | "passed">("all");
+  /** Practice papers, graded exams, or both — the admin list has the same tabs. */
+  const [kind, setKind] = useState<"ALL" | "PRACTICE" | "EXAM">("ALL");
 
   // Searching cuts across every group; without one, the groups lead.
   const matches = useMemo(() => {
     const q = search.trim().toLowerCase();
+    const byKind =
+      kind === "ALL" ? quizzes : quizzes.filter((z) => z.quizType === kind);
     const narrowed =
       only === "attempted"
-        ? quizzes.filter((z) => z.attemptsUsed > 0)
+        ? byKind.filter((z) => z.attemptsUsed > 0)
         : only === "passed"
-          ? quizzes.filter((z) => z.passed)
-          : quizzes;
+          ? byKind.filter((z) => z.passed)
+          : byKind;
     if (!q) return narrowed;
     return narrowed.filter(
       (z) =>
@@ -49,7 +53,7 @@ export function StudentQuizzesClient({ quizzes }: { quizzes: StudentQuiz[] }) {
         (z.subCategoryName ?? "").toLowerCase().includes(q) ||
         (z.courseTitle ?? "").toLowerCase().includes(q),
     );
-  }, [quizzes, search, only]);
+  }, [quizzes, search, only, kind]);
 
   const stats = {
     total: quizzes.length,
@@ -107,14 +111,42 @@ export function StudentQuizzesClient({ quizzes }: { quizzes: StudentQuiz[] }) {
             className="grid grid-cols-3 gap-3 sm:gap-4"
           />
 
-          <div className="relative max-w-sm">
-            <Search className="text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2" />
-            <Input
-              placeholder="Search every group…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9"
-            />
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="relative max-w-sm flex-1">
+              <Search className="text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+              <Input
+                placeholder="Search every group…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+
+            {/* Practice or exam, the same tabs the admin list has — "ye practice
+                exam quiz wale tab student panel me bhi hone chahiye. Student
+                differentiate kaise krega quizes ke beech." Hidden when the
+                academy has not typed any of its quizzes yet. */}
+            {quizzes.some((q) => q.quizType) && (
+              <div className="flex gap-2">
+                {(
+                  [
+                    ["ALL", "All"],
+                    ["PRACTICE", QUIZ_TYPE_LABEL.PRACTICE],
+                    ["EXAM", QUIZ_TYPE_LABEL.EXAM],
+                  ] as const
+                ).map(([value, label]) => (
+                  <Button
+                    key={value}
+                    type="button"
+                    size="sm"
+                    variant={kind === value ? "default" : "outline"}
+                    onClick={() => setKind(value)}
+                  >
+                    {label}
+                  </Button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Groups first, papers on a tap — "student can click on group to
@@ -154,6 +186,9 @@ export function StudentQuizzesClient({ quizzes }: { quizzes: StudentQuiz[] }) {
                       </h3>
                       <p className="text-muted-foreground truncate text-xs">
                         {[
+                          // The academy's permanent number — the one the office
+                          // quotes down the phone, and what the admin list shows.
+                          q.quizNo ? `Quiz ${q.quizNo}` : null,
                           q.categoryName,
                           q.subCategoryName,
                           q.courseTitle,
@@ -164,6 +199,20 @@ export function StudentQuizzesClient({ quizzes }: { quizzes: StudentQuiz[] }) {
                       </p>
                     </div>
                     <div className="flex shrink-0 items-center gap-1">
+                      {/* Practice or exam — "student differentiate kaise krega
+                          quizes ke beech". */}
+                      {q.quizType && (
+                        <Badge
+                          variant="secondary"
+                          className={
+                            q.quizType === "EXAM"
+                              ? "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300"
+                              : "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300"
+                          }
+                        >
+                          {QUIZ_TYPE_LABEL[q.quizType] ?? q.quizType}
+                        </Badge>
+                      )}
                       {q.bestPercent != null && (
                         <Badge
                           variant="secondary"

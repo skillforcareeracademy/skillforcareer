@@ -1,10 +1,17 @@
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
-import type { CheckAnswerInput, SubmitQuizInput } from "@/lib/validations/quiz-attempt";
+import type {
+  CheckAnswerInput,
+  SubmitQuizInput,
+} from "@/lib/validations/quiz-attempt";
 import { getSettings } from "./settings-service";
 import { ACTIVITY_ACTIONS, logActivity } from "./activity-service";
-import { groupOptions, groupsOfMany, itemsForBatches } from "./content-group-service";
+import {
+  groupOptions,
+  groupsOfMany,
+  itemsForBatches,
+} from "./content-group-service";
 
 // ── Reads ────────────────────────────────────────────────────────────────────
 
@@ -26,6 +33,10 @@ export interface StudentQuiz {
   bookmarked: boolean;
   /** The academy's own grouping and numbering. */
   sequence: number;
+  /** The permanent number the office quotes — the same one the admin list shows. */
+  quizNo: number | null;
+  /** Practice or exam, so a learner can tell the two apart. */
+  quizType: string | null;
   categoryName: string | null;
   /** Every folder above this paper, outermost first — what the browser nests on. */
   groupPath: string[];
@@ -34,7 +45,9 @@ export interface StudentQuiz {
   difficulty: string;
 }
 
-export async function listStudentQuizzes(userId: string): Promise<StudentQuiz[]> {
+export async function listStudentQuizzes(
+  userId: string,
+): Promise<StudentQuiz[]> {
   const enrollments = await prisma.enrollment.findMany({
     where: { userId, status: { in: ["ACTIVE", "COMPLETED"] } },
     select: { courseId: true, batchId: true },
@@ -62,7 +75,9 @@ export async function listStudentQuizzes(userId: string): Promise<StudentQuiz[]>
           batches: { none: {} },
           students: { none: {} },
         },
-        ...(batchIds.length ? [{ batches: { some: { batchId: { in: batchIds } } } }] : []),
+        ...(batchIds.length
+          ? [{ batches: { some: { batchId: { in: batchIds } } } }]
+          : []),
         ...(viaGroups.length ? [{ id: { in: viaGroups } }] : []),
         { students: { some: { userId } } },
       ],
@@ -76,7 +91,10 @@ export async function listStudentQuizzes(userId: string): Promise<StudentQuiz[]>
       category: { select: { name: true } },
       subCategory: { select: { name: true } },
       questions: { select: { points: true } },
-      attempts: { where: { studentId: userId }, select: { score: true, maxScore: true } },
+      attempts: {
+        where: { studentId: userId },
+        select: { score: true, maxScore: true },
+      },
     },
   });
 
@@ -101,7 +119,10 @@ export async function listStudentQuizzes(userId: string): Promise<StudentQuiz[]>
   // levels deep reads as "Medical Coding" then "ICD-10 → Guidelines". Falls
   // back to the old category when a paper has not been filed anywhere yet.
   const [membership, options] = await Promise.all([
-    groupsOfMany("QUIZ", quizzes.map((z) => z.id)),
+    groupsOfMany(
+      "QUIZ",
+      quizzes.map((z) => z.id),
+    ),
     groupOptions("QUIZ"),
   ]);
   const pathOf = new Map(options.map((o) => [o.id, o.path]));
@@ -111,7 +132,11 @@ export async function listStudentQuizzes(userId: string): Promise<StudentQuiz[]>
       .filter((path): path is string => Boolean(path))
       .sort()[0];
     if (!first)
-      return { path: [] as string[], category: null as string | null, sub: null as string | null };
+      return {
+        path: [] as string[],
+        category: null as string | null,
+        sub: null as string | null,
+      };
     const path = first.split(" → ");
     const [head, ...rest] = path;
     // `path` is what the learner's browser nests on; the two names below are
@@ -141,6 +166,8 @@ export async function listStudentQuizzes(userId: string): Promise<StudentQuiz[]>
       passed: best != null && best >= z.passingScore,
       bookmarked: saved.has(z.id),
       sequence: z.sequence,
+      quizNo: z.quizNo,
+      quizType: z.quizType,
       difficulty: z.difficulty,
       categoryName: folder.category ?? z.category?.name ?? null,
       groupPath: folder.path,
@@ -160,7 +187,12 @@ export async function getQuizForAttempt(userId: string, quizId: string) {
       sources: { orderBy: { createdAt: "asc" }, select: { title: true } },
       questions: {
         orderBy: { order: "asc" },
-        include: { options: { orderBy: { order: "asc" }, select: { id: true, text: true } } },
+        include: {
+          options: {
+            orderBy: { order: "asc" },
+            select: { id: true, text: true },
+          },
+        },
       },
     },
   });
@@ -180,7 +212,10 @@ export async function getQuizForAttempt(userId: string, quizId: string) {
     prisma.quizAttempt.count({
       where: { quizId, studentId: userId, status: { not: "IN_PROGRESS" } },
     }),
-    prisma.bookmark.findFirst({ where: { userId, quizId }, select: { id: true } }),
+    prisma.bookmark.findFirst({
+      where: { userId, quizId },
+      select: { id: true },
+    }),
     getSettings(),
     quiz.allowPause ? pausedWork(userId, quizId) : Promise.resolve(null),
   ]);
@@ -259,7 +294,8 @@ export async function checkQuizAnswer(
     where: { userId_courseId: { userId, courseId: quiz.courseId } },
     select: { id: true },
   });
-  if (!enrolled) throw AppError.forbidden("You're not enrolled in this course.");
+  if (!enrolled)
+    throw AppError.forbidden("You're not enrolled in this course.");
 
   const question = await prisma.question.findFirst({
     where: { id: input.questionId, quizId },
@@ -287,7 +323,9 @@ export async function checkQuizAnswer(
   const chosen = [...new Set(input.optionIds)].sort();
   return {
     questionId: input.questionId,
-    isCorrect: correctIds.length === chosen.length && correctIds.every((id, i) => id === chosen[i]),
+    isCorrect:
+      correctIds.length === chosen.length &&
+      correctIds.every((id, i) => id === chosen[i]),
     correctOptionIds: correctIds,
     explanation: question.explanation,
   };
@@ -329,7 +367,9 @@ export async function submitQuizAttempt(
   const quiz = await prisma.quiz.findFirst({
     where: { id: quizId, isPublished: true },
     include: {
-      questions: { include: { options: { select: { id: true, isCorrect: true } } } },
+      questions: {
+        include: { options: { select: { id: true, isCorrect: true } } },
+      },
     },
   });
   if (!quiz || !quiz.courseId) throw AppError.notFound("Quiz not found.");
@@ -338,7 +378,8 @@ export async function submitQuizAttempt(
     where: { userId_courseId: { userId, courseId: quiz.courseId } },
     select: { id: true },
   });
-  if (!enrolled) throw AppError.forbidden("You're not enrolled in this course.");
+  if (!enrolled)
+    throw AppError.forbidden("You're not enrolled in this course.");
 
   if (quiz.releaseAt && quiz.releaseAt.getTime() > Date.now()) {
     throw AppError.badRequest("This quiz hasn't opened yet.");
@@ -366,17 +407,27 @@ export async function submitQuizAttempt(
     throw AppError.badRequest("You've used all your attempts for this quiz.");
   }
 
-  const answerMap = new Map(input.answers.map((a) => [a.questionId, a.optionIds]));
+  const answerMap = new Map(
+    input.answers.map((a) => [a.questionId, a.optionIds]),
+  );
 
   let score = 0;
   let maxScore = 0;
   const breakdown: QuizResult["breakdown"] = [];
-  const responses: { questionId: string; selected: string[]; isCorrect: boolean | null; points: number }[] = [];
+  const responses: {
+    questionId: string;
+    selected: string[];
+    isCorrect: boolean | null;
+    points: number;
+  }[] = [];
 
   for (const q of quiz.questions) {
     maxScore += q.points;
     const selected = answerMap.get(q.id) ?? [];
-    const correctIds = q.options.filter((o) => o.isCorrect).map((o) => o.id).sort();
+    const correctIds = q.options
+      .filter((o) => o.isCorrect)
+      .map((o) => o.id)
+      .sort();
 
     let isCorrect: boolean | null;
     let points = 0;
@@ -384,7 +435,9 @@ export async function submitQuizAttempt(
       isCorrect = null; // needs manual grading
     } else {
       const sel = [...selected].sort();
-      isCorrect = correctIds.length === sel.length && correctIds.every((id, i) => id === sel[i]);
+      isCorrect =
+        correctIds.length === sel.length &&
+        correctIds.every((id, i) => id === sel[i]);
       points = isCorrect ? q.points : 0;
     }
     score += points;
@@ -488,7 +541,10 @@ export interface PausedWork {
 export async function pauseQuizAttempt(
   userId: string,
   quizId: string,
-  input: { answers: { questionId: string; optionIds: string[]; text?: string }[]; timeSpentSeconds?: number },
+  input: {
+    answers: { questionId: string; optionIds: string[]; text?: string }[];
+    timeSpentSeconds?: number;
+  },
 ): Promise<{ saved: number }> {
   const quiz = await prisma.quiz.findFirst({
     where: { id: quizId, isPublished: true },
@@ -503,7 +559,8 @@ export async function pauseQuizAttempt(
     where: { userId_courseId: { userId, courseId: quiz.courseId } },
     select: { id: true },
   });
-  if (!enrolled) throw AppError.forbidden("You're not enrolled in this course.");
+  if (!enrolled)
+    throw AppError.forbidden("You're not enrolled in this course.");
 
   const existing = await prisma.quizAttempt.findFirst({
     where: { quizId, studentId: userId, status: "IN_PROGRESS" },
@@ -569,7 +626,9 @@ export async function pausedWork(
     answers: attempt.responses.map((r) => ({
       questionId: r.questionId,
       optionIds: Array.isArray(r.selectedOptions)
-        ? (r.selectedOptions as unknown[]).filter((v): v is string => typeof v === "string")
+        ? (r.selectedOptions as unknown[]).filter(
+            (v): v is string => typeof v === "string",
+          )
         : [],
       text: r.answerText ?? "",
     })),
@@ -579,7 +638,10 @@ export async function pausedWork(
 }
 
 /** Throw away a paused paper and start again. */
-export async function discardPausedWork(userId: string, quizId: string): Promise<void> {
+export async function discardPausedWork(
+  userId: string,
+  quizId: string,
+): Promise<void> {
   await prisma.quizAttempt.deleteMany({
     where: { quizId, studentId: userId, status: "IN_PROGRESS" },
   });
