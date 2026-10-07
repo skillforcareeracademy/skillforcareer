@@ -38,6 +38,9 @@ export interface BlogPostDetail extends BlogPostRow {
   content: string;
   metaTitle: string;
   metaDescription: string;
+  /** A file offered under the post, with the words for its button. */
+  downloadUrl: string;
+  downloadLabel: string;
 }
 
 const LIST_SELECT = {
@@ -137,6 +140,8 @@ export async function getBlogPost(id: string): Promise<BlogPostDetail> {
       content: true,
       metaTitle: true,
       metaDescription: true,
+      downloadUrl: true,
+      downloadLabel: true,
     },
   });
   if (!post) throw AppError.notFound("That post no longer exists.");
@@ -145,6 +150,8 @@ export async function getBlogPost(id: string): Promise<BlogPostDetail> {
     content: post.content,
     metaTitle: post.metaTitle ?? "",
     metaDescription: post.metaDescription ?? "",
+    downloadUrl: post.downloadUrl ?? "",
+    downloadLabel: post.downloadLabel ?? "",
   };
 }
 
@@ -159,6 +166,8 @@ function coreData(input: BlogPostInput) {
     categoryId: input.categoryId || null,
     metaTitle: input.metaTitle || null,
     metaDescription: input.metaDescription || null,
+    downloadUrl: input.downloadUrl || null,
+    downloadLabel: input.downloadLabel || null,
     readMinutes: readingMinutes(input.content),
   };
 }
@@ -248,7 +257,14 @@ export async function listPublishedPosts(opts: {
 export async function getPublishedPost(slug: string): Promise<BlogPostDetail | null> {
   const post = await prisma.blogPost.findFirst({
     where: { slug, ...PUBLISHED },
-    select: { ...LIST_SELECT, content: true, metaTitle: true, metaDescription: true },
+    select: {
+      ...LIST_SELECT,
+      content: true,
+      metaTitle: true,
+      metaDescription: true,
+      downloadUrl: true,
+      downloadLabel: true,
+    },
   });
   if (!post) return null;
 
@@ -262,6 +278,8 @@ export async function getPublishedPost(slug: string): Promise<BlogPostDetail | n
     content: post.content,
     metaTitle: post.metaTitle ?? "",
     metaDescription: post.metaDescription ?? "",
+    downloadUrl: post.downloadUrl ?? "",
+    downloadLabel: post.downloadLabel ?? "",
   };
 }
 

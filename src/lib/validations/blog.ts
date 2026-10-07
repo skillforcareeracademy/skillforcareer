@@ -66,6 +66,12 @@ export const blogPostSchema = z.object({
   categoryId: z.string().trim().max(40).default(""),
   metaTitle: z.string().trim().max(180).default(""),
   metaDescription: z.string().trim().max(400).default(""),
+  /**
+   * A file to offer on the post — "can we add a button in the blog to download
+   * anything?" A syllabus, a fee sheet, a sample paper.
+   */
+  downloadUrl: z.string().trim().max(500).default(""),
+  downloadLabel: z.string().trim().max(60).default(""),
 });
 
 export type BlogPostInput = z.infer<typeof blogPostSchema>;

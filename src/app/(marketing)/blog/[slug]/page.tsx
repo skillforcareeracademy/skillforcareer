@@ -3,7 +3,15 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { format } from "date-fns";
-import { ArrowLeft, CalendarDays, Clock, Newspaper } from "lucide-react";
+import {
+  ArrowLeft,
+  CalendarDays,
+  Clock,
+  Download,
+  FileDown,
+  Newspaper,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { getPublishedPost, relatedPosts } from "@/server/services/blog-service";
@@ -110,6 +118,29 @@ export default async function BlogPostPage({
             className="prose-blog mt-10"
             dangerouslySetInnerHTML={{ __html: post.content }}
           />
+
+          {/* The file the academy attached to the article — a syllabus, a
+              brochure, a sample paper. `download` asks the browser to save it
+              rather than open it in a tab. */}
+          {post.downloadUrl && (
+            <div className="bg-muted/40 mt-10 flex flex-wrap items-center justify-between gap-4 rounded-xl border p-5">
+              <div className="flex items-start gap-3">
+                <FileDown className="text-primary mt-0.5 size-5 shrink-0" />
+                <div>
+                  <p className="font-medium">
+                    {post.downloadLabel || "Download"}
+                  </p>
+                  <p className="text-muted-foreground text-sm">
+                    Free to download, no sign-up needed.
+                  </p>
+                </div>
+              </div>
+              <Button nativeButton={false} render={<a href={post.downloadUrl} download />}>
+                <Download className="size-4" />
+                {post.downloadLabel || "Download"}
+              </Button>
+            </div>
+          )}
         </div>
       </article>
 

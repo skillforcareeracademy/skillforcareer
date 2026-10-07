@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/select";
 import { PageHeader } from "@/components/shared/page-header";
 import { ImageUpload } from "@/components/shared/image-upload";
+import { FileUpload } from "@/components/shared/file-upload";
 import { RichTextEditor } from "@/components/shared/rich-text-editor";
 import { readingMinutes, slugifyTitle } from "@/lib/validations/blog";
 import type { BlogPostDetail } from "@/server/services/blog-service";
@@ -61,6 +62,8 @@ export function BlogEditor({
     categoryId: post.categoryId,
     metaTitle: post.metaTitle,
     metaDescription: post.metaDescription,
+    downloadUrl: post.downloadUrl,
+    downloadLabel: post.downloadLabel,
   });
   const [slugTouched, setSlugTouched] = useState(post.slug !== slugifyTitle(post.title));
   const [saving, setSaving] = useState<"draft" | "publish" | null>(null);
@@ -76,7 +79,9 @@ export function BlogEditor({
       form.tags !== post.tags.join(", ") ||
       form.categoryId !== post.categoryId ||
       form.metaTitle !== post.metaTitle ||
-      form.metaDescription !== post.metaDescription,
+      form.metaDescription !== post.metaDescription ||
+      form.downloadUrl !== post.downloadUrl ||
+      form.downloadLabel !== post.downloadLabel,
     [form, post],
   );
 
@@ -270,6 +275,42 @@ export function BlogEditor({
                 placeholder="…or paste an image path"
                 className="font-mono text-xs"
               />
+            </CardContent>
+          </Card>
+
+          {/* A file offered under the article — "can we add a button in the blog
+              to download anything?" A syllabus, a fee sheet, a sample paper. */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Download button</CardTitle>
+              <CardDescription>
+                Offer a file under the article — a syllabus, a brochure, a sample paper.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <FileUpload
+                value={form.downloadUrl}
+                onChange={(url) => set("downloadUrl", url)}
+              />
+              <Input
+                value={form.downloadUrl}
+                onChange={(e) => set("downloadUrl", e.target.value)}
+                placeholder="…or paste a file link"
+                className="font-mono text-xs"
+              />
+              <div className="space-y-1.5">
+                <Label htmlFor="post-download-label">Button text</Label>
+                <Input
+                  id="post-download-label"
+                  value={form.downloadLabel}
+                  onChange={(e) => set("downloadLabel", e.target.value)}
+                  placeholder="Download the syllabus"
+                  maxLength={60}
+                />
+                <p className="text-muted-foreground text-xs">
+                  Left empty it simply reads &ldquo;Download&rdquo;.
+                </p>
+              </div>
             </CardContent>
           </Card>
 
