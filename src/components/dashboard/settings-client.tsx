@@ -635,14 +635,16 @@ export function SettingsClient({
                   charging is not dated, so the first run after a rate is set
                   reaches back over everything already overdue. */}
               <p className="rounded-lg border border-amber-500/30 bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
-                Setting a penalty above zero charges <strong>every</strong>{" "}
-                instalment already past its grace period, not only the ones that
-                fall due from now on. Leave it at 0 until you mean to.
+                Reminders are <strong>off</strong> until you switch them on, and
+                nothing is charged while they are. Turning them on emails every
+                learner whose instalment is past its due date — including fees
+                already settled in cash or by hand, which the system cannot see.
+                Check the fee records first.
               </p>
               <div className="divide-y">
                 <ToggleRow
                   label="Send payment reminders"
-                  description="7 days, 3 days, 1 day and 2 hours before each due date — then an overdue notice after it."
+                  description="7 days, 3 days, 1 day and 2 hours before each due date — then an overdue notice after it. Off until you turn it on."
                   checked={form.feeRemindersEnabled}
                   onChange={(v) => set("feeRemindersEnabled", v)}
                 />

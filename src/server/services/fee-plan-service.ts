@@ -425,6 +425,13 @@ export async function feeSummaryFor(
  * told about rather than one that drifts with the clock.
  */
 export async function accruePenalties(): Promise<number> {
+  const { settings } = await getSettings();
+  // Nothing is charged while the academy has late fees switched off, and
+  // switching them on must not reach back over dues that were already settled
+  // off the books — which is how a learner came to be billed for an instalment
+  // the office had taken in cash.
+  if (!settings.feeRemindersEnabled) return 0;
+
   const now = new Date();
   const candidates = await prisma.installment.findMany({
     where: {

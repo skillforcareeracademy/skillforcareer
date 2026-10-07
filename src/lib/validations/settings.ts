@@ -174,6 +174,11 @@ export const settingsSchema = z.object({
   feePenaltyFlat: z.coerce.number().min(0).max(1_000_000),
   /// Whether the scheduled nudges go out at all — 7 days, 3 days, 1 day and
   /// 2 hours before a due date, then an overdue notice after it.
+  ///
+  /// Ships **off**. The sweep has no idea which of an academy's historical dues
+  /// are real: the first run after this was switched on emailed a learner about
+  /// an instalment the office had already settled, and he replied to say so.
+  /// Turning it on is the academy saying its fee records are right.
   feeRemindersEnabled: z.boolean(),
 
   // ── Assistant & guides ───────────────────────────────────────────────────
@@ -277,7 +282,7 @@ export const DEFAULT_SETTINGS: Settings = {
   feeGraceDays: 5,
   feePenaltyPercent: 0,
   feePenaltyFlat: 0,
-  feeRemindersEnabled: true,
+  feeRemindersEnabled: false,
 
   chatbotEnabled: true,
   chatbotName: "Ami",
