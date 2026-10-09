@@ -1,7 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import { getSettings } from "./settings-service";
-import type { InstallmentMode } from "@/lib/validations/payment";
+import type {
+  BulkFeeTermsInput,
+  InstallmentMode,
+} from "@/lib/validations/payment";
 
 /**
  * The arithmetic behind a learner's fee plan: how an instalment schedule is
@@ -480,4 +483,55 @@ export async function accruePenalties(): Promise<number> {
     charged += 1;
   }
   return charged;
+}
+
+/**
+ * Put the same fee terms on many plans at once.
+ *
+ * "Coz for every student we can not add this." The office sets a grace period
+ * and a penalty rate once and applies it across everyone, a batch, or a
+ * course. A figure left blank is left alone on every plan it touches, so the
+ * grace period can be changed without disturbing a rate already tuned.
+ *
+ * Nothing is charged by doing this. Late fees only ever accrue from the
+ * nightly sweep, and that stays switched off until the academy says its fee
+ * records are right — which is the safeguard that stopped the last accident.
+ */
+export async function applyFeeTermsInBulk(
+  input: BulkFeeTermsInput,
+): Promise<{ count: number }> {
+  const where: Prisma.PaymentWhereInput = {
+    // Settled and written-off plans have no future late fee to govern.
+    status: { notIn: ["PAID", "REFUNDED", "FAILED", "NO_DUE"] },
+  };
+
+  if (input.scope === "COURSE") {
+    where.courseId = input.courseId;
+  } else if (input.scope === "BATCH") {
+    const members = await prisma.enrollment.findMany({
+      where: { batchId: input.batchId },
+      select: { userId: true },
+    });
+    if (members.length === 0) return { count: 0 };
+    where.userId = { in: [...new Set(members.map((m) => m.userId))] };
+  }
+
+  if (input.skipCustomised) {
+    where.graceDays = null;
+    where.penaltyPercent = null;
+    where.penaltyFlat = null;
+  }
+
+  const data: Prisma.PaymentUpdateManyMutationInput = {};
+  if (input.graceDays !== undefined) data.graceDays = input.graceDays;
+  if (input.penaltyPercent !== undefined) {
+    data.penaltyPercent = new Prisma.Decimal(input.penaltyPercent);
+  }
+  if (input.penaltyFlat !== undefined) {
+    data.penaltyFlat = new Prisma.Decimal(input.penaltyFlat);
+  }
+  if (Object.keys(data).length === 0) return { count: 0 };
+
+  const { count } = await prisma.payment.updateMany({ where, data });
+  return { count };
 }

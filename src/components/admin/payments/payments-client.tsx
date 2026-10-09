@@ -16,6 +16,7 @@ import {
   Eye,
   X,
   Landmark,
+  Scale,
   BellRing,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -32,6 +33,7 @@ import {
 import { PaymentAccountsDialog } from "@/components/admin/payments/payment-accounts-dialog";
 import { DataTable, type Column } from "@/components/shared/data-table";
 import { PageHeader } from "@/components/shared/page-header";
+import { BulkFeeTermsDialog } from "./bulk-fee-terms-dialog";
 import { StatCards, type StatCard } from "@/components/shared/stat-cards";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -150,6 +152,7 @@ export function PaymentsClient({
   users,
   courses,
   accounts,
+  batches,
 }: {
   payments: PaymentRow[];
   total: number;
@@ -158,11 +161,14 @@ export function PaymentsClient({
   users: UserOpt[];
   courses: CourseOpt[];
   accounts: AccountOpt[];
+  batches: { id: string; title: string }[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const [search, setSearch] = useState(query.search ?? "");
   const [accountsOpen, setAccountsOpen] = useState(false);
+  /** "Apply fee terms" across everyone, a batch or a course. */
+  const [termsOpen, setTermsOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<PaymentFormInitial | null>(null);
   const [opening, setOpening] = useState<string | null>(null);
@@ -542,6 +548,10 @@ export function PaymentsClient({
             <Button variant="outline" onClick={() => setAccountsOpen(true)}>
               <Landmark className="size-4" /> Accounts
             </Button>
+            {/* "Coz for every student we can not add this." */}
+            <Button variant="outline" onClick={() => setTermsOpen(true)}>
+              <Scale className="size-4" /> Fee terms
+            </Button>
             <Button
               onClick={() => {
                 setEditing(null);
@@ -731,6 +741,13 @@ export function PaymentsClient({
       <PaymentAccountsDialog
         open={accountsOpen}
         onOpenChange={setAccountsOpen}
+      />
+
+      <BulkFeeTermsDialog
+        open={termsOpen}
+        onOpenChange={setTermsOpen}
+        batches={batches}
+        courses={courses.map((c) => ({ id: c.id, title: c.title }))}
       />
 
       <AlertDialog

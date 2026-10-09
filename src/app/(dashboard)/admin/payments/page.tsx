@@ -8,6 +8,7 @@ import {
   listCoursesForSelect,
 } from "@/server/services/payment-service";
 import { listAccountsForSelect } from "@/server/services/payment-account-service";
+import { listBatchesForSelect } from "@/server/services/quiz-service";
 import { PaymentsClient } from "@/components/admin/payments/payments-client";
 
 export const metadata: Metadata = { title: "Payments" };
@@ -33,13 +34,16 @@ export default async function PaymentsPage({
     method: str(sp.method),
   };
 
-  const [{ payments, total }, stats, users, courses, accounts] = await Promise.all([
+  const [{ payments, total }, stats, users, courses, accounts, batches] =
+    await Promise.all([
     listPaymentsAdmin(query),
     paymentStats(),
     listUsersForSelect(),
     listCoursesForSelect(),
     listAccountsForSelect(),
-  ]);
+      // For "apply these fee terms to one batch".
+      listBatchesForSelect(),
+    ]);
 
   return (
     <PaymentsClient
@@ -50,6 +54,7 @@ export default async function PaymentsPage({
       users={users}
       courses={courses}
       accounts={accounts}
+      batches={batches.map((b) => ({ id: b.id, title: b.name }))}
     />
   );
 }

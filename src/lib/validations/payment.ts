@@ -309,3 +309,54 @@ export function discountPercent(total: number, discount: number): number {
   if (!total || total <= 0 || discount <= 0) return 0;
   return Math.round((discount / total) * 1000) / 10;
 }
+
+/**
+ * Putting the same fee terms on many plans at once — "we should have an option
+ * to set default from our end and apply to all students or batch or course
+ * option should be there. Coz for every student we can not add this."
+ *
+ * A blank figure means "leave that one alone", so the office can change only
+ * the grace period without disturbing a penalty rate it has already tuned.
+ */
+export const BULK_TERMS_SCOPES = ["ALL", "BATCH", "COURSE"] as const;
+export type BulkTermsScope = (typeof BULK_TERMS_SCOPES)[number];
+
+export const BULK_TERMS_SCOPE_LABEL: Record<BulkTermsScope, string> = {
+  ALL: "Every learner",
+  BATCH: "One batch",
+  COURSE: "One course",
+};
+
+export const bulkFeeTermsSchema = z
+  .object({
+    scope: z.enum(BULK_TERMS_SCOPES).default("ALL"),
+    /** Required by the matching scope; ignored otherwise. */
+    batchId: z.string().trim().max(40).optional().or(z.literal("")),
+    courseId: z.string().trim().max(40).optional().or(z.literal("")),
+    graceDays: z.coerce.number().int().min(0).max(90).optional(),
+    penaltyPercent: z.coerce.number().min(0).max(100).optional(),
+    penaltyFlat: z.coerce.number().min(0).max(1_000_000).optional(),
+    /** Leave plans that already carry their own terms exactly as they are. */
+    skipCustomised: z.boolean().default(false),
+  })
+  .superRefine((v, ctx) => {
+    if (v.scope === "BATCH" && !v.batchId) {
+      ctx.addIssue({ code: "custom", message: "Choose a batch", path: ["batchId"] });
+    }
+    if (v.scope === "COURSE" && !v.courseId) {
+      ctx.addIssue({ code: "custom", message: "Choose a course", path: ["courseId"] });
+    }
+    if (
+      v.graceDays === undefined &&
+      v.penaltyPercent === undefined &&
+      v.penaltyFlat === undefined
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Set at least one of the three figures",
+        path: ["graceDays"],
+      });
+    }
+  });
+
+export type BulkFeeTermsInput = z.infer<typeof bulkFeeTermsSchema>;
