@@ -586,11 +586,17 @@ export async function setMeetingStatus(
   }
   await prisma.meeting.update({ where: { id }, data });
 
+  // Ending a class that was never started is bookkeeping, not an event: the
+  // office is catching up the register on a class that finished days ago, and
+  // nobody wants "your class has ended" for it. Ending a LIVE one still tells
+  // the room.
   const ev: ClassEvent | null =
     status === "LIVE"
       ? { kind: "live" }
       : status === "ENDED"
-        ? { kind: "ended" }
+        ? m.status === "LIVE"
+          ? { kind: "ended" }
+          : null
         : status === "CANCELLED"
           ? { kind: "cancelled", reason }
           : m.status === "CANCELLED"

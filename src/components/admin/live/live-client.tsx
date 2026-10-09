@@ -491,9 +491,15 @@ export function LiveClient({
               <Play className="size-4" /> Start class
             </DropdownMenuItem>
           )}
-          {m.status === "LIVE" && (
+          {/* Ending it straight from the list — "Live classes me yahin pr class
+              ended update krne ka option de do. Edit krke phir status update
+              krna pdta hai time lgta hai." A class still marked Scheduled long
+              after it was taught is the common case, so it is offered there
+              too; no "class has ended" notice goes out for one of those. */}
+          {(m.status === "LIVE" || m.status === "SCHEDULED") && (
             <DropdownMenuItem onClick={() => changeStatus(m, "ENDED")}>
-              <Square className="size-4" /> End class
+              <Square className="size-4" />{" "}
+              {m.status === "LIVE" ? "End class" : "Mark as ended"}
             </DropdownMenuItem>
           )}
           <DropdownMenuItem onClick={() => setDetailId(m.id)}>
