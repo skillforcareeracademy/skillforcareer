@@ -60,5 +60,10 @@ export const api = {
       method: "PATCH",
       body: body === undefined ? undefined : JSON.stringify(body),
     }),
-  del: <T>(path: string) => request<T>(path, { method: "DELETE" }),
+  /** A body is optional — a bulk delete needs to say which rows. */
+  del: <T>(path: string, body?: unknown) =>
+    request<T>(path, {
+      method: "DELETE",
+      body: body === undefined ? undefined : JSON.stringify(body),
+    }),
 };

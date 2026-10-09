@@ -9,6 +9,7 @@ import {
   Pencil,
   Trash2,
   Download,
+  Copy,
   Loader2,
   FileQuestion,
   Send,
@@ -196,6 +197,8 @@ export function QuizzesClient({
   }, [quizzes]);
   const [createOpen, setCreateOpen] = useState(false);
   const [newTitle, setNewTitle] = useState("");
+  /** Which quiz is being copied, so its menu row can show it working. */
+  const [duplicating, setDuplicating] = useState<string | null>(null);
   const [newCourse, setNewCourse] = useState("");
   /** How the course list in the new-quiz dialog is narrowed. A view only. */
   const [newCourseCategory, setNewCourseCategory] = useState("");
@@ -298,6 +301,24 @@ export function QuizzesClient({
         err instanceof ApiError ? err.message : "Couldn't create quiz.",
       );
       setCreating(false);
+    }
+  }
+
+  /** Copy a paper and open the copy, which is where the office wants to be. */
+  async function duplicate(z: QuizRow) {
+    setDuplicating(z.id);
+    try {
+      const res = await api.post<{ id: string; message: string }>(
+        `/api/quizzes/${z.id}/duplicate`,
+        {},
+      );
+      toast.success(res.message);
+      router.push(`${basePath}/${res.id}`);
+    } catch (error) {
+      toast.error(
+        error instanceof ApiError ? error.message : "Couldn't copy that quiz.",
+      );
+      setDuplicating(null);
     }
   }
 
@@ -447,6 +468,19 @@ export function QuizzesClient({
         <DropdownMenuContent align="end">
           <DropdownMenuItem onClick={() => router.push(`${basePath}/${z.id}`)}>
             <Pencil className="size-4" /> Edit &amp; questions
+          </DropdownMenuItem>
+          {/* "Here provide an option to duplicate in quiz, assignment,
+              batches, courses, study material and all." */}
+          <DropdownMenuItem
+            disabled={duplicating === z.id}
+            onClick={() => void duplicate(z)}
+          >
+            {duplicating === z.id ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Copy className="size-4" />
+            )}
+            Duplicate
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => togglePublish(z)}>
             {z.isPublished ? (

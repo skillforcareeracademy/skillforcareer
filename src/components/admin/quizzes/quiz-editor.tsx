@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
+  CheckSquare,
   Loader2,
   Plus,
   Pencil,
@@ -35,6 +36,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   CourseCategoryPicker,
   type CourseOption,
@@ -170,6 +172,28 @@ export function QuizEditor({
   });
   // How the course list above is narrowed. A view only — nothing is saved,
   // and it starts on whatever the quiz's own course is filed under.
+  /** Throw the ticked questions away in one request. */
+  async function deletePicked() {
+    setBulkDeleting(true);
+    try {
+      const res = await api.del<{ message: string }>(
+        `/api/quizzes/${quiz.id}/questions`,
+        { ids: [...picked] },
+      );
+      toast.success(res.message);
+      setPicked(new Set());
+      setPicking(false);
+      router.refresh();
+    } catch (error) {
+      toast.error(
+        error instanceof ApiError ? error.message : "Couldn't delete those.",
+      );
+    } finally {
+      setBulkDeleting(false);
+      setConfirmBulk(false);
+    }
+  }
+
   const chosenCourse = courses.find((c) => c.id === quiz.courseId);
   const [courseCategory, setCourseCategory] = useState(
     chosenCourse?.categoryId ?? "",
@@ -177,6 +201,11 @@ export function QuizEditor({
   const [courseSubCategory, setCourseSubCategory] = useState(
     chosenCourse?.subCategoryId ?? "",
   );
+  /** Bulk selection of questions. Opt-in, so the ticks stay out of the way. */
+  const [picking, setPicking] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [confirmBulk, setConfirmBulk] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [dialogNonce, setDialogNonce] = useState(0);
@@ -724,6 +753,16 @@ export function QuizEditor({
               <Button variant="outline" onClick={() => setGenerating(true)}>
                 <Sparkles className="size-4" /> Generate questions
               </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setPicking((on) => !on);
+                  setPicked(new Set());
+                }}
+                disabled={quiz.questions.length === 0}
+              >
+                <CheckSquare className="size-4" /> {picking ? "Done" : "Select"}
+              </Button>
               <Button onClick={openAdd}>
                 <Plus className="size-4" /> Add question
               </Button>
@@ -737,6 +776,48 @@ export function QuizEditor({
             </div>
           </CardHeader>
           <CardContent>
+            {/* Clearing a paper one question at a time was the complaint —
+                "there should be an option to delete questions from quiz in
+                bulk". Selection is opt-in so the tick boxes are not in the
+                way of the ordinary job of writing questions. */}
+            {picking && (
+              <div className="bg-muted/50 mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg px-3 py-2">
+                <span className="text-sm">
+                  {picked.size} of {quiz.questions.length} selected
+                </span>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      setPicked(
+                        picked.size === quiz.questions.length
+                          ? new Set()
+                          : new Set(quiz.questions.map((q) => q.id)),
+                      )
+                    }
+                  >
+                    {picked.size === quiz.questions.length
+                      ? "Clear selection"
+                      : "Select all"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    disabled={picked.size === 0 || bulkDeleting}
+                    onClick={() => setConfirmBulk(true)}
+                  >
+                    {bulkDeleting ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="size-4" />
+                    )}
+                    Delete {picked.size > 0 ? picked.size : ""}
+                  </Button>
+                </div>
+              </div>
+            )}
+
             {quiz.questions.length === 0 ? (
               <div className="rounded-xl border border-dashed py-12 text-center">
                 <ListChecks className="text-muted-foreground mx-auto mb-2 size-7" />
@@ -750,7 +831,22 @@ export function QuizEditor({
                 {quiz.questions.map((q, i) => (
                   <li key={q.id} className="rounded-xl border p-4">
                     <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
+                      {picking && (
+                        <Checkbox
+                          className="mt-1"
+                          checked={picked.has(q.id)}
+                          onCheckedChange={() =>
+                            setPicked((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(q.id)) next.delete(q.id);
+                              else next.add(q.id);
+                              return next;
+                            })
+                          }
+                          aria-label={`Select question ${i + 1}`}
+                        />
+                      )}
+                      <div className="min-w-0 flex-1">
                         <div className="mb-1 flex flex-wrap items-center gap-2">
                           <span className="text-muted-foreground text-xs font-medium">Q{i + 1}</span>
                           <Badge variant="secondary" className="text-[10px]">
@@ -854,6 +950,30 @@ export function QuizEditor({
           onSaved={() => router.refresh()}
         />
       )}
+
+      <AlertDialog open={confirmBulk} onOpenChange={setConfirmBulk}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Delete {picked.size} question{picked.size === 1 ? "" : "s"}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              They go for good, along with any answers learners have already
+              given to them. This can&rsquo;t be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={bulkDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => void deletePicked()}
+              disabled={bulkDeleting}
+            >
+              {bulkDeleting && <Loader2 className="size-4 animate-spin" />}
+              Delete them
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={!!deletingQuestion} onOpenChange={(o) => !o && setDeletingQuestion(null)}>
         <AlertDialogContent>

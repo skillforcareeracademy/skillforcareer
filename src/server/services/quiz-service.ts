@@ -518,6 +518,120 @@ export async function listBatchesForSelect(courseId?: string, instructorId?: str
   }));
 }
 
+/**
+ * A copy of a paper, questions and all.
+ *
+ * "Here provide an option to duplicate in quiz, assignment, batches, courses,
+ * study material and all." The copy starts as a draft with its own permanent
+ * number and its own place in the group — what is being reused is the work of
+ * writing the questions, not the paper's identity. Attempts, reviews and the
+ * lesson a quiz may be pinned to are deliberately left behind.
+ */
+export async function duplicateQuiz(
+  id: string,
+  createdById: string,
+): Promise<string> {
+  const source = await prisma.quiz.findUnique({
+    where: { id },
+    include: {
+      questions: { orderBy: { order: "asc" }, include: { options: { orderBy: { order: "asc" } } } },
+      batches: { select: { batchId: true } },
+      students: { select: { userId: true } },
+    },
+  });
+  if (!source) throw AppError.notFound("That quiz no longer exists.");
+
+  const siblings = await prisma.quiz.findMany({
+    where: groupWhere(source.categoryId, source.subCategoryId),
+    select: { title: true },
+  });
+  const title = copyTitle(
+    source.title,
+    new Set(siblings.map((q) => q.title.toLowerCase())),
+  );
+
+  const copy = await prisma.quiz.create({
+    data: {
+      title,
+      description: source.description,
+      courseId: source.courseId,
+      createdById,
+      timeLimitMinutes: source.timeLimitMinutes,
+      perQuestionSeconds: source.perQuestionSeconds,
+      passingScore: source.passingScore,
+      gradingMode: source.gradingMode,
+      maxAttempts: source.maxAttempts,
+      allowPause: source.allowPause,
+      shuffleQuestions: source.shuffleQuestions,
+      showAnswers: source.showAnswers,
+      showAnswerPerQuestion: source.showAnswerPerQuestion,
+      difficulty: source.difficulty,
+      quizType: source.quizType,
+      categoryId: source.categoryId,
+      subCategoryId: source.subCategoryId,
+      releaseAt: source.releaseAt,
+      // A copy is never live on arrival — somebody has to look at it first.
+      isPublished: false,
+      quizNo: await nextQuizNo(),
+      sequence: await nextSequence(source.categoryId, source.subCategoryId),
+    },
+    select: { id: true },
+  });
+
+  // Questions one at a time, because each owns its options and `createMany`
+  // cannot write the two levels together.
+  for (const q of source.questions) {
+    await prisma.question.create({
+      data: {
+        quizId: copy.id,
+        type: q.type,
+        text: q.text,
+        points: q.points,
+        order: q.order,
+        correctAnswer: q.correctAnswer,
+        explanation: q.explanation,
+        options: {
+          create: q.options.map((o) => ({
+            text: o.text,
+            isCorrect: o.isCorrect,
+            order: o.order,
+          })),
+        },
+      },
+      select: { id: true },
+    });
+  }
+
+  if (source.batches.length > 0) {
+    await prisma.quizBatch.createMany({
+      data: source.batches.map((b) => ({ quizId: copy.id, batchId: b.batchId })),
+    });
+  }
+  if (source.students.length > 0) {
+    await prisma.quizStudent.createMany({
+      data: source.students.map((u) => ({ quizId: copy.id, userId: u.userId })),
+    });
+  }
+
+  return copy.id;
+}
+
+/**
+ * Throw several questions away at once — "there should be an option to delete
+ * questions from quiz in bulk". Options and responses go with them by cascade.
+ * Returns how many were actually on this paper.
+ */
+export async function deleteQuestions(
+  quizId: string,
+  questionIds: string[],
+): Promise<number> {
+  if (questionIds.length === 0) return 0;
+  const { count } = await prisma.question.deleteMany({
+    where: { id: { in: questionIds }, quizId },
+  });
+  return count;
+}
+
 export async function deleteQuiz(id: string, deletedById: string): Promise<void> {
   const existing = await prisma.quiz.findUnique({ where: { id }, select: { id: true } });
   if (!existing) throw AppError.notFound("Quiz not found.");
