@@ -83,6 +83,12 @@ import {
   CourseCategoryPicker,
   type CourseOption,
 } from "@/components/shared/course-category-picker";
+import {
+  FolderDepthFilter,
+  deepestLevel,
+  rollUpToDepth,
+  type FolderDepth,
+} from "@/components/shared/folder-depth-filter";
 
 interface QuizRow {
   id: string;
@@ -184,6 +190,12 @@ export function QuizzesClient({
     query.view === "table" ? "table" : "folders";
   const [openFolders, setOpenFolders] = useState<Set<string>>(new Set());
 
+  /**
+   * How deep the folder list goes. First level by default — the academy's
+   * tree is several deep and all of it at once is unreadable.
+   */
+  const [depth, setDepth] = useState<FolderDepth>(1);
+
   /** This page's quizzes, gathered under the folders they are filed in. */
   const folders = useMemo(() => {
     const map = new Map<string, QuizRow[]>();
@@ -191,10 +203,15 @@ export function QuizzesClient({
       const paths = z.groupPaths.length ? z.groupPaths : ["Ungrouped"];
       for (const path of paths) map.set(path, [...(map.get(path) ?? []), z]);
     }
-    return [...map.entries()].sort(([a], [b]) =>
+    return rollUpToDepth([...map.entries()], depth).sort(([a], [b]) =>
       a === "Ungrouped" ? 1 : b === "Ungrouped" ? -1 : a.localeCompare(b),
     );
-  }, [quizzes]);
+  }, [quizzes, depth]);
+
+  const deepest = useMemo(
+    () => deepestLevel(quizzes.flatMap((z) => z.groupPaths)),
+    [quizzes],
+  );
   const [createOpen, setCreateOpen] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   /** Which quiz is being copied, so its menu row can show it working. */
@@ -1215,6 +1232,13 @@ export function QuizzesClient({
                   <SelectItem value="recent">Recently edited</SelectItem>
                 </SelectContent>
               </Select>
+              {view === "folders" && (
+                <FolderDepthFilter
+                  value={depth}
+                  onChange={setDepth}
+                  deepest={deepest}
+                />
+              )}
               <Button
                 type="button"
                 variant="outline"

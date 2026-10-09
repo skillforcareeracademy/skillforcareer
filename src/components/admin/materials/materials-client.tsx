@@ -30,6 +30,12 @@ import {
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
+import {
+  FolderDepthFilter,
+  deepestLevel,
+  rollUpToDepth,
+  type FolderDepth,
+} from "@/components/shared/folder-depth-filter";
 import type {
   MaterialRow,
   MaterialStats,
@@ -203,6 +209,12 @@ export function MaterialsClient({
   );
   /** "Content should be visible in folder format", beside the plain table. */
   const [view, setView] = useState<"folders" | "table">("folders");
+  /**
+   * How deep the folder list goes. First level by default: "Normally first
+   * level folder dikhne do. Phir jab second level folder kholne ho to wo khol
+   * lu ya phir aage usse."
+   */
+  const [depth, setDepth] = useState<FolderDepth>(1);
   const [openFolders, setOpenFolders] = useState<Set<string>>(new Set());
   const [exporting, setExporting] = useState(false);
   const [form, setForm] = useState<FormState | null>(null);
@@ -290,7 +302,10 @@ export function MaterialsClient({
     groupPath,
   ]);
 
-  /** The filtered rows, gathered under the folders they are filed in. */
+  /**
+   * The filtered rows, gathered under the folders they are filed in and then
+   * rolled up to the chosen depth — the whole tree at once was unreadable.
+   */
   const folders = useMemo(() => {
     const map = new Map<string, MaterialRow[]>();
     for (const m of rows) {
@@ -299,10 +314,16 @@ export function MaterialsClient({
         map.set(path, [...(map.get(path) ?? []), m]);
       }
     }
-    return [...map.entries()].sort(([a], [b]) =>
+    return rollUpToDepth([...map.entries()], depth).sort(([a], [b]) =>
       a === "Ungrouped" ? 1 : b === "Ungrouped" ? -1 : a.localeCompare(b),
     );
-  }, [rows]);
+  }, [rows, depth]);
+
+  /** Only offer levels the academy's own tree actually reaches. */
+  const deepest = useMemo(
+    () => deepestLevel(rows.flatMap((m) => m.groupPaths)),
+    [rows],
+  );
 
   const bySequence = sort === "sequence";
   const sameGroup = (a: MaterialRow, b: MaterialRow) =>
@@ -1047,6 +1068,14 @@ export function MaterialsClient({
                 <SelectItem value="no">Draft</SelectItem>
               </SelectContent>
             </Select>
+            {/* How many levels of the tree to show at once. */}
+            {view === "folders" && (
+              <FolderDepthFilter
+                value={depth}
+                onChange={setDepth}
+                deepest={deepest}
+              />
+            )}
             <Button
               type="button"
               variant="outline"
