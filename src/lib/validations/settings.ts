@@ -180,6 +180,16 @@ export const settingsSchema = z.object({
   /// an instalment the office had already settled, and he replied to say so.
   /// Turning it on is the academy saying its fee records are right.
   feeRemindersEnabled: z.boolean(),
+  /// The small print shown with a learner's fees, one rule per line. The
+  /// academy writes it — "mujhe dynamic krke de dena terms and conditions and
+  /// support details Mai khud se change kr saku and wo student ko reflect ho
+  /// jaayein" — so nothing here is hard-coded into the page.
+  feeTerms: z.string().trim().max(4000),
+  /// Who to contact about a fee, shown under those terms. Blank falls back to
+  /// the support email and phone set at the top of Settings.
+  feeSupportEmail: z.string().trim().max(120),
+  feeSupportPhone: z.string().trim().max(40),
+  feeSupportSite: z.string().trim().max(160),
 
   // ── Assistant & guides ───────────────────────────────────────────────────
   chatbotEnabled: z.boolean(),
@@ -283,6 +293,17 @@ export const DEFAULT_SETTINGS: Settings = {
   feePenaltyPercent: 0,
   feePenaltyFlat: 0,
   feeRemindersEnabled: false,
+  // The academy's own words, as it dictated them. Editable in Settings → Fees.
+  feeTerms: [
+    "Fees once paid are non-refundable.",
+    "Always collect your receipt. A payment without a receipt is treated as not received.",
+    "Classes may be paused or stopped if a payment is in default.",
+    "Printouts of books are chargeable separately and are not part of the course fee.",
+    "A penalty is charged on delayed payments, as set out in your instalment plan.",
+  ].join("\n"),
+  feeSupportEmail: "info@skillforcareer.com",
+  feeSupportPhone: "922-0402-922",
+  feeSupportSite: "www.skillforcareer.com",
 
   chatbotEnabled: true,
   chatbotName: "Ami",

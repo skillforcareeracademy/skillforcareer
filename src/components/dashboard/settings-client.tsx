@@ -699,6 +699,63 @@ export function SettingsClient({
                   />
                 </Field>
               </div>
+
+              {/* The small print and who to ask, in the academy's own words —
+                  "mujhe dynamic krke de dena terms and conditions and support
+                  details Mai khud se change kr saku and wo student ko reflect
+                  ho jaayein." Both appear under every learner's fees. */}
+              <Field
+                label="Terms shown with a learner's fees"
+                htmlFor="feeTerms"
+                hint="One rule per line. Learners see these under Fees & payments in their panel."
+              >
+                <Textarea
+                  id="feeTerms"
+                  rows={7}
+                  value={form.feeTerms}
+                  onChange={(e) => set("feeTerms", e.target.value)}
+                  placeholder={"Fees once paid are non-refundable.\nAlways collect your receipt."}
+                />
+              </Field>
+
+              <div className="grid gap-4 sm:grid-cols-3">
+                <Field
+                  label="Fees contact email"
+                  htmlFor="feeSupportEmail"
+                  hint="Blank uses the support email from General."
+                >
+                  <Input
+                    id="feeSupportEmail"
+                    value={form.feeSupportEmail}
+                    onChange={(e) => set("feeSupportEmail", e.target.value)}
+                    placeholder="info@skillforcareer.com"
+                  />
+                </Field>
+                <Field
+                  label="Fees contact phone"
+                  htmlFor="feeSupportPhone"
+                  hint="Blank uses the contact phone from General."
+                >
+                  <Input
+                    id="feeSupportPhone"
+                    value={form.feeSupportPhone}
+                    onChange={(e) => set("feeSupportPhone", e.target.value)}
+                    placeholder="922-0402-922"
+                  />
+                </Field>
+                <Field
+                  label="Policies web address"
+                  htmlFor="feeSupportSite"
+                  hint="Where the full terms live."
+                >
+                  <Input
+                    id="feeSupportSite"
+                    value={form.feeSupportSite}
+                    onChange={(e) => set("feeSupportSite", e.target.value)}
+                    placeholder="www.skillforcareer.com"
+                  />
+                </Field>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

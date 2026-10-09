@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { format } from "date-fns";
 import {
   AlertCircle,
@@ -11,6 +12,8 @@ import {
   CreditCard,
   Percent,
   Receipt,
+  ScrollText,
+  ShieldCheck,
   Wallet,
 } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
@@ -21,6 +24,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { ButtonLink } from "@/components/shared/button-link";
+import { Button } from "@/components/ui/button";
+import { PayFeesDialog } from "./pay-fees-dialog";
 import { PAYMENT_STATUS_LABEL, PAYMENT_METHOD_LABEL } from "@/lib/validations/payment";
 import type { StudentFees, StudentPaymentRow } from "@/server/services/student-payment-service";
 import { cn } from "@/lib/utils";
@@ -61,6 +66,8 @@ const STATUS_TONE: Record<string, string> = {
  * office raised; collecting money is the checkout's job, not this page's.
  */
 export function StudentFeesView({ fees }: { fees: StudentFees }) {
+  /** Which plan the pay window is open for, if any. */
+  const [paying, setPaying] = useState<StudentPaymentRow | null>(null);
   const overall = OVERALL[fees.overallStatus];
   const emiProgress =
     fees.emi.totalCount > 0
@@ -202,10 +209,89 @@ export function StudentFeesView({ fees }: { fees: StudentFees }) {
           <div className="space-y-3">
             <h2 className="text-sm font-medium">Payment history</h2>
             {fees.payments.map((p) => (
-              <PaymentCard key={p.id} payment={p} />
+              <PaymentCard key={p.id} payment={p} onPay={setPaying} />
             ))}
           </div>
+
+          {/* The academy's own small print and who to ask about it. Both are
+              written in Settings → Fees, so the office changes them itself. */}
+          {(fees.terms.length > 0 ||
+            fees.support.email ||
+            fees.support.phone ||
+            fees.support.site) && (
+            <Card>
+              <CardContent className="space-y-4 pt-6">
+                {fees.terms.length > 0 && (
+                  <div className="space-y-2">
+                    <h2 className="flex items-center gap-2 text-sm font-medium">
+                      <ScrollText className="size-4" /> Terms &amp; conditions
+                    </h2>
+                    <ul className="text-muted-foreground space-y-1.5 text-sm">
+                      {fees.terms.map((line) => (
+                        <li key={line} className="flex items-start gap-2">
+                          <ShieldCheck className="mt-0.5 size-3.5 shrink-0" />
+                          <span>{line}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                <Separator />
+
+                <p className="text-muted-foreground text-sm">
+                  For anything else about your fees, write to{" "}
+                  {fees.support.email && (
+                    <a
+                      className="text-foreground font-medium underline-offset-4 hover:underline"
+                      href={`mailto:${fees.support.email}`}
+                    >
+                      {fees.support.email}
+                    </a>
+                  )}
+                  {fees.support.phone && (
+                    <>
+                      {" "}
+                      or call{" "}
+                      <a
+                        className="text-foreground font-medium underline-offset-4 hover:underline"
+                        href={`tel:${fees.support.phone.replace(/[^+\d]/g, "")}`}
+                      >
+                        {fees.support.phone}
+                      </a>
+                    </>
+                  )}
+                  .
+                  {fees.support.site && (
+                    <>
+                      {" "}
+                      Full policies are at{" "}
+                      <a
+                        className="text-foreground font-medium underline-offset-4 hover:underline"
+                        href={`https://${fees.support.site.replace(/^https?:\/\//, "")}`}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {fees.support.site}
+                      </a>
+                      .
+                    </>
+                  )}
+                </p>
+              </CardContent>
+            </Card>
+          )}
         </>
+      )}
+
+      {paying && (
+        <PayFeesDialog
+          paymentId={paying.id}
+          invoiceNumber={paying.invoiceNumber}
+          outstanding={paying.outstanding}
+          open
+          onOpenChange={(o) => !o && setPaying(null)}
+        />
       )}
     </div>
   );
@@ -235,7 +321,13 @@ function Figure({
   );
 }
 
-function PaymentCard({ payment: p }: { payment: StudentPaymentRow }) {
+function PaymentCard({
+  payment: p,
+  onPay,
+}: {
+  payment: StudentPaymentRow;
+  onPay: (p: StudentPaymentRow) => void;
+}) {
   return (
     <Card>
       <CardContent className="space-y-3">
@@ -324,10 +416,39 @@ function PaymentCard({ payment: p }: { payment: StudentPaymentRow }) {
           </>
         )}
 
-        {p.payUrl && (
-          <ButtonLink href={p.payUrl} size="sm" className="w-full sm:w-auto">
-            Pay now <ArrowUpRight className="size-4" />
-          </ButtonLink>
+        {/* Late fees and anything written off, in the learner's own view —
+            "jo penalty charge hui hai wo dikhni chahiye student ko uske panel
+            me… Jab hum waive off kr denge to usme reflect hona chahiye ki ye
+            waived off amount hai." */}
+        {(p.penaltyAmount > 0 || p.penaltyWaivedAmount > 0 || p.bookingAmount > 0) && (
+          <div className="text-muted-foreground mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+            {p.bookingAmount > 0 && (
+              <span>Booking amount received {inr(p.bookingAmount)}</span>
+            )}
+            {p.penaltyAmount > 0 && (
+              <span className="text-rose-600 dark:text-rose-400">
+                Late fees {inr(p.penaltyAmount)}
+              </span>
+            )}
+            {p.penaltyWaivedAmount > 0 && (
+              <span className="text-emerald-600 dark:text-emerald-400">
+                {inr(p.penaltyWaivedAmount)} in late fees waived
+              </span>
+            )}
+          </div>
+        )}
+
+        {p.outstanding > 0 && (
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button size="sm" onClick={() => onPay(p)} className="w-full sm:w-auto">
+              <Wallet className="size-4" /> Pay now · {inr(p.outstanding)}
+            </Button>
+            {p.payUrl && (
+              <ButtonLink href={p.payUrl} size="sm" variant="outline">
+                Open payment link <ArrowUpRight className="size-4" />
+              </ButtonLink>
+            )}
+          </div>
         )}
       </CardContent>
     </Card>

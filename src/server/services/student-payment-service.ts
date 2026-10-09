@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import { getSettings } from "./settings-service";
+import { summarise } from "./fee-plan-service";
 
 /**
  * A learner's own fees page.
@@ -50,6 +51,17 @@ export interface StudentPaymentRow {
   installments: StudentInstallment[];
   /** A shareable link the office raised and this learner hasn't paid yet. */
   payUrl: string | null;
+  /** Money taken to hold the seat, counted as received. */
+  bookingAmount: number;
+  bookingAt: string | null;
+  /** Late fees being charged on this plan right now. */
+  penaltyAmount: number;
+  /** Late fees the academy has forgiven, so the learner can see the credit. */
+  penaltyWaivedAmount: number;
+  /** What is still owing on this plan, late fees included. */
+  outstanding: number;
+  /** What has actually come in against this plan, booking money included. */
+  paidAmount: number;
 }
 
 export interface StudentFees {
@@ -59,8 +71,13 @@ export interface StudentFees {
   totalDue: number;
   /** Late fees carried in `totalDue`, shown separately so they can be queried. */
   totalPenalty: number;
+  /** Late fees the academy has written off across every plan. */
+  totalPenaltyWaived: number;
   /** "Paid" only when there is something to pay and nothing outstanding. */
   overallStatus: "PAID" | "PARTIAL" | "UNPAID" | "NONE";
+  /** The academy's own small print and who to ask, both set in Settings. */
+  terms: string[];
+  support: { email: string; phone: string; site: string };
   hasEmi: boolean;
   emi: {
     plan: string | null;
@@ -95,7 +112,10 @@ export async function getStudentFees(userId: string): Promise<StudentFees> {
 
   const now = Date.now();
 
-  const rows: StudentPaymentRow[] = payments.map((p) => ({
+  // Each plan's live position, by the same rule the office sees.
+  const summaries = await Promise.all(payments.map((p) => summarise(p)));
+
+  const rows: StudentPaymentRow[] = payments.map((p, idx) => ({
     id: p.id,
     invoiceNumber: p.invoiceNumber,
     courseTitle: p.course?.title ?? null,
@@ -130,6 +150,20 @@ export async function getStudentFees(userId: string): Promise<StudentFees> {
       (!p.linkExpiresAt || p.linkExpiresAt.getTime() > now)
         ? `/pay/${p.linkToken}`
         : null,
+    bookingAmount: num(p.bookingAmount),
+    bookingAt: p.bookingAt ? p.bookingAt.toISOString() : null,
+    penaltyAmount: summaries[idx].penalty,
+    // What a waiver was worth: the charge that was written down against the
+    // instalments, less whatever is still being charged. "Jab hum waive off kr
+    // denge to usme reflect hona chahiye ki ye waived off amount hai."
+    penaltyWaivedAmount:
+      Math.round(
+        (p.installments.reduce((sum, i) => sum + num(i.penaltyAmount), 0) -
+          summaries[idx].penalty) *
+          100,
+      ) / 100,
+    outstanding: summaries[idx].outstanding,
+    paidAmount: summaries[idx].paid,
   }));
 
   // Money. A refunded payment is deliberately counted as neither billed nor
@@ -139,18 +173,9 @@ export async function getStudentFees(userId: string): Promise<StudentFees> {
 
   // An EMI payment is "paid" instalment by instalment; a one-off is paid or
   // not. A part payment counts for exactly what came in.
-  const totalPaid = live.reduce((sum, r) => {
-    if (r.installments.length > 0) {
-      return (
-        sum +
-        r.installments.reduce(
-          (s, i) => s + (i.status === "PAID" ? i.amount : Math.min(i.amount, i.paidAmount)),
-          0,
-        )
-      );
-    }
-    return r.status === "PAID" || r.status === "NO_DUE" ? sum + r.netAmount : sum;
-  }, 0);
+  // One rule for what counts as received, shared with the office's own view:
+  // instalments, a full settlement, and money taken to hold the seat.
+  const totalPaid = live.reduce((sum, r) => sum + r.paidAmount, 0);
 
   // Late fees are owed on top of the fee itself, so the learner sees the figure
   // that actually clears the account.
@@ -193,7 +218,18 @@ export async function getStudentFees(userId: string): Promise<StudentFees> {
     totalPaid: Math.round(totalPaid * 100) / 100,
     totalDue,
     totalPenalty: Math.round(totalPenalty * 100) / 100,
+    totalPenaltyWaived:
+      Math.round(live.reduce((s, r) => s + r.penaltyWaivedAmount, 0) * 100) / 100,
     overallStatus,
+    terms: settings.feeTerms
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean),
+    support: {
+      email: settings.feeSupportEmail || settings.supportEmail,
+      phone: settings.feeSupportPhone || settings.contactPhone,
+      site: settings.feeSupportSite,
+    },
     hasEmi: emiRows.length > 0,
     emi: {
       plan: latestEmi?.emiPlan ?? null,
