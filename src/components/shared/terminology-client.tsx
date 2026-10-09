@@ -64,6 +64,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { PageHeader } from "@/components/shared/page-header";
 import { ImportButton } from "@/components/shared/import-button";
+import {
+  ImportResultDialog,
+  type ImportOutcome,
+} from "@/components/shared/import-result-dialog";
 
 /**
  * The academy's dictionary, for both panels.
@@ -115,6 +119,8 @@ export function TerminologyClient({ canManage }: { canManage: boolean }) {
   const [saving, setSaving] = useState(false);
   const [removing, setRemoving] = useState<Term | null>(null);
   const [importing, setImporting] = useState(false);
+  /** What the last sheet did, shown until it is dismissed. */
+  const [outcome, setOutcome] = useState<ImportOutcome | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -197,12 +203,14 @@ export function TerminologyClient({ canManage }: { canManage: boolean }) {
   async function onImport(file: File, mode: ImportMode) {
     setImporting(true);
     try {
-      const res = await api.post<{ message: string }>(
+      const res = await api.post<ImportOutcome & { message: string }>(
         `/api/terms/import?mode=${mode}`,
         await file.text(),
         { "Content-Type": "text/csv" },
       );
-      toast.success(res.message);
+      // Always the full account, not a toast: a sheet of a thousand words that
+      // lands 600 needs to say which 400 and why.
+      setOutcome(res);
       void load();
     } catch (error) {
       toast.error(error instanceof ApiError ? error.message : "Couldn't read that sheet.");
@@ -226,6 +234,11 @@ export function TerminologyClient({ canManage }: { canManage: boolean }) {
 
   return (
     <div className="space-y-6">
+      <ImportResultDialog
+        outcome={outcome}
+        onClose={() => setOutcome(null)}
+        noun="words"
+      />
       <PageHeader
         title="Terminology"
         description={

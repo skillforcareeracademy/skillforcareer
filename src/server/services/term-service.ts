@@ -310,6 +310,17 @@ export interface TermImportResult {
   created: number;
   updated: number;
   skipped: { row: number; reason: string }[];
+  /** The column names the sheet actually had, for when none of them matched. */
+  headers: string[];
+}
+
+/** Rows written per round trip. Big enough to be quick, small enough for TiDB. */
+const WRITE_CHUNK = 200;
+
+function chunked<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
 }
 
 export async function importTerms(
@@ -317,8 +328,8 @@ export async function importTerms(
   createdById: string,
   mode: ImportMode = "update",
 ): Promise<TermImportResult> {
-  const { rows } = parseCsv(csv);
-  const result: TermImportResult = { created: 0, updated: 0, skipped: [] };
+  const { headers, rows } = parseCsv(csv);
+  const result: TermImportResult = { created: 0, updated: 0, skipped: [], headers };
   if (rows.length === 0) return result;
 
   const existing = await prisma.term.findMany({ select: { id: true, word: true, kind: true } });
@@ -343,12 +354,22 @@ export async function importTerms(
   const exampleList = (v: string) =>
     v.split(/[\n;|]/).map((x) => x.trim()).filter(Boolean);
 
+  // Every row is worked out first and written afterwards, in batches. A
+  // thousand-word sheet used to be a thousand separate round trips to TiDB and
+  // simply ran out of time before it finished — "Terminology import not
+  // functioning. It shows no data in sheet even though sheet has 1000 entries."
+  type Plan = { id: string; data: Prisma.TermUncheckedUpdateInput };
+  const toCreate: Prisma.TermCreateManyInput[] = [];
+  const toUpdate: Plan[] = [];
+  /** Keys written by this sheet. `byKey` only ever holds ids of existing rows. */
+  const seen = new Set<string>();
+
   for (const [i, row] of rows.entries()) {
     const line = i + 2;
     const word = pick(row, "word", "term");
     const meaning = pick(row, "one-line meaning", "meaning");
     if (!word) {
-      result.skipped.push({ row: line, reason: "No word" });
+      result.skipped.push({ row: line, reason: "No word in the Word column" });
       continue;
     }
     if (!meaning) {
@@ -374,24 +395,41 @@ export async function importTerms(
     };
 
     const key = `${normaliseWord(word)}:${kind}`;
+    // The same word twice in one sheet: the first wins. The second cannot be
+    // updated — the first has not been written yet, so it has no id.
+    if (seen.has(key)) {
+      result.skipped.push({ row: line, reason: `"${word}" appears earlier in this sheet` });
+      continue;
+    }
     const found = byKey.get(key);
     if (found && mode === "skip") {
       result.skipped.push({ row: line, reason: `"${word}" is already here` });
       continue;
     }
     if (found && mode === "update") {
-      await prisma.term.update({ where: { id: found }, data });
+      toUpdate.push({ id: found, data });
+      seen.add(key);
       result.updated += 1;
-    } else {
-      const name = found || mode === "copy" ? copyTitle(word, allWords) : word;
-      const made = await prisma.term.create({
-        data: { ...data, word: name, ...keysFor(name, syn), createdById },
-        select: { id: true },
-      });
-      byKey.set(`${normaliseWord(name)}:${kind}`, made.id);
-      allWords.add(name.toLowerCase());
-      result.created += 1;
+      continue;
     }
+
+    const name = found || mode === "copy" ? copyTitle(word, allWords) : word;
+    toCreate.push({ ...data, word: name, ...keysFor(name, syn), createdById });
+    seen.add(`${normaliseWord(name)}:${kind}`);
+    allWords.add(name.toLowerCase());
+    result.created += 1;
+  }
+
+  for (const batch of chunked(toCreate, WRITE_CHUNK)) {
+    await prisma.term.createMany({ data: batch });
+  }
+  // `updateMany` by id rather than `update`: with relationMode = "prisma" a
+  // plain update also re-checks every relation, which is a handful of extra
+  // queries per row and the whole cost of the import at this size.
+  for (const batch of chunked(toUpdate, 20)) {
+    await Promise.all(
+      batch.map((u) => prisma.term.updateMany({ where: { id: u.id }, data: u.data })),
+    );
   }
   return result;
 }
