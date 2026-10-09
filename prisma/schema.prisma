@@ -2012,6 +2012,14 @@ model Payment {
   /// forgives every instalment on the plan at once.
   penaltyWaived  Boolean  @default(false)
 
+  /// Money taken to hold a seat, before anyone has decided how the rest will
+  /// be paid — "Full pay krne se pehle kayi baar wo bus booking amount de deta
+  /// hai… Booking amount lene ke baad we decide if he is going to pay in full
+  /// or in emi." It counts towards what has been paid from the moment it is
+  /// recorded, whether or not an instalment plan exists yet.
+  bookingAmount Decimal?  @db.Decimal(10, 2)
+  bookingAt     DateTime?
+
   /// The ends of the payment trail, filled in from what has actually been paid
   /// and editable by hand when the office knows better.
   firstPaymentAt DateTime?

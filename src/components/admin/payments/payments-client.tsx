@@ -231,6 +231,8 @@ export function PaymentsClient({
         courseId: d.courseId,
         amount: d.amount,
         discountAmount: d.discountAmount,
+        bookingAmount: d.bookingAmount,
+        bookingAt: d.bookingAt,
         status: d.status,
         method: d.method,
         accountId: null,

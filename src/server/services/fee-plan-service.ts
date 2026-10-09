@@ -13,8 +13,9 @@ import type { InstallmentMode } from "@/lib/validations/payment";
  * the admin screens and the learner's Fees page all need the same answers.
  */
 
-const num = (d: Prisma.Decimal) => d.toNumber();
-const money = (n: number) => Math.round(n * 100) / 100;
+const num = (d: Prisma.Decimal | null | undefined) => d?.toNumber() ?? 0;
+/** Rupees to the paisa. Shared so every money sum rounds the same way. */
+export const money = (n: number) => Math.round(n * 100) / 100;
 export const DAY_MS = 86_400_000;
 
 /** A date typed into a form, or nothing. Never throws on a bad string. */
@@ -216,6 +217,8 @@ export interface FeeSummary {
   /** What the plan is for in total, instalments and interest included. */
   payable: number;
   paid: number;
+  /** Of `paid`, what came in as a booking amount to hold the seat. */
+  booking: number;
   penalty: number;
   outstanding: number;
   /** The next thing owed, if anything is. */
@@ -231,6 +234,7 @@ type PaymentForSummary = {
   type: string;
   netAmount: Prisma.Decimal;
   paidAt: Date | null;
+  bookingAmount: Prisma.Decimal | null;
   graceDays: number | null;
   penaltyPercent: Prisma.Decimal | null;
   penaltyFlat: Prisma.Decimal | null;
@@ -256,24 +260,32 @@ export async function summarise(
   const terms = await termsFor(payment);
   const now = Date.now();
 
+  // Money taken to hold the seat counts from the moment it is recorded, with
+  // or without a plan — it is the usual first thing a learner pays.
+  const booking = Math.min(num(payment.bookingAmount), num(payment.netAmount));
+
   if (payment.installments.length === 0) {
-    // No schedule: the whole net amount is either in or it isn't.
+    // No schedule: the whole net amount is either in or it isn't, less
+    // whatever was taken as a booking.
     const settled = payment.status === "PAID" || payment.status === "NO_DUE";
     const payable = num(payment.netAmount);
+    const paid = settled ? payable : booking;
+    const outstanding = money(Math.max(0, payable - paid));
     return {
       payable,
-      paid: settled ? payable : 0,
+      paid: money(paid),
+      booking: money(booking),
       penalty: 0,
-      outstanding: settled ? 0 : payable,
-      nextDueDate: settled ? null : payment.paidAt,
-      nextDueAmount: settled ? 0 : payable,
+      outstanding,
+      nextDueDate: outstanding > 0 ? payment.paidAt : null,
+      nextDueAmount: outstanding,
       daysLate: 0,
-      status: settled ? "NO_DUE" : "DUE",
+      status: outstanding <= 0 ? "NO_DUE" : "DUE",
     };
   }
 
   let payable = 0;
-  let paid = 0;
+  let paid = booking;
   let penalty = 0;
   let daysLate = 0;
   let nextDueDate: Date | null = null;
@@ -316,7 +328,8 @@ export async function summarise(
 
   return {
     payable: money(payable),
-    paid: money(paid),
+    paid: money(Math.min(paid, payable)),
+    booking: money(booking),
     penalty: money(penalty),
     outstanding,
     nextDueDate,
@@ -331,6 +344,7 @@ const SUMMARY_SELECT = {
   type: true,
   netAmount: true,
   paidAt: true,
+  bookingAmount: true,
   graceDays: true,
   penaltyPercent: true,
   penaltyFlat: true,

@@ -229,6 +229,12 @@ export const recordPaymentSchema = z.object({
   // payment recorded a day later). Blank → "now" on PAID.
   paidAt: when,
   couponCode: z.string().trim().max(30).optional().or(z.literal("")),
+  /**
+   * Money taken to hold the seat before the rest is settled — "Bus booking
+   * amount daalne ka option de do." It counts as received straight away.
+   */
+  bookingAmount: z.coerce.number().min(0).max(10_000_000).optional(),
+  bookingAt: when,
   ...planFields,
   ...feeTerms,
 });
@@ -253,6 +259,12 @@ export const updatePaymentSchema = z.object({
   scheduleTo: when,
   schedule: z.array(scheduledInstallmentSchema).max(36).optional(),
   interestPercent: z.coerce.number().min(0).max(60).optional(),
+  /**
+   * Money taken to hold the seat before the rest is settled — "Bus booking
+   * amount daalne ka option de do." It counts as received straight away.
+   */
+  bookingAmount: z.coerce.number().min(0).max(10_000_000).optional(),
+  bookingAt: when,
   ...feeTerms,
 });
 

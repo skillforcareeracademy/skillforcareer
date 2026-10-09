@@ -61,6 +61,8 @@ interface FormState {
   courseId: string;
   amount: string;
   discountAmount: string;
+  bookingAmount: string;
+  bookingAt: string;
   status: string;
   method: string;
   accountId: string;
@@ -91,6 +93,8 @@ export interface PaymentFormInitial {
   courseId: string | null;
   amount: number;
   discountAmount: number;
+  bookingAmount: number | null;
+  bookingAt: string | null;
   status: string;
   method: string | null;
   accountId?: string | null;
@@ -112,6 +116,8 @@ const BLANK: FormState = {
   courseId: "",
   amount: "",
   discountAmount: "",
+  bookingAmount: "",
+  bookingAt: "",
   status: "PAID",
   method: "UPI",
   accountId: "",
@@ -147,6 +153,8 @@ function fromInitial(p: PaymentFormInitial): FormState {
     courseId: p.courseId ?? "",
     amount: String(p.amount),
     discountAmount: p.discountAmount ? String(p.discountAmount) : "",
+    bookingAmount: p.bookingAmount ? String(p.bookingAmount) : "",
+    bookingAt: p.bookingAt ? p.bookingAt.slice(0, 10) : "",
     status: p.status,
     method: p.method ?? "UPI",
     accountId: p.accountId ?? "",
@@ -364,6 +372,8 @@ function PaymentFormBody({
       courseId: form.courseId || "",
       amount: total,
       discountAmount: Number(form.discountAmount) || 0,
+      bookingAmount: Number(form.bookingAmount) || 0,
+      bookingAt: form.bookingAt,
       status: form.status,
       method: form.method,
       accountId: form.accountId || "",
@@ -511,6 +521,32 @@ function PaymentFormBody({
                   value={form.discountAmount}
                   onChange={(e) => set("discountAmount", e.target.value)}
                   placeholder="0"
+                />
+              </Field>
+            </div>
+
+            {/* What was taken to hold the seat, before anyone decided how the
+                rest would be paid — "Booking amount lene ke baad we decide if
+                he is going to pay in full or in emi." It counts as received
+                straight away, with or without a plan. */}
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Booking amount received (₹)" htmlFor="pay-booking">
+                <Input
+                  id="pay-booking"
+                  type="number"
+                  min={0}
+                  value={form.bookingAmount}
+                  onChange={(e) => set("bookingAmount", e.target.value)}
+                  placeholder="0"
+                />
+              </Field>
+              <Field label="Booking taken on" htmlFor="pay-booking-at">
+                <Input
+                  id="pay-booking-at"
+                  type="date"
+                  value={form.bookingAt}
+                  onChange={(e) => set("bookingAt", e.target.value)}
+                  disabled={!Number(form.bookingAmount)}
                 />
               </Field>
             </div>

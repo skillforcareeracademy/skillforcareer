@@ -35,6 +35,8 @@ export interface PaymentInstallment {
 export interface PaymentSummary {
   payable: number;
   paid: number;
+  /** Of `paid`, what came in as a booking amount. */
+  booking: number;
   penalty: number;
   outstanding: number;
   nextDueDate: string | null;
@@ -66,6 +68,9 @@ export interface PaymentDetail {
   providerPaymentId: string | null;
   createdAt: string;
   paidAt: string | null;
+  /** Money taken to hold the seat, before the rest was settled. */
+  bookingAmount: number | null;
+  bookingAt: string | null;
 
   graceDays: number | null;
   penaltyPercent: number | null;

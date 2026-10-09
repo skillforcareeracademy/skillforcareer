@@ -35,6 +35,7 @@ import {
 } from "@/lib/validations/payment";
 import {
   readDate,
+  money,
   refreshFeeStatus,
   termsFor,
   scheduleFromInput,
@@ -90,10 +91,20 @@ const num = (d: Prisma.Decimal) => d.toNumber();
  */
 export const RECORDING_WATERMARK_PAYMENT = "RECORDING_WATERMARK";
 
+/**
+ * A learner settling fees they already owe, from their own panel — "yaha pr
+ * student panel me humesha pay now ka option aana chahiye. Pay in full, pay
+ * next emi in advance or pay custom amount." The money lands as its own
+ * receipt and is then credited against the plan it was raised for.
+ */
+export const FEE_SETTLEMENT_PAYMENT = "FEE_SETTLEMENT";
+
 interface PurchaseMetadata {
   kind?: string;
   meetingId?: string;
   meetingTitle?: string;
+  /** For a fee settlement: the plan the money is being paid against. */
+  targetPaymentId?: string;
 }
 
 function readPurchaseMetadata(
@@ -109,6 +120,7 @@ export function paymentPurpose(
   metadata: Prisma.JsonValue | null,
 ): string | null {
   const meta = readPurchaseMetadata(metadata);
+  if (meta?.kind === FEE_SETTLEMENT_PAYMENT) return "Fee payment";
   if (meta?.kind !== RECORDING_WATERMARK_PAYMENT) return null;
   return meta.meetingTitle
     ? `Watermark removal · ${meta.meetingTitle}`
@@ -275,6 +287,8 @@ export async function getPaymentDetail(id: string) {
     providerPaymentId: p.providerPaymentId,
     createdAt: p.createdAt.toISOString(),
     paidAt: p.paidAt ? p.paidAt.toISOString() : null,
+    bookingAmount: p.bookingAmount ? num(p.bookingAmount) : null,
+    bookingAt: p.bookingAt ? p.bookingAt.toISOString() : null,
 
     // The plan's own terms, and the platform figures they fall back to, so the
     // office can see what it is overriding before it overrides it.
@@ -290,6 +304,7 @@ export async function getPaymentDetail(id: string) {
     summary: {
       payable: summary.payable,
       paid: summary.paid,
+      booking: summary.booking,
       penalty: summary.penalty,
       outstanding: summary.outstanding,
       nextDueDate: summary.nextDueDate?.toISOString() ?? null,
@@ -505,6 +520,12 @@ export async function recordPayment(
       emiPlan: emi?.plan ?? null,
       interestPercent: emi ? new Prisma.Decimal(emi.rate) : null,
       principalAmount: emi ? new Prisma.Decimal(net) : null,
+      bookingAmount: input.bookingAmount
+        ? new Prisma.Decimal(input.bookingAmount)
+        : null,
+      bookingAt: input.bookingAmount
+        ? (readDate(input.bookingAt) ?? new Date())
+        : null,
     },
     select: { id: true },
   });
@@ -580,6 +601,7 @@ export async function updatePayment(
       emiPlan: true,
       interestPercent: true,
       paidAt: true,
+      bookingAt: true,
       status: true,
     },
   });
@@ -638,6 +660,18 @@ export async function updatePayment(
   }
   if (input.paidAt !== undefined && input.paidAt !== "") {
     data.paidAt = readDate(input.paidAt);
+  }
+
+  // The seat-holding money. Clearing the box clears the record of it, so a
+  // figure typed in error can be taken back out.
+  if (input.bookingAmount !== undefined) {
+    const booked = input.bookingAmount > 0;
+    data.bookingAmount = booked ? new Prisma.Decimal(input.bookingAmount) : null;
+    data.bookingAt = booked
+      ? (readDate(input.bookingAt) ?? existing.bookingAt ?? new Date())
+      : null;
+  } else if (input.bookingAt !== undefined && input.bookingAt !== "") {
+    data.bookingAt = readDate(input.bookingAt);
   }
 
   if (Object.keys(data).length > 0) {
@@ -1087,6 +1121,12 @@ export async function fulfillPaidCheckout(
       payment.id,
     );
   }
+  // Fees the learner settled themselves, credited against the plan they owe
+  // it on. Runs here rather than in the route so the webhook — the only path
+  // that runs when the payer closes the tab — credits it too.
+  if (purchase?.kind === FEE_SETTLEMENT_PAYMENT && purchase.targetPaymentId) {
+    await creditFeeSettlement(purchase.targetPaymentId, num(payment.netAmount));
+  }
 
   if (payment.courseId) {
     const existing = await prisma.enrollment.findUnique({
@@ -1252,4 +1292,211 @@ export async function handleRazorpayWebhook(
   }
 
   return { handled: false };
+}
+
+// ── Settling fees from the learner's own panel ───────────────────────────────
+
+export type SettleChoice = "FULL" | "NEXT" | "CUSTOM";
+
+/**
+ * What a learner may pay right now against one of their plans.
+ *
+ * Three figures, because those are the three things people actually do: clear
+ * the lot, put the next instalment in early, or pay what they can this month.
+ * Late fees are inside `full`, so clearing it really does clear the account.
+ */
+export async function settleOptions(
+  userId: string,
+  paymentId: string,
+): Promise<{ full: number; next: number; penalty: number; currency: string }> {
+  const payment = await prisma.payment.findFirst({
+    where: { id: paymentId, userId },
+    select: { ...SETTLE_SELECT },
+  });
+  if (!payment) throw AppError.notFound("That invoice isn't yours.");
+  const summary = await summarise(payment);
+  return {
+    full: summary.outstanding,
+    next: summary.nextDueAmount || summary.outstanding,
+    penalty: summary.penalty,
+    currency: "INR",
+  };
+}
+
+const SETTLE_SELECT = {
+  id: true,
+  status: true,
+  type: true,
+  netAmount: true,
+  paidAt: true,
+  bookingAmount: true,
+  graceDays: true,
+  penaltyPercent: true,
+  penaltyFlat: true,
+  penaltyWaived: true,
+  installments: {
+    select: {
+      amount: true,
+      dueDate: true,
+      status: true,
+      paidAmount: true,
+      penaltyAmount: true,
+      penaltyWaived: true,
+    },
+  },
+} satisfies Prisma.PaymentSelect;
+
+/**
+ * Start a Razorpay checkout for money owed on an existing plan.
+ *
+ * A separate `Payment` row is raised rather than editing the original: the
+ * invoice series, the receiving account, the refund trail and Admin → Payments
+ * all work on receipts, and a receipt is what the learner is buying. The link
+ * back to the plan rides in `metadata` and is settled in `creditFeeSettlement`.
+ */
+export async function createFeeSettlementOrder(
+  user: PublicUser,
+  paymentId: string,
+  choice: SettleChoice,
+  customAmount?: number,
+): Promise<CheckoutSession> {
+  if (!razorpayConfigured()) {
+    throw AppError.badRequest(
+      "Online payments aren't set up yet. Please contact the office to pay.",
+    );
+  }
+  const target = await prisma.payment.findFirst({
+    where: { id: paymentId, userId: user.id },
+    select: { ...SETTLE_SELECT, invoiceNumber: true, courseId: true },
+  });
+  if (!target) throw AppError.notFound("That invoice isn't yours.");
+
+  const summary = await summarise(target);
+  if (summary.outstanding <= 0) {
+    throw AppError.badRequest("There is nothing left to pay on this one.");
+  }
+
+  const asked =
+    choice === "FULL"
+      ? summary.outstanding
+      : choice === "NEXT"
+        ? summary.nextDueAmount || summary.outstanding
+        : Math.round((customAmount ?? 0) * 100) / 100;
+
+  if (asked <= 0) throw AppError.badRequest("Enter an amount to pay.");
+  // Never take more than is owed — an overpayment is a refund waiting to go
+  // wrong, and the learner meant to clear the account, not overshoot it.
+  const net = Math.min(asked, summary.outstanding);
+  const amountPaise = Math.round(net * 100);
+
+  const [razorAccount, invoiceNumber] = await Promise.all([
+    getRazorpayAccount(),
+    uniqueInvoice(new Date().getFullYear()),
+  ]);
+
+  const order = await createRazorpayOrder({
+    amountPaise,
+    currency: "INR",
+    receipt: invoiceNumber,
+    notes: { kind: FEE_SETTLEMENT_PAYMENT, targetPaymentId: paymentId, userId: user.id },
+  });
+
+  const payment = await prisma.payment.create({
+    data: {
+      userId: user.id,
+      // Deliberately no courseId: the seat was bought on the original plan,
+      // and `fulfillPaidCheckout` enrols whenever one is set.
+      accountId: razorAccount?.id ?? null,
+      invoiceNumber,
+      amount: new Prisma.Decimal(net),
+      discountAmount: new Prisma.Decimal(0),
+      taxAmount: new Prisma.Decimal(0),
+      netAmount: new Prisma.Decimal(net),
+      currency: "INR",
+      status: "PENDING",
+      provider: "RAZORPAY",
+      type: "ONE_TIME",
+      method: "ONLINE",
+      providerOrderId: order.id,
+      metadata: { kind: FEE_SETTLEMENT_PAYMENT, targetPaymentId: paymentId },
+    },
+    select: { id: true },
+  });
+
+  return {
+    paymentId: payment.id,
+    orderId: order.id,
+    amount: amountPaise,
+    currency: "INR",
+    keyId: razorpayKeyId(),
+    courseTitle: `Fee payment · ${target.invoiceNumber}`,
+    prefill: { name: user.name, email: user.email },
+    referralDiscount: 0,
+  };
+}
+
+/**
+ * Put a settled fee payment against the plan it was raised for.
+ *
+ * Oldest unpaid instalment first, so a part payment clears the thing that is
+ * costing the learner a late fee rather than the one furthest away. A plan
+ * with no instalments is simply marked paid once nothing is left owing.
+ */
+export async function creditFeeSettlement(
+  targetPaymentId: string,
+  amount: number,
+): Promise<void> {
+  const target = await prisma.payment.findUnique({
+    where: { id: targetPaymentId },
+    select: {
+      id: true,
+      installments: {
+        where: { status: { notIn: ["PAID", "CANCELLED"] } },
+        orderBy: { dueDate: "asc" },
+        select: { id: true, amount: true, paidAmount: true },
+      },
+    },
+  });
+  if (!target) return;
+
+  let left = amount;
+  const now = new Date();
+  for (const i of target.installments) {
+    if (left <= 0) break;
+    const owing = money(num(i.amount) - num(i.paidAmount));
+    if (owing <= 0) continue;
+    const put = Math.min(owing, left);
+    left = money(left - put);
+    const settled = put >= owing;
+    await prisma.installment.updateMany({
+      where: { id: i.id },
+      data: {
+        paidAmount: new Prisma.Decimal(money(num(i.paidAmount) + put)),
+        ...(settled ? { status: "PAID", paidAt: now, method: "ONLINE" } : {}),
+      },
+    });
+  }
+
+  // Anything over the schedule, or a plan with no schedule at all, lands on
+  // the plan itself so the learner's total stops showing it as owing.
+  if (left > 0 || target.installments.length === 0) {
+    const row = await prisma.payment.findUnique({
+      where: { id: targetPaymentId },
+      select: { ...SETTLE_SELECT },
+    });
+    if (row) {
+      const after = await summarise(row);
+      if (after.outstanding <= left) {
+        await prisma.payment.updateMany({
+          where: { id: targetPaymentId, status: { not: "PAID" } },
+          data: { status: "PAID", paidAt: now },
+        });
+      }
+    }
+  }
+
+  await prisma.payment.updateMany({
+    where: { id: targetPaymentId },
+    data: { lastPaymentAt: now },
+  });
 }
