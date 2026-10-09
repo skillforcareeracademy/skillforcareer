@@ -233,13 +233,50 @@ export async function getQuizEdit(id: string) {
   };
 }
 
+/**
+ * Courses for a picker, each carrying the catalogue category it sits under.
+ *
+ * The academy files its courses by subject and expects to find them that way
+ * when it sets a paper — "yahan pr courses category and subcategory k
+ * according dikhne chahiye taaki courses select krna easy ho jaaye." A course
+ * category may itself have a parent, which is the sub-category case.
+ */
 export async function listCoursesForSelect(instructorId?: string) {
-  return prisma.course.findMany({
+  const rows = await prisma.course.findMany({
     where: instructorId ? { instructorId } : {},
-    select: { id: true, title: true },
+    select: {
+      id: true,
+      title: true,
+      categoryId: true,
+      category: {
+        select: {
+          id: true,
+          name: true,
+          parentId: true,
+          parent: { select: { id: true, name: true } },
+        },
+      },
+    },
     orderBy: { title: "asc" },
   });
+  return rows.map((c) => {
+    // A course filed under a child category belongs to that child's parent;
+    // one filed under a top-level category has no sub-category of its own.
+    const parent = c.category?.parent ?? null;
+    return {
+      id: c.id,
+      title: c.title,
+      categoryId: parent?.id ?? c.category?.id ?? "",
+      categoryName: parent?.name ?? c.category?.name ?? "",
+      subCategoryId: parent ? (c.category?.id ?? "") : "",
+      subCategoryName: parent ? (c.category?.name ?? "") : "",
+    };
+  });
 }
+
+export type CourseSelectOption = Awaited<
+  ReturnType<typeof listCoursesForSelect>
+>[number];
 
 // ── Quiz writes ──────────────────────────────────────────────────────────────
 

@@ -78,6 +78,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  CourseCategoryPicker,
+  type CourseOption,
+} from "@/components/shared/course-category-picker";
 
 interface QuizRow {
   id: string;
@@ -131,10 +135,6 @@ interface CategoryOpt {
   name: string;
   parentId: string | null;
 }
-interface Opt {
-  id: string;
-  title: string;
-}
 interface BatchOpt {
   id: string;
   name: string;
@@ -165,7 +165,7 @@ export function QuizzesClient({
   total: number;
   query: Query;
   stats: Stats;
-  courses: Opt[];
+  courses: CourseOption[];
   batches: BatchOpt[];
   /** Quiz groups: parents, and sub-categories carrying their `parentId`. */
   categories?: CategoryOpt[];
@@ -197,6 +197,9 @@ export function QuizzesClient({
   const [createOpen, setCreateOpen] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newCourse, setNewCourse] = useState("");
+  /** How the course list in the new-quiz dialog is narrowed. A view only. */
+  const [newCourseCategory, setNewCourseCategory] = useState("");
+  const [newCourseSubCategory, setNewCourseSubCategory] = useState("");
   const [newCategory, setNewCategory] = useState("");
   const [newSubCategory, setNewSubCategory] = useState("");
   const [creating, setCreating] = useState(false);
@@ -1261,29 +1264,19 @@ export function QuizzesClient({
                 placeholder="e.g. Python Fundamentals Quiz"
               />
             </div>
-            <div className="space-y-1.5">
-              <Label>Course (optional)</Label>
-              <Select
-                value={newCourse}
-                onValueChange={(v) => setNewCourse(v ?? "")}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Choose a course">
-                    {(v) =>
-                      courses.find((c) => c.id === v)?.title ??
-                      "Choose a course"
-                    }
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {courses.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.title}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {/* "similarly yahan pr bhi cat and sub cat ke according course
+                dikha chahiye" — the same narrowing the editor has. */}
+            <CourseCategoryPicker
+              courses={courses}
+              value={newCourse}
+              onChange={setNewCourse}
+              category={newCourseCategory}
+              subCategory={newCourseSubCategory}
+              onCategoryChange={setNewCourseCategory}
+              onSubCategoryChange={setNewCourseSubCategory}
+              label="Course (optional)"
+              noneLabel="Choose a course"
+            />
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>Category</Label>

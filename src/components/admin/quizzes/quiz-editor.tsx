@@ -35,6 +35,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  CourseCategoryPicker,
+  type CourseOption,
+} from "@/components/shared/course-category-picker";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -130,7 +134,7 @@ export function QuizEditor({
   attemptDefault = 0,
 }: {
   quiz: Quiz;
-  courses: { id: string; title: string }[];
+  courses: CourseOption[];
   batches: BatchOpt[];
   /** Quiz groups: parents, and sub-categories carrying their `parentId`. */
   categories?: CategoryOpt[];
@@ -164,6 +168,15 @@ export function QuizEditor({
     batchIds: quiz.batchIds,
     studentIds: quiz.studentIds,
   });
+  // How the course list above is narrowed. A view only — nothing is saved,
+  // and it starts on whatever the quiz's own course is filed under.
+  const chosenCourse = courses.find((c) => c.id === quiz.courseId);
+  const [courseCategory, setCourseCategory] = useState(
+    chosenCourse?.categoryId ?? "",
+  );
+  const [courseSubCategory, setCourseSubCategory] = useState(
+    chosenCourse?.subCategoryId ?? "",
+  );
   const [savingSettings, setSavingSettings] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [dialogNonce, setDialogNonce] = useState(0);
@@ -388,29 +401,18 @@ export function QuizEditor({
                 placeholder="Optional"
               />
             </div>
-            <div className="space-y-1.5">
-              <Label>Course</Label>
-              <Select
-                value={form.courseId || "none"}
-                onValueChange={(v) => set("courseId", v === "none" ? "" : (v ?? ""))}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue>
-                    {(v) =>
-                      !v || v === "none" ? "None" : (courses.find((c) => c.id === v)?.title ?? "None")
-                    }
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">None</SelectItem>
-                  {courses.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.title}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {/* Narrowed by the subject the course is filed under, because a
+                flat list of the whole catalogue is no help here. */}
+            <CourseCategoryPicker
+              courses={courses}
+              value={form.courseId}
+              onChange={(id) => set("courseId", id)}
+              category={courseCategory}
+              subCategory={courseSubCategory}
+              onCategoryChange={setCourseCategory}
+              onSubCategoryChange={setCourseSubCategory}
+              noneLabel="None"
+            />
             {/* Grouping. Sub-categories are filtered to the chosen category, so
                 "ICD-10" can't end up under "Soft Skills". */}
             <div className="grid grid-cols-2 gap-3">
