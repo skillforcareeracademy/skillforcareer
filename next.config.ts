@@ -1,5 +1,59 @@
 import type { NextConfig } from "next";
 
+/**
+ * The content policy, assembled from what the app actually loads.
+ *
+ * Shipped **report-only** to begin with. A CSP has to name every script,
+ * style and frame in the app, and the way you discover you missed one is that
+ * the page stops working for everyone at once. Reported rather than enforced,
+ * a mistake costs a log line at /api/csp-report; once that is quiet for a
+ * while the header name below becomes `Content-Security-Policy` and it bites.
+ *
+ * `'unsafe-inline'` on scripts is not laziness: Next inlines its bootstrap and
+ * its flight payload into every document, and the alternative is a per-request
+ * nonce, which makes every page uncacheable. Styles are inline for the same
+ * reason, from Tailwind's own output.
+ */
+const SIGNAL_ORIGIN = (process.env.SIGNAL_URL ?? "").replace(/\/+$/, "");
+const SIGNAL_WS = SIGNAL_ORIGIN.replace(/^http/, "ws");
+
+const CSP = [
+  "default-src 'self'",
+  "base-uri 'self'",
+  "object-src 'none'",
+  "frame-ancestors 'self'",
+  "form-action 'self'",
+  "upgrade-insecure-requests",
+  // Razorpay's checkout and the academy's own Google tag, which Settings can
+  // switch on at any time.
+  `script-src 'self' 'unsafe-inline' 'unsafe-eval' https://checkout.razorpay.com https://*.razorpay.com https://www.googletagmanager.com https://www.google-analytics.com`,
+  "style-src 'self' 'unsafe-inline'",
+  // next/font self-hosts, so this is only for the odd inline data: face.
+  "font-src 'self' data:",
+  // Course art, learner photographs and avatars come from a long list of
+  // hosts the academy adds to from the panel; narrowing this to a fixed set
+  // would break an image the day somebody pastes a new one.
+  "img-src 'self' data: blob: https:",
+  "media-src 'self' blob: https:",
+  "worker-src 'self' blob:",
+  [
+    "connect-src 'self'",
+    SIGNAL_ORIGIN,
+    SIGNAL_WS,
+    "https://*.razorpay.com",
+    "https://lumberjack.razorpay.com",
+    "https://www.google-analytics.com",
+    "https://*.googletagmanager.com",
+    "https://*.analytics.google.com",
+  ]
+    .filter(Boolean)
+    .join(" "),
+  // Recorded lessons, the payment sheet, and the viewer the panel opens Office
+  // documents in.
+  "frame-src 'self' https://www.youtube.com https://youtube.com https://player.vimeo.com https://*.razorpay.com https://view.officeapps.live.com https://drive.google.com",
+  "report-uri /api/csp-report",
+].join("; ");
+
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
@@ -66,12 +120,17 @@ const nextConfig: NextConfig = {
               "camera=(self), microphone=(self), display-capture=(self), geolocation=(), payment=(self), interest-cohort=()",
           },
           {
+            // The framing clause stays enforced on its own: it is the
+            // clickjacking defence, it carries no risk of breaking a page,
+            // and it should not wait for the rest of the policy to settle.
             key: "Content-Security-Policy",
-            // Only the framing half for now. A full policy has to list every
-            // script and style the app loads, and getting that wrong takes the
-            // site down — this part is the clickjacking defence and carries no
-            // such risk.
             value: "frame-ancestors 'self'",
+          },
+          {
+            // Everything else, watched rather than enforced. See the note
+            // above `CSP` for how and when this becomes binding.
+            key: "Content-Security-Policy-Report-Only",
+            value: CSP,
           },
         ],
       },
