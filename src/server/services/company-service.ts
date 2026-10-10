@@ -22,6 +22,15 @@ export interface CompanyRow {
   contactName: string | null;
   email: string | null;
   phone: string | null;
+  website: string | null;
+  logoUrl: string | null;
+  addressLine: string | null;
+  city: string | null;
+  state: string | null;
+  postcode: string | null;
+  gstNumber: string | null;
+  billingEmail: string | null;
+  notes: string | null;
   plan: string | null;
   subscriptionEndsAt: string | null;
   /** How many accounts it has, by the kinds the academy meters. */
@@ -40,6 +49,15 @@ const SELECT = {
   contactName: true,
   email: true,
   phone: true,
+  website: true,
+  logoUrl: true,
+  addressLine: true,
+  city: true,
+  state: true,
+  postcode: true,
+  gstNumber: true,
+  billingEmail: true,
+  notes: true,
   plan: true,
   subscriptionEndsAt: true,
   maxStudents: true,
@@ -93,6 +111,15 @@ export async function listCompanies(): Promise<CompanyRow[]> {
       contactName: c.contactName,
       email: c.email,
       phone: c.phone,
+      website: c.website,
+      logoUrl: c.logoUrl,
+      addressLine: c.addressLine,
+      city: c.city,
+      state: c.state,
+      postcode: c.postcode,
+      gstNumber: c.gstNumber,
+      billingEmail: c.billingEmail,
+      notes: c.notes,
       plan: c.plan,
       subscriptionEndsAt: c.subscriptionEndsAt?.toISOString() ?? null,
       seats: c.isOwner
@@ -119,6 +146,15 @@ export async function getCompany(id: string): Promise<CompanyRow> {
     contactName: c.contactName,
     email: c.email,
     phone: c.phone,
+    website: c.website,
+    logoUrl: c.logoUrl,
+    addressLine: c.addressLine,
+    city: c.city,
+    state: c.state,
+    postcode: c.postcode,
+    gstNumber: c.gstNumber,
+    billingEmail: c.billingEmail,
+    notes: c.notes,
     plan: c.plan,
     subscriptionEndsAt: c.subscriptionEndsAt?.toISOString() ?? null,
     seats: c.isOwner ? ({} as Record<SeatRole, number>) : await seatUsage(id),
@@ -140,7 +176,15 @@ function writable(input: CompanyInput) {
     contactName: input.contactName || null,
     email: input.email || null,
     phone: input.phone || null,
+    website: input.website || null,
+    logoUrl: input.logoUrl || null,
     notes: input.notes || null,
+    addressLine: input.addressLine || null,
+    city: input.city || null,
+    state: input.state || null,
+    postcode: input.postcode || null,
+    gstNumber: input.gstNumber ? input.gstNumber.toUpperCase() : null,
+    billingEmail: input.billingEmail || null,
     plan: input.plan || null,
     subscriptionEndsAt: input.subscriptionEndsAt
       ? new Date(input.subscriptionEndsAt)

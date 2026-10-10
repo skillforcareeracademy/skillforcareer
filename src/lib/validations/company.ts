@@ -22,7 +22,26 @@ export const companySchema = z.object({
   contactName: z.string().trim().max(120).optional().or(z.literal("")),
   email: z.string().trim().max(160).optional().or(z.literal("")),
   phone: z.string().trim().max(40).optional().or(z.literal("")),
+  website: z.string().trim().max(255).optional().or(z.literal("")),
+  logoUrl: z.string().trim().max(512).optional().or(z.literal("")),
   notes: z.string().trim().max(2000).optional().or(z.literal("")),
+
+  /** What an invoice to this company needs on it. */
+  addressLine: z.string().trim().max(255).optional().or(z.literal("")),
+  city: z.string().trim().max(80).optional().or(z.literal("")),
+  state: z.string().trim().max(80).optional().or(z.literal("")),
+  postcode: z.string().trim().max(20).optional().or(z.literal("")),
+  gstNumber: z
+    .string()
+    .trim()
+    .max(20)
+    .optional()
+    .or(z.literal(""))
+    .refine(
+      (v) => !v || /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]{3}$/.test(v.toUpperCase()),
+      "That doesn't look like a GSTIN (15 characters, e.g. 29ABCDE1234F1Z5)",
+    ),
+  billingEmail: z.string().trim().max(160).optional().or(z.literal("")),
 
   plan: z.string().trim().max(60).optional().or(z.literal("")),
   subscriptionEndsAt: z.string().trim().max(40).optional().or(z.literal("")),

@@ -3693,12 +3693,23 @@ model Company {
   plan            String?
   subscribedAt    DateTime?
   subscriptionEndsAt DateTime?
-  /// Who the academy deals with there.
+  /// Who the academy deals with there, and where they are.
   contactName String?
   email       String?
   phone       String?
-  logoUrl     String?   @db.VarChar(512)
-  notes       String?   @db.Text
+  website     String?  @db.VarChar(255)
+  logoUrl     String?  @db.VarChar(512)
+  notes       String?  @db.Text
+
+  /// Billing particulars. An Indian company invoice needs the registered
+  /// address and the GSTIN on it, and the accounts inbox is rarely the same
+  /// address as the person the academy actually talks to.
+  addressLine  String? @db.VarChar(255)
+  city         String?
+  state        String?
+  postcode     String? @db.VarChar(20)
+  gstNumber    String? @db.VarChar(20)
+  billingEmail String?
 
   /// How many accounts of each kind this company may create — "super admin can
   /// restrict how many users they are allowed to create". Null is no limit;
