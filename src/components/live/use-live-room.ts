@@ -759,7 +759,12 @@ export function useLiveRoom({ signalUrl, token, joined, selfName, isHost }: Live
         reconnectionDelay: 500,
         reconnectionDelayMax: 5_000,
         randomizationFactor: 0.5,
-        timeout: 10_000,
+        // Long enough to outlast a cold start. The signalling server sleeps
+        // when a class has not been held for a while and takes about fifteen
+        // seconds to wake; at ten the very first attempt always timed out and
+        // the learner was shown "Can't reach the class server" before the
+        // retry quietly succeeded.
+        timeout: 30_000,
       });
       socketRef.current = socket;
 
@@ -1046,8 +1051,15 @@ export function useLiveRoom({ signalUrl, token, joined, selfName, isHost }: Live
       window.clearInterval(paintRef.current);
       paintRef.current = null;
     }
-    // Put the camera back — it was never stopped, only set aside.
-    publishTrack("video", localStreamRef.current?.getVideoTracks()[0] ?? null);
+    // Put the camera back — it was never stopped, only set aside. Unless the
+    // room is over its mesh limit and holding video back, in which case
+    // sharing was the reason this person was exempt.
+    publishTrack(
+      "video",
+      sendingVideoRef.current
+        ? (localStreamRef.current?.getVideoTracks()[0] ?? null)
+        : null,
+    );
     screen?.getTracks().forEach((t) => t.stop());
     selfStateRef.current = { ...selfStateRef.current, sharing: false };
     socketRef.current?.emit("state", { sharing: false });
@@ -1259,6 +1271,13 @@ export function useLiveRoom({ signalUrl, token, joined, selfName, isHost }: Live
     socketRef.current?.disconnect();
     peersRef.current.forEach((rec) => rec.pc.close());
     peersRef.current.clear();
+    // A presented picture is held open by a timer, not by the compositor, and
+    // leaving the room never went near it — so it kept redrawing a canvas
+    // nobody was watching for as long as the tab stayed open.
+    if (paintRef.current !== null) {
+      window.clearInterval(paintRef.current);
+      paintRef.current = null;
+    }
     localStreamRef.current?.getTracks().forEach((t) => t.stop());
     screenStreamRef.current?.getTracks().forEach((t) => t.stop());
     audioCtxRef.current?.close().catch(() => {});

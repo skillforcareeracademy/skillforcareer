@@ -32,8 +32,8 @@ const prisma = new PrismaClient({
 const PORT = Number(process.env.PORT || process.env.SIGNAL_PORT) || 4001;
 
 // Browsers send an Origin header on the socket handshake, so every domain the
-// app is served from must be listed. ALLOWED_ORIGINS takes a comma-separated
-// list (production domain + any preview domains); localhost is always allowed.
+// app is served from has to be accepted. ALLOWED_ORIGINS takes a comma-separated
+// list; localhost is always allowed.
 const ALLOWED = [
   ...new Set(
     [
@@ -52,6 +52,68 @@ const ALLOWED = [
       .filter((o): o is string => Boolean(o)),
   ),
 ];
+
+/** The academy's own domain, which every tenant subdomain hangs off. */
+const ROOT_DOMAIN = (process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "skillforcareer.com")
+  .replace(/^https?:\/\//, "")
+  .replace(/^www\./, "")
+  .replace(/[/:].*$/, "")
+  .toLowerCase();
+
+/**
+ * Tenant domains, remembered briefly.
+ *
+ * Every company can be reached on its own subdomain or its own domain, so the
+ * set of valid origins is a database table rather than an environment
+ * variable. Cached for a minute: a handshake is not the place for a query, and
+ * a domain added just now is worth waiting a minute for.
+ */
+let tenantHosts = new Set<string>();
+let tenantHostsAt = 0;
+
+async function refreshTenantHosts(): Promise<Set<string>> {
+  if (Date.now() - tenantHostsAt < 60_000) return tenantHosts;
+  tenantHostsAt = Date.now();
+  try {
+    const rows = await prisma.companyDomain.findMany({
+      where: { status: "VERIFIED" },
+      select: { host: true },
+    });
+    tenantHosts = new Set(rows.map((r) => r.host.toLowerCase()));
+  } catch {
+    // Keep whatever we had; a database blip must not lock everyone out.
+  }
+  return tenantHosts;
+}
+
+/**
+ * Whether a browser at this origin may open a socket.
+ *
+ * A function rather than a fixed list, because the list cannot be written down
+ * in advance any more: each company reaches the platform on its own address.
+ * It also stops a missing environment variable from silently disabling the
+ * polling fallback — which is exactly what had happened in production, where
+ * WebSocket connected (browsers do not CORS-check those) while anybody behind
+ * a proxy that blocks WebSocket could not get in at all.
+ */
+async function originAllowed(origin: string | undefined): Promise<boolean> {
+  // No Origin header at all: a health check or a native client, not a browser.
+  if (!origin) return true;
+  const clean = origin.trim().replace(/\/+$/, "");
+  if (ALLOWED.includes(clean)) return true;
+
+  let host: string;
+  try {
+    host = new URL(clean).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  if (host === "localhost" || host === "127.0.0.1") return true;
+  // The academy's own domain and anything under it, which covers www, the
+  // apex, Vercel previews on it, and every tenant subdomain.
+  if (host === ROOT_DOMAIN || host.endsWith(`.${ROOT_DOMAIN}`)) return true;
+  return (await refreshTenantHosts()).has(host);
+}
 
 interface RoomUser {
   id: string;
@@ -90,7 +152,16 @@ const httpServer = createServer((req, res) => {
 
 const io = new Server(httpServer, {
   path: "/socket.io",
-  cors: { origin: ALLOWED, methods: ["GET", "POST"] },
+  cors: {
+    origin: (origin, cb) => {
+      void originAllowed(origin).then(
+        (ok) => cb(null, ok),
+        () => cb(null, false),
+      );
+    },
+    methods: ["GET", "POST"],
+    credentials: true,
+  },
   // A learner who walks out of Wi-Fi range should drop off everyone else's
   // screen in about fifteen seconds, not the default twenty-five: the tiles of
   // people who have actually gone are what make a class look broken.
@@ -245,11 +316,19 @@ io.on("connection", (socket) => {
   }
 
   // Relay SDP offers/answers and ICE candidates to a specific peer.
-  socket.on("signal", ({ to, description, candidate }) => {
+  //
+  // `reset` is relayed too. It is the last resort when repeated ICE restarts
+  // have not brought a connection back: the sender throws its peer connection
+  // away and asks the far end to do the same. Dropping it here left that
+  // rebuild one-sided — a fresh offer arriving at a peer still holding the
+  // dead connection — so a learner whose network had been away for a while
+  // never got their video back.
+  socket.on("signal", ({ to, description, candidate, reset }) => {
     sameRoom(String(to))?.emit("signal", {
       from: socket.id,
       description,
       candidate,
+      reset,
     });
   });
 
@@ -332,5 +411,9 @@ io.on("connection", (socket) => {
 });
 
 httpServer.listen(PORT, () => {
-  console.log(`[signal] live signaling server on :${PORT} (origins: ${ALLOWED.join(", ")})`);
+  console.log(
+    `[signal] live signaling server on :${PORT}\n` +
+      `         configured origins: ${ALLOWED.join(", ")}\n` +
+      `         plus ${ROOT_DOMAIN} and every subdomain, and any verified tenant domain`,
+  );
 });
