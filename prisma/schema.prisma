@@ -32,6 +32,21 @@ enum CompanyStatus {
   SUSPENDED
 }
 
+/// How a company's address reaches the platform.
+enum DomainKind {
+  /// Free, on the academy's own domain: `acme.skillforcareer.com`. Nothing to
+  /// verify — the academy already controls the apex.
+  SUBDOMAIN
+  /// The company's own: `learn.acme.com`. Theirs to prove and to point.
+  CUSTOM
+}
+
+enum DomainStatus {
+  PENDING
+  VERIFIED
+  FAILED
+}
+
 enum UserStatus {
   PENDING // registered, email not yet verified
   ACTIVE
@@ -3742,10 +3757,43 @@ model Company {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users User[]
+  users   User[]
+  domains CompanyDomain[]
 
   @@index([status])
   @@index([isOwner])
   @@index([enrolToken])
   @@index([formToken])
+}
+
+/// An address a company's people reach their panel at.
+///
+/// A free subdomain on the academy's own domain, or the company's own domain
+/// once they have pointed it here and proved it is theirs. One of a company's
+/// domains is its primary, which is the one links are written with.
+model CompanyDomain {
+  id        String       @id @default(cuid())
+  companyId String
+  /// Lowercased, no scheme, no trailing dot — `acme.skillforcareer.com`.
+  host      String       @db.VarChar(255)
+  kind      DomainKind   @default(CUSTOM)
+  status    DomainStatus @default(PENDING)
+  isPrimary Boolean      @default(false)
+
+  /// The value the company puts in a TXT record to prove the domain is
+  /// theirs. Kept after verifying so a re-check can be run at any time.
+  verifyToken String?   @db.VarChar(80)
+  verifiedAt  DateTime?
+  /// Why the last check failed, shown beside the record to fix.
+  lastError   String?   @db.VarChar(255)
+  lastCheckedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([companyId])
+  @@index([host])
+  @@index([status])
 }

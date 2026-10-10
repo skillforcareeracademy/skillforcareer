@@ -58,7 +58,13 @@ const SEAT_LABEL: Record<string, string> = {
  * seat limit, no subscription and cannot be suspended or removed — it is the
  * platform, not a customer of it.
  */
-export function CompaniesClient({ companies }: { companies: CompanyRow[] }) {
+export function CompaniesClient({
+  companies,
+  rootDomain,
+}: {
+  companies: CompanyRow[];
+  rootDomain: string;
+}) {
   const router = useRouter();
   const [editing, setEditing] = useState<CompanyRow | null>(null);
   const [creating, setCreating] = useState(false);
@@ -225,6 +231,7 @@ export function CompaniesClient({ companies }: { companies: CompanyRow[] }) {
       {(creating || editing) && (
         <CompanyFormDialog
           company={editing}
+          rootDomain={rootDomain}
           open
           onOpenChange={(o) => {
             if (!o) {

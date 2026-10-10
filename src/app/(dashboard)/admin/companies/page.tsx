@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/require";
 import { ROLES } from "@/config/roles";
 import { listCompanies } from "@/server/services/company-service";
+import { ROOT_DOMAIN } from "@/server/services/company-domain-service";
 import { CompaniesClient } from "@/components/admin/companies/companies-client";
 
 export const metadata: Metadata = { title: "Companies" };
@@ -16,5 +17,10 @@ export default async function CompaniesPage() {
   if (!user) redirect("/login");
   if (user.companyId || user.role !== ROLES.SUPER_ADMIN) redirect("/admin");
 
-  return <CompaniesClient companies={await listCompanies()} />;
+  return (
+    <CompaniesClient
+      companies={await listCompanies()}
+      rootDomain={ROOT_DOMAIN}
+    />
+  );
 }

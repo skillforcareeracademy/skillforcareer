@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   Building2,
   CreditCard,
+  Globe,
   Loader2,
   Plug,
   ReceiptText,
@@ -24,6 +25,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { ImageUpload } from "@/components/shared/image-upload";
+import { PhoneInput } from "@/components/shared/phone-input";
+import { CompanyDomains } from "./company-domains";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
@@ -96,10 +99,12 @@ export function CompanyFormDialog({
   company,
   open,
   onOpenChange,
+  rootDomain,
 }: {
   company: CompanyRow | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  rootDomain: string;
 }) {
   const router = useRouter();
   const isOwner = Boolean(company?.isOwner);
@@ -200,6 +205,11 @@ export function CompanyFormDialog({
                 <ReceiptText /> Billing
               </TabsTrigger>
             )}
+            {!isOwner && company && (
+              <TabsTrigger value="domains" className="gap-1.5 px-3">
+                <Globe /> Domains
+              </TabsTrigger>
+            )}
             {!isOwner && (
               <TabsTrigger value="integrations" className="gap-1.5 px-3">
                 <Plug /> Integrations
@@ -247,7 +257,13 @@ export function CompanyFormDialog({
               {text("contactName", "Main contact", { placeholder: "Who the academy deals with" })}
               {text("website", "Website", { placeholder: "company.com" })}
               {text("email", "Email", { type: "email", placeholder: "contact@company.com" })}
-              {text("phone", "Phone", { type: "tel" })}
+              <Field label="Phone" htmlFor="co-phone">
+                <PhoneInput
+                  id="co-phone"
+                  value={form.phone}
+                  onChange={(v) => set("phone", v)}
+                />
+              </Field>
             </div>
 
             <Field label="Notes" htmlFor="co-notes" hint="Only the academy sees these.">
@@ -348,6 +364,13 @@ export function CompanyFormDialog({
                 {text("state", "State")}
                 {text("postcode", "PIN code")}
               </div>
+            </TabsContent>
+          )}
+
+          {/* ── Where their people reach it ──────────────────────────────── */}
+          {!isOwner && company && (
+            <TabsContent value="domains" className="mt-4">
+              <CompanyDomains companyId={company.id} rootDomain={rootDomain} />
             </TabsContent>
           )}
 
