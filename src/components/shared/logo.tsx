@@ -28,16 +28,23 @@ export function Logo({ href = "/", showText = false, onDark = false, className }
   const { logoUrl, logoDarkUrl, siteName } = useBranding();
   const src = onDark && logoDarkUrl ? logoDarkUrl : logoUrl;
 
+  /**
+   * On a dark surface with no light version uploaded, the mark sits on a
+   * white card.
+   *
+   * The mark carries a real alpha channel, so it has no white rectangle to
+   * hide any more — but transparency was never the problem on black. Its
+   * wordmark is drawn in dark ink, and on the live class background "CAREER"
+   * all but disappeared. A light version uploaded under Settings → Branding
+   * is still preferred and used bare; this is what happens until there is
+   * one, and it is what every product does with an ink logo on a dark header.
+   */
+  const needsCard = onDark && !logoDarkUrl;
+
   {
     /* Deliberately not next/image: the logo is replaceable at runtime, so its
        intrinsic dimensions aren't known at build time and it may be served
-       from /api/files after an upload.
-
-       The bundled mark now carries a real alpha channel — the white paper it
-       was exported on has been flood-filled away from the edges, so it sits on
-       whatever is behind it. No light chip on dark surfaces any more: that only
-       ever existed to hide the white rectangle, and it read as a white box
-       around the logo. */
+       from /api/files after an upload. */
   }
   const image = (
     // eslint-disable-next-line @next/next/no-img-element
@@ -52,13 +59,28 @@ export function Logo({ href = "/", showText = false, onDark = false, className }
     />
   );
 
-  const content = showText ? (
-    <span className="flex items-center gap-2.5">
+  const framed = needsCard ? (
+    <span className="inline-flex items-center rounded-xl bg-white px-3 py-2 shadow-sm">
       {image}
-      <span className="text-base font-semibold tracking-tight">{siteName}</span>
     </span>
   ) : (
     image
+  );
+
+  const content = showText ? (
+    <span className="flex items-center gap-2.5">
+      {framed}
+      <span
+        className={cn(
+          "text-base font-semibold tracking-tight",
+          onDark && "text-white",
+        )}
+      >
+        {siteName}
+      </span>
+    </span>
+  ) : (
+    framed
   );
 
   if (!href) return content;

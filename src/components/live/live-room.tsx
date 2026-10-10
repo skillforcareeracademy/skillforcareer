@@ -440,9 +440,7 @@ export function LiveRoom({
           >
             <ArrowLeft className="size-5" />
           </Button>
-          <span className="flex items-center rounded-xl bg-white px-3 py-1.5 shadow-sm">
-            <Logo href="/" className="h-7 max-w-[150px]" />
-          </span>
+          <Logo href="/" onDark className="h-7 max-w-[150px]" />
         </header>
 
         <div className="relative flex flex-1 items-center justify-center p-4 sm:p-6">
@@ -585,13 +583,15 @@ export function LiveRoom({
       {/* Header */}
       <header className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 bg-neutral-950/60 px-3 py-2.5 backdrop-blur sm:px-4 sm:py-3">
         <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
-          {/* On white, with rounded corners. The mark's wordmark is dark ink —
-              on a black bar it simply vanished, which is what it had been
-              doing. A chip is what every meeting product does with a logo on
-              a dark header, and it reads at a glance. */}
-          <span className="flex shrink-0 items-center rounded-lg bg-white px-2 py-1 shadow-sm">
-            <Logo href="/" showText={false} className="h-6 max-w-[112px]" />
-          </span>
+          {/* `onDark` is what puts the mark on a white card when the academy
+              has not uploaded a light version — its wordmark is dark ink and
+              on a black bar it had simply vanished. */}
+          <Logo
+            href="/"
+            showText={false}
+            onDark
+            className="h-6 max-w-[112px] shrink-0"
+          />
           <div className="min-w-0">
             <p className="truncate text-sm leading-tight font-semibold sm:text-base">
               {meeting.title}
