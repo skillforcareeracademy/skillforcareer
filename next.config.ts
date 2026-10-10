@@ -34,6 +34,58 @@ const nextConfig: NextConfig = {
   experimental: {
     optimizePackageImports: ["lucide-react", "recharts", "date-fns"],
   },
+
+  /**
+   * Headers the site was serving none of.
+   *
+   * `Referrer-Policy` is the one that mattered. Without it a browser sends the
+   * whole URL in the `Referer` header of every outbound request — and this app
+   * puts unguessable tokens in URLs: `/pay/<token>` settles a fee without a
+   * login, and `/live/room/<code>` opens a class. A learner on either of those
+   * who clicked an external link, or whose page loaded a third-party asset,
+   * handed the token over. `strict-origin-when-cross-origin` sends the full
+   * path to our own origin and only the bare origin to anyone else.
+   *
+   * The rest are the usual floor: no framing (the admin panel in an invisible
+   * iframe is how clickjacking works), no MIME sniffing, and a camera and
+   * microphone policy that allows the class room and nothing else.
+   */
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          {
+            key: "Permissions-Policy",
+            // The live class needs both; nothing else here does, and a page
+            // that cannot ask is a page that cannot be tricked into asking.
+            value:
+              "camera=(self), microphone=(self), display-capture=(self), geolocation=(), payment=(self), interest-cohort=()",
+          },
+          {
+            key: "Content-Security-Policy",
+            // Only the framing half for now. A full policy has to list every
+            // script and style the app loads, and getting that wrong takes the
+            // site down — this part is the clickjacking defence and carries no
+            // such risk.
+            value: "frame-ancestors 'self'",
+          },
+        ],
+      },
+      {
+        // Links sent to one person. Told not to index even if something
+        // reaches them with a crawler's user agent.
+        source: "/:path(pay|live)/:rest*",
+        headers: [
+          { key: "X-Robots-Tag", value: "noindex, nofollow" },
+          { key: "Referrer-Policy", value: "no-referrer" },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;
