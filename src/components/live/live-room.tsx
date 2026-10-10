@@ -7,6 +7,7 @@ import {
   MicOff,
   Video as VideoIcon,
   VideoOff,
+  ImageUp,
   MonitorUp,
   MessageSquare,
   Users,
@@ -138,6 +139,8 @@ export function LiveRoom({
   const [panel, setPanel] = useState<"chat" | "people" | null>(null);
   const [draft, setDraft] = useState("");
   const [copied, setCopied] = useState(false);
+  /** The hidden file input behind "Present a picture". */
+  const pictureRef = useRef<HTMLInputElement>(null);
   const [recording, setRecording] = useState(false);
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [dismissedNotice, setDismissedNotice] = useState(false);
@@ -312,6 +315,13 @@ export function LiveRoom({
   async function onToggleShare() {
     const problem = await room.toggleShare();
     if (problem) toast.error(problem);
+  }
+
+  /** Put a page or a photograph on the shared tile. */
+  async function onPresent(file: File) {
+    const problem = await room.shareImage(file);
+    if (problem) toast.error(problem);
+    else toast.success("Everyone can see it. Press it again to stop.");
   }
 
   function sendMessage(e: FormEvent) {
@@ -772,9 +782,35 @@ export function LiveRoom({
           onSelect={room.selectCamera}
           pickerLabel="Camera"
         />
-        <RoundButton active={sharing} onClick={onToggleShare} label="Share screen">
-          <MonitorUp className="size-5" />
+        {/* A tablet cannot capture its screen — no browser on iPadOS implements
+            it — so there it offers the picture instead, which teaches the same
+            lesson. On a computer both are available. */}
+        {room.canShareScreen && (
+          <RoundButton active={sharing} onClick={onToggleShare} label="Share screen">
+            <MonitorUp className="size-5" />
+          </RoundButton>
+        )}
+        <RoundButton
+          active={sharing && !room.canShareScreen}
+          onClick={() => {
+            if (sharing) void onToggleShare();
+            else pictureRef.current?.click();
+          }}
+          label={sharing ? "Stop presenting" : "Present a picture"}
+        >
+          <ImageUp className="size-5" />
         </RoundButton>
+        <input
+          ref={pictureRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            e.target.value = "";
+            if (file) void onPresent(file);
+          }}
+        />
         <RoundButton
           active={panel === "chat"}
           onClick={() => setPanel(panel === "chat" ? null : "chat")}

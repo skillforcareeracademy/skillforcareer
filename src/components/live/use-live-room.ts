@@ -1,7 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { io, type Socket } from "socket.io-client";
+
+/** A store that never changes — for reading a fixed browser capability. */
+const NO_CHANGES = () => () => {};
 
 /**
  * The engine behind a live class: local camera/mic, and one peer connection per
@@ -210,6 +220,8 @@ export function useLiveRoom({ signalUrl, token, joined, selfName, isHost }: Live
 
   const localStreamRef = useRef<MediaStream | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
+  /** Keeps a presented still picture emitting frames. */
+  const paintRef = useRef<number | null>(null);
   const peersRef = useRef<Map<string, PeerRecord>>(new Map());
   const socketRef = useRef<Socket | null>(null);
   /** False once the link is known to be dead, before the socket admits it. */
@@ -1028,6 +1040,12 @@ export function useLiveRoom({ signalUrl, token, joined, selfName, isHost }: Live
     screenStreamRef.current = null;
     setScreenStream(null);
     setSharing(false);
+    // A presented picture is kept alive by a redraw timer rather than by the
+    // compositor; nothing stops it when the track ends.
+    if (paintRef.current !== null) {
+      window.clearInterval(paintRef.current);
+      paintRef.current = null;
+    }
     // Put the camera back — it was never stopped, only set aside.
     publishTrack("video", localStreamRef.current?.getVideoTracks()[0] ?? null);
     screen?.getTracks().forEach((t) => t.stop());
@@ -1035,9 +1053,72 @@ export function useLiveRoom({ signalUrl, token, joined, selfName, isHost }: Live
     socketRef.current?.emit("state", { sharing: false });
   }, [publishTrack]);
 
+  /**
+   * Put a picture on the shared tile — a page photographed there and then, a
+   * diagram, a worksheet.
+   *
+   * iPadOS has no `getDisplayMedia` at all, in Safari or in Chrome, which are
+   * the same engine: screen capture cannot be done from a tablet by any web
+   * page. "This screen while taking class is not proper. Also I am not able to
+   * share screen." Presenting an image reaches the same end — everyone sees
+   * what the instructor is teaching from — and it rides the track the screen
+   * share already uses, so the room needs no new plumbing.
+   */
+  const shareImage = useCallback(
+    async (file: File): Promise<string | null> => {
+      if (!file.type.startsWith("image/")) {
+        return "Choose a picture to present.";
+      }
+      const url = URL.createObjectURL(file);
+      try {
+        const image = new Image();
+        image.src = url;
+        await image.decode();
+
+        // Capped so a 12-megapixel photo from the tablet's own camera is not
+        // encoded at full size for a video tile.
+        const scale = Math.min(1, 1280 / Math.max(image.width, image.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(2, Math.round(image.width * scale));
+        canvas.height = Math.max(2, Math.round(image.height * scale));
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return "This device can't present a picture.";
+
+        const paint = () => {
+          ctx.fillStyle = "#000";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+        };
+        paint();
+
+        const stream = canvas.captureStream(2);
+        const track = stream.getVideoTracks()[0];
+        if (!track) return "This device can't present a picture.";
+
+        // Some engines only emit a frame when the canvas changes, and a still
+        // picture never does. Redrawing keeps frames flowing to late joiners.
+        if (paintRef.current !== null) window.clearInterval(paintRef.current);
+        paintRef.current = window.setInterval(paint, 500);
+
+        screenStreamRef.current = stream;
+        setScreenStream(stream);
+        setSharing(true);
+        publishTrack("video", track);
+        selfStateRef.current = { ...selfStateRef.current, sharing: true };
+        socketRef.current?.emit("state", { sharing: true });
+        return null;
+      } catch {
+        return "Couldn't open that picture.";
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    },
+    [publishTrack],
+  );
+
   const startSharing = useCallback(async () => {
     if (!navigator.mediaDevices?.getDisplayMedia) {
-      return "Screen sharing isn't available in this browser. Chrome, Edge or Safari on a computer can do it.";
+      return "This device can't share its screen — no tablet or phone can. Use “Present a picture” to show a page instead.";
     }
     let screen: MediaStream;
     try {
@@ -1065,6 +1146,20 @@ export function useLiveRoom({ signalUrl, token, joined, selfName, isHost }: Live
     track.addEventListener("ended", () => stopSharing());
     return null;
   }, [publishTrack, stopSharing]);
+
+  /**
+   * Whether this device can capture its screen at all — no tablet or phone
+   * can, and the button should say so rather than fail when it is pressed.
+   *
+   * Read through `useSyncExternalStore` rather than an effect: it is a fact
+   * about the browser that never changes, and the server snapshot keeps
+   * hydration honest instead of flipping the toolbar after mount.
+   */
+  const canShareScreen = useSyncExternalStore(
+    NO_CHANGES,
+    () => Boolean(navigator.mediaDevices?.getDisplayMedia),
+    () => true,
+  );
 
   const toggleShare = useCallback(async () => {
     if (screenStreamRef.current) {
@@ -1292,6 +1387,8 @@ export function useLiveRoom({ signalUrl, token, joined, selfName, isHost }: Live
       toggleMic,
       toggleCam,
       toggleShare,
+      shareImage,
+      canShareScreen,
       selectCamera,
       selectMicrophone,
       retryMedia,
@@ -1326,6 +1423,8 @@ export function useLiveRoom({ signalUrl, token, joined, selfName, isHost }: Live
       toggleMic,
       toggleCam,
       toggleShare,
+      shareImage,
+      canShareScreen,
       selectCamera,
       selectMicrophone,
       retryMedia,
