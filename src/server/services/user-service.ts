@@ -413,12 +413,24 @@ export async function updateUserAdmin(
 /** Minimal lookup for the impersonation guard (id, display name, role slug). */
 export async function getUserForImpersonation(
   id: string,
-): Promise<{ id: string; name: string; role: string } | null> {
+): Promise<{
+  id: string;
+  name: string;
+  role: string;
+  companyId: string | null;
+} | null> {
   const u = await prisma.user.findUnique({
     where: { id },
-    select: { id: true, name: true, role: { select: { slug: true } } },
+    select: {
+      id: true,
+      name: true,
+      companyId: true,
+      role: { select: { slug: true } },
+    },
   });
-  return u ? { id: u.id, name: u.name, role: u.role.slug } : null;
+  return u
+    ? { id: u.id, name: u.name, role: u.role.slug, companyId: u.companyId }
+    : null;
 }
 
 export async function deleteUserAdmin(

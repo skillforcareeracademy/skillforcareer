@@ -2,6 +2,7 @@ import {
   LayoutDashboard,
   Users,
   BookOpen,
+  Building2,
   GraduationCap,
   Layers,
   Video,
@@ -70,11 +71,29 @@ const ALL: Role[] = [
   ROLES.ADMIN,
   ROLES.INSTRUCTOR,
   ROLES.STUDENT,
+  ROLES.COMPANY_ADMIN,
 ];
-const STAFF: Role[] = [ROLES.SUPER_ADMIN, ROLES.ADMIN];
+/**
+ * The academy's own staff, and the company admins who run a client company
+ * inside the same panel. What a company admin sees through these is narrowed
+ * to its own company by `companyScope`; what it must not see at all is listed
+ * under `ACADEMY` instead.
+ */
+const STAFF: Role[] = [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.COMPANY_ADMIN];
+/**
+ * The academy's own affairs: its public website, its platform settings, its
+ * money and its catalogue-wide tools. A company admin has no business here,
+ * and must not even learn that the academy is above it.
+ */
+const ACADEMY: Role[] = [ROLES.SUPER_ADMIN, ROLES.ADMIN];
 /** Staff plus the sales agents who work the lead sheet. */
 const SALES: Role[] = [...STAFF, ROLES.SALES_AGENT];
-const TEACHING: Role[] = [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.INSTRUCTOR];
+const TEACHING: Role[] = [
+  ROLES.SUPER_ADMIN,
+  ROLES.ADMIN,
+  ROLES.INSTRUCTOR,
+  ROLES.COMPANY_ADMIN,
+];
 
 /**
  * Single source of truth for sidebar navigation across every dashboard.
@@ -109,13 +128,13 @@ export const NAV_SECTIONS: NavSection[] = [
     label: "Learning",
     items: [
       { title: "Courses", href: "/courses", icon: BookOpen, roles: ALL },
-      { title: "Categories", href: "/categories", icon: FolderTree, roles: STAFF },
+      { title: "Categories", href: "/categories", icon: FolderTree, roles: ACADEMY },
       { title: "Batches", href: "/batches", icon: Layers, roles: TEACHING },
       { title: "My Learning", href: "/learning", icon: GraduationCap, roles: [ROLES.STUDENT] },
       { title: "Live Classes", href: "/live", icon: Video, roles: ALL },
       // The on-screen notepad for teaching; learners have no use for it.
       { title: "Board", href: "/board", icon: PenLine, roles: TEACHING },
-      { title: "Offline Classes", href: "/offline", icon: School, roles: STAFF },
+      { title: "Offline Classes", href: "/offline", icon: School, roles: ACADEMY },
       // Staff manage webinars here; learners get their own tab of the same
       // route showing what they're registered for and what's coming up.
       // Deliberately not instructors — there is no /instructor/webinars page,
@@ -185,28 +204,34 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     label: "Management",
     items: [
-      { title: "Homepage", href: "/homepage", icon: LayoutTemplate, roles: STAFF },
-      { title: "Pages", href: "/pages", icon: FileText, roles: STAFF },
-      { title: "Blog", href: "/blog", icon: Newspaper, roles: STAFF },
-      { title: "Media", href: "/media", icon: ImageIcon, roles: STAFF },
+      { title: "Homepage", href: "/homepage", icon: LayoutTemplate, roles: ACADEMY },
+      { title: "Pages", href: "/pages", icon: FileText, roles: ACADEMY },
+      { title: "Blog", href: "/blog", icon: Newspaper, roles: ACADEMY },
+      { title: "Media", href: "/media", icon: ImageIcon, roles: ACADEMY },
+      {
+        title: "Companies",
+        href: "/companies",
+        icon: Building2,
+        roles: [ROLES.SUPER_ADMIN],
+      },
       { title: "Users", href: "/users", icon: Users, roles: STAFF },
       { title: "Leads", href: "/leads", icon: Target, roles: SALES },
-      { title: "Careers", href: "/careers", icon: Briefcase, roles: STAFF },
-      { title: "Holidays", href: "/holidays", icon: PartyPopper, roles: STAFF },
+      { title: "Careers", href: "/careers", icon: Briefcase, roles: ACADEMY },
+      { title: "Holidays", href: "/holidays", icon: PartyPopper, roles: ACADEMY },
       { title: "Schedule", href: "/schedule", icon: CalendarClock, roles: TEACHING },
       // Refer and earn, as its own option: the rules, what it has paid, and
       // every referral. Wallets below is the payout side of the same money.
-      { title: "Referral System", href: "/referrals", icon: Share2, roles: STAFF },
-      { title: "Wallets", href: "/wallets", icon: Wallet, roles: STAFF },
+      { title: "Referral System", href: "/referrals", icon: Share2, roles: ACADEMY },
+      { title: "Wallets", href: "/wallets", icon: Wallet, roles: ACADEMY },
       { title: "Payments", href: "/payments", icon: CreditCard, roles: STAFF },
       { title: "Fees", href: "/payments", icon: CreditCard, roles: [ROLES.STUDENT] },
       { title: "Broadcast", href: "/broadcasts", icon: Megaphone, roles: TEACHING },
-      { title: "Activity", href: "/activity", icon: Activity, roles: STAFF },
-      { title: "Assistant", href: "/chatbot", icon: Bot, roles: STAFF },
-      { title: "Coupons", href: "/coupons", icon: Ticket, roles: STAFF },
+      { title: "Activity", href: "/activity", icon: Activity, roles: ACADEMY },
+      { title: "Assistant", href: "/chatbot", icon: Bot, roles: ACADEMY },
+      { title: "Coupons", href: "/coupons", icon: Ticket, roles: ACADEMY },
       { title: "Roles", href: "/permissions", icon: KeyRound, roles: [ROLES.SUPER_ADMIN] },
       { title: "Recycle bin", href: "/recycle-bin", icon: Trash2, roles: ALL },
-      { title: "Settings", href: "/settings", icon: Settings, roles: ALL },
+      { title: "Settings", href: "/settings", icon: Settings, roles: ACADEMY },
     ],
   },
 ];
@@ -217,6 +242,7 @@ const ROLE_BASE: Record<Role, string> = {
   INSTRUCTOR: "/instructor",
   STUDENT: "/student",
   SALES_AGENT: "/admin",
+  COMPANY_ADMIN: "/admin",
 };
 
 /**

@@ -4,6 +4,7 @@ import { ACCESS_TOKEN_COOKIE, REFRESH_TOKEN_COOKIE } from "@/lib/auth/cookies";
 import { accessCookieOptions, refreshCookieOptions } from "@/lib/auth/session";
 import { renewFromRefreshToken } from "@/lib/auth/renew";
 import { ROLE_HOME, ROLES, type Role } from "@/config/roles";
+import { companyAdminMayOpen } from "@/lib/auth/tenant-sections";
 import { SECTION_HEADER } from "@/lib/auth/section";
 import { prisma } from "@/lib/prisma";
 
@@ -25,7 +26,15 @@ import { prisma } from "@/lib/prisma";
 const SECTION_ROLES: Record<string, Role[]> = {
   // Sales agents only reach /admin/leads — every other admin page checks its
   // own role or permission and sends them back there.
-  "/admin": [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.SALES_AGENT],
+  "/admin": [
+    ROLES.SUPER_ADMIN,
+    ROLES.ADMIN,
+    ROLES.SALES_AGENT,
+    // A company admin uses the same panel, narrowed to its own company and
+    // cut down to the sections that have been taught to scope themselves —
+    // see `companyAdminMayOpen` below.
+    ROLES.COMPANY_ADMIN,
+  ],
   "/instructor": [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.INSTRUCTOR],
   "/student": [ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.STUDENT],
 };
@@ -144,6 +153,20 @@ async function authorize(req: NextRequest, userId: string, role: Role, section: 
       return NextResponse.redirect(url);
     }
   }
+  // A company admin may be inside /admin and still have no business on this
+  // particular page. The list of what it may open is an allowlist, so a screen
+  // whose queries are not yet company-scoped stays shut rather than serving
+  // another company's rows — the only safe default for a shared platform.
+  if (section === "/admin" && role === ROLES.COMPANY_ADMIN) {
+    const rest = req.nextUrl.pathname.slice("/admin".length);
+    if (!companyAdminMayOpen(rest)) {
+      const url = req.nextUrl.clone();
+      url.pathname = "/admin";
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
+  }
+
   if (section) req.headers.set(SECTION_HEADER, section);
   return NextResponse.next({ request: { headers: req.headers } });
 }

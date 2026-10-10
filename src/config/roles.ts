@@ -15,6 +15,15 @@ export const ROLES = {
   STUDENT: "STUDENT",
   /** Counsellors working the lead sheet — the Leads section and nothing else. */
   SALES_AGENT: "SALES_AGENT",
+  /**
+   * Runs one company's training inside the academy's platform.
+   *
+   * Holds much of what an Admin holds, but every query it makes is narrowed to
+   * its own company, and the academy itself is invisible to it: "they can not
+   * manage anything about super admin and also they can not see super admin
+   * exists… they can only manage their own company."
+   */
+  COMPANY_ADMIN: "COMPANY_ADMIN",
 } as const;
 
 export type Role = (typeof ROLES)[keyof typeof ROLES];
@@ -25,6 +34,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   INSTRUCTOR: "Instructor",
   STUDENT: "Student",
   SALES_AGENT: "Sales Agent",
+  COMPANY_ADMIN: "Company Admin",
 };
 
 /**
@@ -138,6 +148,30 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     P.VIEW_OWN_CERTIFICATE,
   ],
   SALES_AGENT: [P.MANAGE_LEADS, P.VIEW_COURSE],
+  /**
+   * An Admin's grants minus the academy's own: no settings, no homepage, no
+   * roles. Everything it does hold is narrowed to its own company by
+   * `companyScope`, not by the permission itself.
+   */
+  COMPANY_ADMIN: [
+    P.MANAGE_USERS,
+    P.VIEW_ANALYTICS,
+    P.MANAGE_PAYMENTS,
+    P.VIEW_REPORTS,
+    P.MANAGE_LEADS,
+    P.SEND_BROADCAST,
+    P.MANAGE_CURRICULUM,
+    P.CREATE_COURSE,
+    P.UPDATE_ANY_COURSE,
+    P.PUBLISH_COURSE,
+    P.VIEW_COURSE,
+    P.MANAGE_BATCHES,
+    P.HOST_LIVE_CLASS,
+    P.MANAGE_QUIZ,
+    P.MANAGE_MATERIAL,
+    P.GRADE_ASSIGNMENT,
+    P.ISSUE_CERTIFICATE,
+  ],
 };
 
 /** Which dashboard home a role lands on after login. */
@@ -147,4 +181,5 @@ export const ROLE_HOME: Record<Role, string> = {
   INSTRUCTOR: "/instructor",
   STUDENT: "/student",
   SALES_AGENT: "/admin/leads",
+  COMPANY_ADMIN: "/admin",
 };

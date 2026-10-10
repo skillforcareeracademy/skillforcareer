@@ -25,6 +25,13 @@ datasource db {
 // ENUMS
 // ══════════════════════════════════════════════════════════════════════════════
 
+/// Whether a company's people can still sign in. Suspending one locks every
+/// account that belongs to it without deleting anything.
+enum CompanyStatus {
+  ACTIVE
+  SUSPENDED
+}
+
 enum UserStatus {
   PENDING // registered, email not yet verified
   ACTIVE
@@ -424,6 +431,8 @@ model User {
   roleId String
   role   Role   @relation(fields: [roleId], references: [id], onUpdate: NoAction)
 
+  company Company? @relation(fields: [companyId], references: [id], onUpdate: NoAction)
+
   /// Birthday. The academy sends wishes and a referral voucher on the day.
   dateOfBirth           DateTime?
   /// When the last birthday greeting went out — one a year, however often the
@@ -436,6 +445,15 @@ model User {
   /// `referral-service.issueBirthdayCode`).
   birthdayCode          String?
   birthdayCodeExpiresAt DateTime?
+
+  /// The company this account belongs to, for an organisation training its own
+  /// staff through the academy.
+  ///
+  /// **Null means the academy itself**, which is every account that exists
+  /// today: the academy's own admins, instructors and learners. Scoping only
+  /// ever narrows for an account that has a company, so adding this changed
+  /// nothing for anyone already here.
+  companyId String?
 
   // Refer-and-earn
   referralCode String? @unique
@@ -524,6 +542,7 @@ model User {
 
   @@index([roleId])
   @@index([status])
+  @@index([companyId])
 }
 
 /// Everything the academy needs about a learner beyond a name and an email.
@@ -3638,4 +3657,84 @@ model HiringPost {
 
   @@index([partnerId])
   @@index([isOpen])
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// COMPANIES — an organisation training its own staff through the academy
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// A company whose employees the academy trains.
+///
+/// "This admin is for a company who wants to manage their employees who wants
+/// to get trained. Through our instructors… They can only manage their own
+/// company like an admin with their own set of details and all."
+///
+/// Every account that belongs to one carries its id; the academy's own people
+/// carry none. A company admin is shown only rows whose company matches theirs,
+/// and nothing at all about the academy or any other company — "they can not
+/// see super admin exists".
+model Company {
+  id       String        @id @default(cuid())
+  name     String
+  status   CompanyStatus @default(ACTIVE)
+
+  /// The academy itself, as a tenant of its own — "jo main owner hai ush ka
+  /// apna tenant hona chaiye, full access ho ush ke paas".
+  ///
+  /// Exactly one row carries this. Its people are the accounts with no
+  /// `companyId` at all, which is every account that predates companies, so
+  /// the owner tenant is a lens onto the academy rather than a migration of
+  /// it. Being the owner is what grants sight of every other tenant; it is
+  /// never a seat limit or a subscription.
+  isOwner Boolean @default(false)
+
+  /// What the company is paying for, for the academy's own books. None of
+  /// this gates anything by itself — suspending a company is what stops it.
+  plan            String?
+  subscribedAt    DateTime?
+  subscriptionEndsAt DateTime?
+  /// Who the academy deals with there.
+  contactName String?
+  email       String?
+  phone       String?
+  logoUrl     String?   @db.VarChar(512)
+  notes       String?   @db.Text
+
+  /// How many accounts of each kind this company may create — "super admin can
+  /// restrict how many users they are allowed to create". Null is no limit;
+  /// zero forbids the kind outright.
+  maxStudents          Int?
+  maxInstructors       Int?
+  maxAdmins            Int?
+  maxSalesAgents       Int?
+  maxPlacementPartners Int?
+  maxHiringPartners    Int?
+
+  /// The company's own Razorpay, so an enrolment from their website is paid to
+  /// them and not to the academy — "payment goes to company admin owner razor
+  /// pay account only". The secret is written but never read back to a browser.
+  razorpayKeyId     String?
+  razorpayKeySecret String?
+
+  /// Their own WhatsApp Business (Meta) credentials, for broadcasting to their
+  /// own people. Absent, they can still send a dashboard notice.
+  whatsappPhoneId String?
+  whatsappToken   String? @db.Text
+  /// The address broadcasts are sent from, when they run their own mail.
+  senderEmail     String?
+
+  /// Unguessable, and the only credential on the public enrol and enquiry
+  /// URLs, so they are rotated by replacing them.
+  enrolToken String? @db.VarChar(64)
+  formToken  String? @db.VarChar(64)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users User[]
+
+  @@index([status])
+  @@index([isOwner])
+  @@index([enrolToken])
+  @@index([formToken])
 }

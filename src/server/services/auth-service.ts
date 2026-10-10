@@ -42,6 +42,12 @@ export interface PublicUser {
   avatarUrl: string | null;
   status: string;
   permissions: string[];
+  /**
+   * The company this account belongs to, or null for the academy's own
+   * people. Every tenant check reads this, so it travels with the session
+   * rather than being fetched again at each call site.
+   */
+  companyId: string | null;
 }
 
 interface AuthTokens {
@@ -77,6 +83,7 @@ interface AuthUser {
   role: Role;
   roles: Role[];
   permissions: string[];
+  companyId: string | null;
 }
 
 interface AuthUserRow {
@@ -87,6 +94,7 @@ interface AuthUserRow {
   passwordHash: string | null;
   avatarUrl: string | null;
   status: string;
+  companyId: string | null;
   roleSlug: string;
   extraRoleSlug: string | null;
   permissionKey: string | null;
@@ -133,6 +141,7 @@ function foldAuthUser(
     passwordHash: first.passwordHash,
     avatarUrl: first.avatarUrl,
     status: first.status,
+    companyId: first.companyId ?? null,
     role: first.roleSlug as Role,
     roles: [...new Set([first.roleSlug, ...rows.map((r) => r.extraRoleSlug).filter((k): k is string => k !== null)])] as Role[],
     // One row per (extra role × permission), so the same key can repeat.
@@ -150,8 +159,8 @@ async function loadAuthUserById(id: string): Promise<AuthUser | null> {
   const [rows, overrides] = await Promise.all([
     prisma.$queryRaw<AuthUserRow[]>`
       SELECT u.id, u.name, u.email, u.emailVerified, u.passwordHash,
-             u.avatarUrl, u.status, r.slug AS roleSlug, x.slug AS extraRoleSlug,
-             p.\`key\` AS permissionKey
+             u.avatarUrl, u.status, u.companyId, r.slug AS roleSlug,
+             x.slug AS extraRoleSlug, p.\`key\` AS permissionKey
       FROM \`User\` u
       JOIN \`Role\` r ON r.id = u.roleId
       LEFT JOIN \`UserRole\` ur ON ur.userId = u.id
@@ -174,8 +183,8 @@ async function loadAuthUserByEmail(email: string): Promise<AuthUser | null> {
   const [rows, overrides] = await Promise.all([
     prisma.$queryRaw<AuthUserRow[]>`
       SELECT u.id, u.name, u.email, u.emailVerified, u.passwordHash,
-             u.avatarUrl, u.status, r.slug AS roleSlug, x.slug AS extraRoleSlug,
-             p.\`key\` AS permissionKey
+             u.avatarUrl, u.status, u.companyId, r.slug AS roleSlug,
+             x.slug AS extraRoleSlug, p.\`key\` AS permissionKey
       FROM \`User\` u
       JOIN \`Role\` r ON r.id = u.roleId
       LEFT JOIN \`UserRole\` ur ON ur.userId = u.id
@@ -205,6 +214,7 @@ function toPublicUser(user: AuthUser): PublicUser {
     status: user.status,
     roles: user.roles,
     permissions: user.permissions,
+    companyId: user.companyId,
   };
 }
 

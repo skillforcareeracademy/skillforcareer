@@ -18,6 +18,22 @@ export async function requireApiUser(): Promise<PublicUser> {
   return user;
 }
 
+/**
+ * The academy's own super admin, and nobody else.
+ *
+ * Deliberately not a permission check. A company admin holds `users:manage`
+ * too, so gating the companies list on a permission would hand one customer
+ * the list of every other. Owning no company is what makes someone staff of
+ * the platform rather than a tenant of it.
+ */
+export async function requireAcademyOwner(): Promise<PublicUser> {
+  const user = await requireApiUser();
+  if (user.companyId || user.role !== ROLES.SUPER_ADMIN) {
+    throw AppError.forbidden("Only a super admin can do that.");
+  }
+  return user;
+}
+
 export async function requireApiPermission(
   permission: Permission,
 ): Promise<PublicUser> {
