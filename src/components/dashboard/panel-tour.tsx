@@ -5,6 +5,7 @@ import { ArrowLeft, ArrowRight, Compass, Volume2, VolumeX, X } from "lucide-reac
 import { Button } from "@/components/ui/button";
 import {
   currentVoiceName,
+  setPreferredVoice,
   speak,
   speechSupported,
   stopSpeaking,
@@ -38,10 +39,13 @@ interface Spotlight {
 export function PanelTour({
   role,
   voiceEnabled = true,
+  voiceName = "",
 }: {
   role: Role;
   /** Admin → Settings can turn the voice-over off platform-wide. */
   voiceEnabled?: boolean;
+  /** The exact voice named in Settings, if any. */
+  voiceName?: string;
 }) {
   const steps = tourFor(role);
   const [open, setOpen] = useState(false);
@@ -49,7 +53,7 @@ export function PanelTour({
   const [voice, setVoice] = useState(false);
   const [spot, setSpot] = useState<Spotlight | null>(null);
   /** Filled once the browser has published its voice list. */
-  const [voiceName, setVoiceName] = useState<string | null>(null);
+  const [spokenBy, setSpokenBy] = useState<string | null>(null);
 
   const step: TourStep | undefined = steps[index];
 
@@ -60,11 +64,13 @@ export function PanelTour({
   // compiler's `set-state-in-effect` rule rejects a synchronous setState here
   // for the same reason — it would cascade a second render before first paint.
   useEffect(() => {
+    // The academy's choice has to be registered before anything is spoken.
+    setPreferredVoice(voiceName);
     warmVoices();
     // Chrome publishes its voice list a beat after load, so the name is read
     // back shortly rather than at once.
     const timers = [
-      window.setTimeout(() => setVoiceName(currentVoiceName()), 600),
+      window.setTimeout(() => setSpokenBy(currentVoiceName()), 600),
     ];
 
     let seen = true;
@@ -78,7 +84,7 @@ export function PanelTour({
     if (!seen) timers.push(window.setTimeout(() => setOpen(true), 600));
 
     return () => timers.forEach(window.clearTimeout);
-  }, [role]);
+  }, [role, voiceName]);
 
   // "Replay the tour" from the user menu dispatches this.
   useEffect(() => {
@@ -256,7 +262,7 @@ export function PanelTour({
               // Which voice the machine actually found, so "why does it sound
               // American?" can be answered by hovering rather than guessing.
               title={
-                voiceName ? `Reading in ${voiceName}` : "Reads each step aloud"
+                spokenBy ? `Reading in ${spokenBy}` : "Reads each step aloud"
               }
             >
               {voice ? <Volume2 className="size-4" /> : <VolumeX className="size-4" />}

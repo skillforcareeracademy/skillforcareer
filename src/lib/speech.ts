@@ -21,20 +21,43 @@ export function speechSupported(): boolean {
  * the generic "female" naming Chrome uses for its own set.
  */
 const FEMALE_INDIAN = [
+  // Apple — `say -v '?'` on a current Mac lists Aman, Rishi and Tara as its
+  // Indian English voices; Tara is the only woman among them, and missing her
+  // off this list is what had the guide speaking as Aman.
+  "tara",
+  "veena", // older macOS
+  "isha", // iOS
+  "sangeeta", // older macOS
+  "lekha", // Apple hi-IN, reads English with an Indian accent
+  // Microsoft
   "heera", // Windows, en-IN
   "neerja", // Windows natural, en-IN
-  "veena", // macOS, en-IN
-  "isha", // iOS, en-IN
-  "kajal", // Android, en-IN
-  "sangeeta", // older macOS
-  "lekha", // Apple, hi-IN but reads English with an Indian accent
+  // Android / Google
+  "kajal",
   "swara",
   "ananya",
   "shruti",
 ];
 
-/** The male ones, so a fallback never lands on them by accident. */
-const MALE_INDIAN = ["rishi", "ravi", "prabhat", "hemant", "madhur", "aarav"];
+/**
+ * The male ones, so a fallback never lands on one by accident.
+ *
+ * Worth keeping as complete as the list above: an unknown name scores as
+ * neither, and on a machine whose only woman's voice was unlisted the guide
+ * picked a man's simply because his name sorted first.
+ */
+const MALE_INDIAN = [
+  "aman", // Apple, en-IN
+  "rishi", // Apple, en-IN
+  "neel", // Apple, hi-IN
+  "ravi", // Windows, en-IN
+  "prabhat", // Windows natural, en-IN
+  "hemant",
+  "madhur",
+  "aarav",
+  "arjun",
+  "kiran",
+];
 
 /** Names that mark a voice female on platforms that say so in the label. */
 const FEMALE_HINT = ["female", "woman"];
@@ -77,12 +100,36 @@ function score(voice: SpeechSynthesisVoice): number {
 /** Remembered once resolved — `getVoices()` is not cheap and never changes. */
 let chosen: SpeechSynthesisVoice | null = null;
 
+/**
+ * A voice the academy has named in Settings, which wins over the scoring when
+ * the device actually has it. No list of names can know every voice on every
+ * machine; this is how a wrong guess is corrected without a release.
+ */
+let preferred = "";
+
+export function setPreferredVoice(name: string): void {
+  const next = name.trim();
+  if (next === preferred) return;
+  preferred = next;
+  chosen = null; // re-resolve against the new preference
+}
+
 function pickVoice(): SpeechSynthesisVoice | null {
   if (!speechSupported()) return null;
   if (chosen) return chosen;
 
   const voices = window.speechSynthesis.getVoices();
   if (voices.length === 0) return null;
+
+  if (preferred) {
+    const named = voices.find(
+      (v) => v.name.toLowerCase() === preferred.toLowerCase(),
+    );
+    if (named) {
+      chosen = named;
+      return chosen;
+    }
+  }
 
   let best: SpeechSynthesisVoice | null = null;
   let bestScore = -Infinity;
@@ -102,6 +149,15 @@ function pickVoice(): SpeechSynthesisVoice | null {
 /** Which voice the guide will use, for anywhere that wants to show it. */
 export function currentVoiceName(): string | null {
   return pickVoice()?.name ?? null;
+}
+
+/** Every voice this browser offers, for the picker in Settings. */
+export function availableVoices(): { name: string; lang: string }[] {
+  if (!speechSupported()) return [];
+  return window.speechSynthesis
+    .getVoices()
+    .map((v) => ({ name: v.name, lang: v.lang }))
+    .sort((a, b) => a.lang.localeCompare(b.lang) || a.name.localeCompare(b.name));
 }
 
 function utter(text: string): void {

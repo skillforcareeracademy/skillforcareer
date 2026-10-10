@@ -33,6 +33,7 @@ export default async function DashboardLayout({
       impersonating={Boolean(impersonator)}
       tourEnabled={settings.tourEnabled}
       voiceGuideEnabled={settings.voiceGuideEnabled}
+      voiceGuideName={settings.voiceGuideName}
       assistantEnabled={settings.chatbotEnabled}
       codingPractice={codingPractice}
       curriculum={curriculum}

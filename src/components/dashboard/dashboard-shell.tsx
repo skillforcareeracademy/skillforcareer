@@ -19,6 +19,7 @@ export function DashboardShell({
   impersonating = false,
   tourEnabled = true,
   voiceGuideEnabled = true,
+  voiceGuideName = "",
   assistantEnabled = true,
   codingPractice = false,
   curriculum = false,
@@ -29,6 +30,8 @@ export function DashboardShell({
   /** The walkthrough that runs on a first visit — switchable in Settings. */
   tourEnabled?: boolean;
   voiceGuideEnabled?: boolean;
+  /** The exact voice the academy chose, if it named one. */
+  voiceGuideName?: string;
   assistantEnabled?: boolean;
   /** Show the Coding Practice link — on, and this person is in its audience. */
   codingPractice?: boolean;
@@ -57,7 +60,11 @@ export function DashboardShell({
           voice guide honi chahiye". It decides for itself whether this is a
           first visit. */}
       {tourEnabled && (
-        <PanelTour role={user.role} voiceEnabled={voiceGuideEnabled} />
+        <PanelTour
+          role={user.role}
+          voiceEnabled={voiceGuideEnabled}
+          voiceName={voiceGuideName}
+        />
       )}
       {/* Ami rides along inside the panels too, not only on the public site. */}
       {assistantEnabled && <AmiWidget surface="panel" />}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
@@ -50,6 +50,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { PageHeader } from "@/components/shared/page-header";
 import { ImageUpload } from "@/components/shared/image-upload";
 import { PhoneInput } from "@/components/shared/phone-input";
+import { availableVoices, warmVoices } from "@/lib/speech";
 
 const TIMEZONES = [
   "Asia/Kolkata",
@@ -118,6 +119,9 @@ function ToggleRow({
 
 const TAB_TRIGGER = "gap-1.5 px-3";
 
+/** Sentinel for "let the guide decide", since a Select cannot hold "". */
+const AUTO_VOICE = "__auto__";
+
 const CODING_PRACTICE_AUDIENCES: {
   value: Settings["codingPracticeAudience"];
   label: string;
@@ -146,6 +150,18 @@ export function SettingsClient({
   const initial = data.settings;
   const [form, setForm] = useState<Settings>(initial);
   const [saving, setSaving] = useState(false);
+  /** The voices this computer offers, read once they have been published. */
+  const [installedVoices, setInstalledVoices] = useState<
+    { name: string; lang: string }[]
+  >([]);
+
+  useEffect(() => {
+    warmVoices();
+    // Chrome publishes the list a beat after load, so it is read back rather
+    // than asked for at once.
+    const t = window.setTimeout(() => setInstalledVoices(availableVoices()), 600);
+    return () => window.clearTimeout(t);
+  }, []);
 
   function set<K extends keyof Settings>(key: K, value: Settings[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -792,6 +808,51 @@ export function SettingsClient({
                   onChange={(v) => set("voiceGuideEnabled", v)}
                 />
               </div>
+
+              {/* Which voice it reads in. Left on "choose automatically" the
+                  guide takes the best Indian woman's voice the machine has —
+                  Tara on a Mac, Heera or Neerja on Windows. The list below is
+                  what *this* computer offers, so a name picked here only
+                  applies on machines that also have it; anywhere else the
+                  automatic choice stands. */}
+              {form.voiceGuideEnabled && (
+                <Field
+                  label="Voice"
+                  htmlFor="voiceGuideName"
+                  hint={
+                    installedVoices.length === 0
+                      ? "This browser hasn't published its voices yet — reopen Settings to choose one."
+                      : "Automatic picks the best Indian woman's voice each device has. Choose one only to override that."
+                  }
+                >
+                  <Select
+                    value={form.voiceGuideName || AUTO_VOICE}
+                    onValueChange={(v) =>
+                      set("voiceGuideName", v === AUTO_VOICE ? "" : (v ?? ""))
+                    }
+                  >
+                    <SelectTrigger className="w-full" id="voiceGuideName">
+                      <SelectValue>
+                        {(v) =>
+                          !v || v === AUTO_VOICE
+                            ? "Choose automatically"
+                            : String(v)
+                        }
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={AUTO_VOICE}>
+                        Choose automatically
+                      </SelectItem>
+                      {installedVoices.map((v) => (
+                        <SelectItem key={v.name} value={v.name}>
+                          {v.name} · {v.lang}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+              )}
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field
                   label="Assistant's name"

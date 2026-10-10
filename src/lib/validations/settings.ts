@@ -199,6 +199,12 @@ export const settingsSchema = z.object({
   tourEnabled: z.boolean(),
   /// Whether that walkthrough can also read itself aloud.
   voiceGuideEnabled: z.boolean(),
+  /// The exact voice to read in, by the name the browser gives it. Blank lets
+  /// the guide choose the best Indian woman's voice the device has — which is
+  /// right until a machine ships one nothing has heard of, and then this is
+  /// how the academy fixes it without waiting for a release. A name no browser
+  /// has is ignored, so one setting can serve machines with different voices.
+  voiceGuideName: z.string().trim().max(120),
 
   // ── Coding Practice ──────────────────────────────────────────────────────
   // The separate medical-coding practice product. Its link in the panels signs
@@ -311,6 +317,7 @@ export const DEFAULT_SETTINGS: Settings = {
     "Hi! I'm Ami, your SkillForCareer assistant. Ask me about courses, fees, batches or placements.",
   tourEnabled: true,
   voiceGuideEnabled: true,
+  voiceGuideName: "",
 
   // Off until someone decides to switch it on.
   codingPracticeEnabled: false,
