@@ -100,7 +100,7 @@ export function StudentSettingsClient({
       <PageHeader title="Settings" description="Manage your account, preferences and notifications." />
 
       <Tabs defaultValue="appearance">
-        <TabsList className="h-auto flex-wrap">
+        <TabsList>
           <TabsTrigger value="appearance" className={TAB_TRIGGER}>
             <Sun className="size-4" /> Appearance
           </TabsTrigger>

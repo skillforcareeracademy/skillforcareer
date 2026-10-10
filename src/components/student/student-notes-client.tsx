@@ -241,7 +241,7 @@ export function StudentNotesClient({ items: initial }: { items: SavedItem[] }) {
 
       <Tabs defaultValue="notes">
         <div className="flex flex-wrap items-center gap-3">
-          <TabsList className="h-auto flex-wrap">
+          <TabsList>
             <TabsTrigger value="notes" className={TAB_TRIGGER}>
               <NotebookPen className="size-4" /> Notes
               <Badge variant="secondary" className="tabular-nums">

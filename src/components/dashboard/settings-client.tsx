@@ -205,7 +205,7 @@ export function SettingsClient({
       />
 
       <Tabs defaultValue="general">
-        <TabsList className="h-auto flex-wrap">
+        <TabsList>
           <TabsTrigger value="general" className={TAB_TRIGGER}>
             <Store /> General
           </TabsTrigger>

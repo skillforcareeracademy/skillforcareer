@@ -135,7 +135,7 @@ export function PerformanceView({
       <PageHeader title={title} description={description} />
 
       <Tabs defaultValue="students">
-        <TabsList className="h-auto flex-wrap">
+        <TabsList>
           <TabsTrigger value="students" className={TAB}>
             <Users className="size-4" /> Students
           </TabsTrigger>

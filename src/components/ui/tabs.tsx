@@ -32,7 +32,11 @@ const tabsListVariants = cva(
   // `justify-center-safe`, not `justify-center`: centring an overflowing flex
   // row pushes the first tab off the *start* edge, where no amount of scrolling
   // can reach it. Safe alignment falls back to the start once it overflows.
-  "group/tabs-list inline-flex w-fit items-center justify-center-safe rounded-lg p-[3px] text-muted-foreground group-data-horizontal/tabs:h-8 group-data-horizontal/tabs:max-w-full group-data-horizontal/tabs:overflow-x-auto group-data-vertical/tabs:h-fit group-data-vertical/tabs:flex-col data-[variant=line]:rounded-none [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+  //
+  // `overscroll-x-contain` keeps a finger-swipe along the tabs inside the tab
+  // bar: without it, swiping past the last tab on a tablet hands the gesture to
+  // the browser, which reads it as "go back".
+  "group/tabs-list inline-flex w-fit items-center justify-center-safe rounded-lg p-[3px] text-muted-foreground group-data-horizontal/tabs:h-8 group-data-horizontal/tabs:max-w-full group-data-horizontal/tabs:overflow-x-auto group-data-horizontal/tabs:overscroll-x-contain group-data-horizontal/tabs:scroll-smooth group-data-vertical/tabs:h-fit group-data-vertical/tabs:flex-col data-[variant=line]:rounded-none [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
   {
     variants: {
       variant: {
@@ -49,12 +53,24 @@ const tabsListVariants = cva(
 function TabsList({
   className,
   variant = "default",
+  onClick,
   ...props
 }: TabsPrimitive.List.Props & VariantProps<typeof tabsListVariants>) {
   return (
     <TabsPrimitive.List
       data-slot="tabs-list"
       data-variant={variant}
+      onClick={(event) => {
+        // A tab half off the edge is the one most likely to be tapped by
+        // somebody who has just scrolled to it; bring it fully into view so
+        // the bar doesn't leave the chosen tab clipped. "nearest" on both axes
+        // means a tab already in view doesn't move, and the page never jumps.
+        const tab = (event.target as HTMLElement).closest(
+          '[data-slot="tabs-trigger"]'
+        )
+        tab?.scrollIntoView({ block: "nearest", inline: "nearest" })
+        onClick?.(event)
+      }}
       className={cn(tabsListVariants({ variant }), className)}
       {...props}
     />
