@@ -46,7 +46,17 @@ const SECTION_ROLES: Record<string, Role[]> = {
  * from their email ("agar hum login is link k through kr rhe hain to direct
  * meet start hona chahiye"). Listed here, they come back to the link.
  */
-const AUTH_ONLY_PREFIXES = ["/live/room"];
+/**
+ * Signed-in-only pages that belong to no panel.
+ *
+ * `/live/room` is deliberately **not** here any more. Bouncing a signed-out
+ * visitor to /login meant the room URL answered 307, and a link-preview
+ * crawler — which never has a cookie — followed it and showed the login
+ * page's card. Shared on WhatsApp, a class link looked like the website's
+ * front page. The room page now renders its own public lobby instead and asks
+ * for a sign-in there; nobody reaches the class itself without one.
+ */
+const AUTH_ONLY_PREFIXES: string[] = [];
 
 function needsSignIn(pathname: string): boolean {
   return AUTH_ONLY_PREFIXES.some((base) => pathname === base || pathname.startsWith(`${base}/`));

@@ -19,6 +19,8 @@ import {
   ArrowLeft,
   Link2,
   Disc,
+  DoorClosed,
+  DoorOpen,
   ChevronDown,
   Loader2,
   WifiOff,
@@ -29,6 +31,7 @@ import {
 import { toast } from "sonner";
 import { ROLE_HOME } from "@/config/roles";
 import { Logo } from "@/components/shared/logo";
+import { KnockPanel } from "./knock-panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -176,6 +179,9 @@ export function LiveRoom({
     videoHeld,
     endedBy,
     sessionElsewhere,
+    waitingForHost,
+    admissionDenied,
+    knocking,
   } = room;
 
   // Bind the self tile to whichever stream is being shown: the screen when
@@ -346,6 +352,44 @@ export function LiveRoom({
   const ended = meeting.status === "ENDED";
   const showSelfVideo = sharing || (camOn && Boolean(localStream?.getVideoTracks().length));
 
+  // ── Held at the door ───────────────────────────────────────────────────────
+  //
+  // Nobody but the teaching team reaches the class on their own: the host is
+  // asked first. This screen is what the learner sees meanwhile.
+  if (joined && admissionDenied) {
+    return (
+      <RoomMessage
+        icon={<DoorClosed className="size-7 text-rose-400" />}
+        title="You weren't let into this class"
+        body="Your instructor didn't open the door this time. If you think that's a mistake, message them and try the link again."
+        action={
+          <Button size="lg" onClick={goHome}>
+            Back to my classes
+          </Button>
+        }
+      />
+    );
+  }
+  if (joined && waitingForHost) {
+    return (
+      <RoomMessage
+        icon={<DoorOpen className="size-7 animate-pulse text-sky-300" />}
+        title="Waiting to be let in"
+        body={`Your instructor has been told you're here. ${meeting.host.name} will open the door in a moment — keep this page open.`}
+        action={
+          <Button
+            size="lg"
+            variant="outline"
+            onClick={goHome}
+            className="border-white/20 bg-transparent text-white hover:bg-white/10"
+          >
+            Leave
+          </Button>
+        }
+      />
+    );
+  }
+
   // ── The class is over, or this person is in here twice ──────────────────────
   if (joined && (endedBy || sessionElsewhere)) {
     return (
@@ -386,7 +430,9 @@ export function LiveRoom({
           >
             <ArrowLeft className="size-5" />
           </Button>
-          <Logo href="/" onDark className="h-8 max-w-[150px]" />
+          <span className="flex items-center rounded-xl bg-white px-3 py-1.5 shadow-sm">
+            <Logo href="/" className="h-7 max-w-[150px]" />
+          </span>
         </header>
 
         <div className="relative flex flex-1 items-center justify-center p-4 sm:p-6">
@@ -527,14 +573,27 @@ export function LiveRoom({
   return (
     <div className="fixed inset-0 flex flex-col overflow-hidden bg-neutral-950 text-white">
       {/* Header */}
-      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 px-3 py-2.5 sm:px-4 sm:py-3">
-        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-          {/* Small on purpose: this row also carries the class title, the REC
-              dot and the controls. */}
-          <Logo href="/" showText={false} onDark className="h-7 max-w-[120px]" />
-          <span className="truncate text-sm font-semibold sm:text-base">{meeting.title}</span>
+      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 bg-neutral-950/60 px-3 py-2.5 backdrop-blur sm:px-4 sm:py-3">
+        <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
+          {/* On white, with rounded corners. The mark's wordmark is dark ink —
+              on a black bar it simply vanished, which is what it had been
+              doing. A chip is what every meeting product does with a logo on
+              a dark header, and it reads at a glance. */}
+          <span className="flex shrink-0 items-center rounded-lg bg-white px-2 py-1 shadow-sm">
+            <Logo href="/" showText={false} className="h-6 max-w-[112px]" />
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-sm leading-tight font-semibold sm:text-base">
+              {meeting.title}
+            </p>
+            {meeting.courseTitle && (
+              <p className="truncate text-xs leading-tight text-white/50">
+                {meeting.courseTitle}
+              </p>
+            )}
+          </div>
           {recording && (
-            <span className="flex shrink-0 items-center gap-1.5 text-xs text-rose-300">
+            <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-rose-500/15 px-2 py-0.5 text-xs text-rose-300">
               <Circle className="size-2 animate-pulse fill-current" /> REC
             </span>
           )}
@@ -542,8 +601,10 @@ export function LiveRoom({
         <div className="flex shrink-0 items-center gap-2 text-sm text-white/70 sm:gap-3">
           <span
             className={cn(
-              "flex items-center gap-1.5",
-              socketConnected ? "text-emerald-300" : "text-amber-300",
+              "flex items-center gap-1.5 rounded-full px-2 py-1",
+              socketConnected
+                ? "bg-emerald-500/10 text-emerald-300"
+                : "bg-amber-500/15 text-amber-300",
             )}
             title={socketConnected ? "Connected to the class server" : "Reconnecting to the class server…"}
             data-testid="signal-state"
@@ -557,10 +618,24 @@ export function LiveRoom({
             <Users className="size-4" />
             <span data-testid="participant-count">{tileCount}</span>
           </span>
-          <span className="tabular-nums">{fmtElapsed(elapsed)}</span>
-          <span className="hidden font-mono text-xs sm:inline">{meeting.roomCode}</span>
+          <span className="rounded-full bg-white/5 px-2.5 py-1 tabular-nums">
+            {fmtElapsed(elapsed)}
+          </span>
+          <span className="hidden rounded-full bg-white/5 px-2.5 py-1 font-mono text-xs tracking-wider text-white/60 sm:inline">
+            {meeting.roomCode}
+          </span>
         </div>
       </header>
+
+      {/* Whoever is at the door, over the faces and with a sound, because an
+          instructor mid-sentence is not watching the corner of the screen. */}
+      {isHost && (
+        <KnockPanel
+          knocking={knocking}
+          onAdmit={room.admit}
+          onDeny={room.deny}
+        />
+      )}
 
       {/* Notices that matter enough to sit above the faces */}
       {signalError && (
@@ -796,7 +871,13 @@ export function LiveRoom({
             if (sharing) void onToggleShare();
             else pictureRef.current?.click();
           }}
-          label={sharing ? "Stop presenting" : "Present a picture"}
+          label={
+            sharing
+              ? "Stop showing the picture"
+              : room.canShareScreen
+                ? "Show a picture to the class — a page, a diagram, a photo of your notes"
+                : "Show a picture to the class (this device can't share its screen)"
+          }
         >
           <ImageUp className="size-5" />
         </RoundButton>
@@ -1070,6 +1151,9 @@ function RoundButton({
       type="button"
       onClick={onClick}
       aria-label={label}
+      // Hover says what it does. Without this the only hint was the icon, and
+      // "what is the photo button for?" was the predictable result.
+      title={label}
       aria-pressed={active}
       className={cn(
         "grid size-11 place-items-center rounded-full transition-colors",

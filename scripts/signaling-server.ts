@@ -187,6 +187,59 @@ interface Member {
 }
 const rooms = new Map<string, Map<string, Member>>();
 
+/**
+ * The waiting room.
+ *
+ * "Direct instructor ya koi bhi ho uske saath connect nahi hona chahiye —
+ * pehle instructor ke paas notification aaye, allow kare ya na kare." So
+ * nobody but the teaching team reaches the class on their own: a learner who
+ * opens the link is held outside it until somebody with the host flag lets
+ * them in.
+ *
+ * Held means held. A waiting socket is not put into the socket.io room at
+ * all, so no signalling, no chat and no participant list can reach it — the
+ * guarantee is structural rather than a matter of remembering to filter.
+ *
+ * `admitted` is by person, not by socket: a phone that drops off Wi-Fi and
+ * reconnects would otherwise knock again, and an instructor teaching through
+ * a patchy afternoon would spend it answering the door.
+ */
+interface Lobby {
+  admitted: Set<string>;
+  waiting: Map<string, { user: RoomUser; since: number }>;
+}
+const lobbies = new Map<string, Lobby>();
+
+function lobbyFor(roomCode: string): Lobby {
+  let lobby = lobbies.get(roomCode);
+  if (!lobby) {
+    lobby = { admitted: new Set(), waiting: new Map() };
+    lobbies.set(roomCode, lobby);
+  }
+  return lobby;
+}
+
+/** Everyone in the room who may answer the door. */
+async function hostSocketsIn(roomCode: string) {
+  const all = await io.in(roomCode).fetchSockets();
+  return all.filter((s) => (s.data.user as RoomUser | undefined)?.isHost);
+}
+
+/** Tell the teaching team who is outside, so a late host sees the queue too. */
+async function pushWaitingList(roomCode: string) {
+  const lobby = lobbies.get(roomCode);
+  const list = lobby
+    ? [...lobby.waiting.entries()].map(([socketId, w]) => ({
+        socketId,
+        user: w.user,
+        since: w.since,
+      }))
+    : [];
+  for (const host of await hostSocketsIn(roomCode)) {
+    host.emit("waiting-list", list);
+  }
+}
+
 function memberFor(roomCode: string, userId: string): Member | undefined {
   return rooms.get(roomCode)?.get(userId);
 }
@@ -210,7 +263,38 @@ io.use(async (socket, next) => {
 io.on("connection", (socket) => {
   const roomCode: string = socket.data.roomCode;
   const user: RoomUser = socket.data.user;
+  const lobby = lobbyFor(roomCode);
 
+  // The teaching team walks in. So does anybody already let in today, so a
+  // reconnection is not a second knock.
+  const mayEnter = user.isHost || lobby.admitted.has(user.id);
+  if (!mayEnter) {
+    lobby.waiting.set(socket.id, { user, since: Date.now() });
+    socket.emit("waiting-room", { name: user.name });
+    void pushWaitingList(roomCode);
+    // Deliberately no `socket.join` and none of the handlers below: until
+    // somebody admits them, this socket is in no room and can reach nobody.
+    //
+    // The heartbeat is the one exception. The client treats two unanswered
+    // beats as "we have lost the class server", so without an ear for it a
+    // learner politely waiting at the door would be told the room had fallen
+    // over, about ten seconds in.
+    socket.on("heartbeat", (ack?: () => void) => {
+      if (typeof ack === "function") ack();
+    });
+    socket.on("disconnect", () => {
+      lobby.waiting.delete(socket.id);
+      void pushWaitingList(roomCode);
+    });
+    return;
+  }
+  lobby.admitted.add(user.id);
+
+  enterRoom(socket, roomCode, user);
+});
+
+/** Everything that happens once somebody is actually in the class. */
+function enterRoom(socket: Socket, roomCode: string, user: RoomUser) {
   socket.join(roomCode);
 
   let members = rooms.get(roomCode);
@@ -384,7 +468,12 @@ io.on("connection", (socket) => {
 
     const roomMembers = rooms.get(roomCode);
     roomMembers?.delete(user.id);
-    if (roomMembers && roomMembers.size === 0) rooms.delete(roomCode);
+    if (roomMembers && roomMembers.size === 0) {
+      rooms.delete(roomCode);
+      // The class is over: forget who was let in, so tomorrow's class asks
+      // again rather than inheriting today's door list.
+      lobbies.delete(roomCode);
+    }
 
     const left = new Date();
     const duration = Math.max(
@@ -408,7 +497,51 @@ io.on("connection", (socket) => {
       console.error("[signal] leave error:", (e as Error).message);
     }
   });
-});
+
+  // ── The door ───────────────────────────────────────────────────────────────
+
+  // A host arriving late is shown whoever has been waiting meanwhile.
+  if (user.isHost) void pushWaitingList(roomCode);
+
+  /** Let somebody in. Only the teaching team may, and only to their own room. */
+  async function admit(socketId: string) {
+    const lobby = lobbyFor(roomCode);
+    const entry = lobby.waiting.get(socketId);
+    if (!entry) return;
+    const waiting = io.sockets.sockets.get(socketId);
+    lobby.waiting.delete(socketId);
+    if (!waiting || waiting.data.roomCode !== roomCode) return;
+
+    lobby.admitted.add(entry.user.id);
+    waiting.emit("admitted");
+    enterRoom(waiting, roomCode, entry.user);
+  }
+
+  socket.on("admit", async ({ socketId, all }: { socketId?: string; all?: boolean }) => {
+    if (!user.isHost) return;
+    const lobby = lobbyFor(roomCode);
+    // "All users ke notification aaya hai to all allow karne ka option hona
+    // chahiye" — a class of thirty arriving at once is one decision, not thirty.
+    const ids = all ? [...lobby.waiting.keys()] : socketId ? [String(socketId)] : [];
+    for (const id of ids) await admit(id);
+    void pushWaitingList(roomCode);
+  });
+
+  socket.on("deny", ({ socketId }: { socketId?: string }) => {
+    if (!user.isHost || !socketId) return;
+    const lobby = lobbyFor(roomCode);
+    const entry = lobby.waiting.get(String(socketId));
+    if (!entry) return;
+    lobby.waiting.delete(String(socketId));
+    const waiting = io.sockets.sockets.get(String(socketId));
+    if (waiting && waiting.data.roomCode === roomCode) {
+      waiting.emit("denied");
+      // A beat, so the message is painted before the socket goes.
+      setTimeout(() => waiting.disconnect(true), 250);
+    }
+    void pushWaitingList(roomCode);
+  });
+}
 
 httpServer.listen(PORT, () => {
   console.log(

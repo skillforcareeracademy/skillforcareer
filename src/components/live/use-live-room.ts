@@ -82,6 +82,13 @@ export type MediaStatus =
   /** Neither device available. The learner can still watch and listen. */
   | "none";
 
+/** Somebody waiting at the door, as the teaching team sees them. */
+export interface KnockRequest {
+  socketId: string;
+  user: RoomUser;
+  since: number;
+}
+
 export interface DeviceOption {
   deviceId: string;
   label: string;
@@ -217,6 +224,11 @@ export function useLiveRoom({ signalUrl, token, joined, selfName, isHost }: Live
   const [videoHeld, setVideoHeld] = useState(false);
   const [endedBy, setEndedBy] = useState<string | null>(null);
   const [sessionElsewhere, setSessionElsewhere] = useState(false);
+  /** Held at the door until the teaching team lets us in. */
+  const [waitingForHost, setWaitingForHost] = useState(false);
+  const [admissionDenied, setAdmissionDenied] = useState(false);
+  /** Who is outside, for a host. */
+  const [knocking, setKnocking] = useState<KnockRequest[]>([]);
 
   const localStreamRef = useRef<MediaStream | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
@@ -1001,6 +1013,27 @@ export function useLiveRoom({ signalUrl, token, joined, selfName, isHost }: Live
         setEndedBy(by);
       });
 
+      socket.on("waiting-room", () => {
+        if (!mine()) return;
+        setWaitingForHost(true);
+      });
+
+      socket.on("admitted", () => {
+        if (!mine()) return;
+        setWaitingForHost(false);
+      });
+
+      socket.on("denied", () => {
+        if (!mine()) return;
+        setWaitingForHost(false);
+        setAdmissionDenied(true);
+      });
+
+      socket.on("waiting-list", (list: KnockRequest[]) => {
+        if (!mine()) return;
+        setKnocking(Array.isArray(list) ? list : []);
+      });
+
       socket.on("session-elsewhere", () => {
         if (!mine()) return;
         setSessionElsewhere(true);
@@ -1263,6 +1296,19 @@ export function useLiveRoom({ signalUrl, token, joined, selfName, isHost }: Live
     [selfName],
   );
 
+  /** Let somebody in, or everyone who is waiting. */
+  const admit = useCallback((socketId?: string) => {
+    socketRef.current?.emit("admit", socketId ? { socketId } : { all: true });
+    setKnocking((list) =>
+      socketId ? list.filter((k) => k.socketId !== socketId) : [],
+    );
+  }, []);
+
+  const deny = useCallback((socketId: string) => {
+    socketRef.current?.emit("deny", { socketId });
+    setKnocking((list) => list.filter((k) => k.socketId !== socketId));
+  }, []);
+
   const endClass = useCallback(() => {
     socketRef.current?.emit("end-class");
   }, []);
@@ -1408,6 +1454,11 @@ export function useLiveRoom({ signalUrl, token, joined, selfName, isHost }: Live
       toggleShare,
       shareImage,
       canShareScreen,
+      waitingForHost,
+      admissionDenied,
+      knocking,
+      admit,
+      deny,
       selectCamera,
       selectMicrophone,
       retryMedia,
@@ -1444,6 +1495,11 @@ export function useLiveRoom({ signalUrl, token, joined, selfName, isHost }: Live
       toggleShare,
       shareImage,
       canShareScreen,
+      waitingForHost,
+      admissionDenied,
+      knocking,
+      admit,
+      deny,
       selectCamera,
       selectMicrophone,
       retryMedia,

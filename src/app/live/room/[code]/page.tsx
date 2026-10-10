@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { CalendarClock, CalendarX, Lock } from "lucide-react";
-import { requireUser } from "@/lib/auth/require";
+import { CalendarClock, CalendarX, Lock, Video } from "lucide-react";
+import { getCurrentUser } from "@/lib/auth/require";
 import { getMeetingByRoomCode } from "@/server/services/live-service";
 import { checkRoomAccess } from "@/server/services/live-access";
 import { signRoomToken } from "@/lib/live/room-token";
@@ -18,6 +18,17 @@ import { formatIstSlot, istDateKey } from "@/lib/ist";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * What a shared class link looks like in a chat.
+ *
+ * A link pasted into WhatsApp used to come up as the website's front page,
+ * because the room bounced anyone signed out to /login and the crawler — which
+ * never carries a cookie — previewed *that*. The room answers publicly now
+ * (see the lobby below), so these tags are the ones that get read.
+ *
+ * Deliberately only the class name and its time. Whoever holds the link
+ * already has those; who is attending is nobody else's business.
+ */
 export async function generateMetadata({
   params,
 }: {
@@ -25,7 +36,29 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { code } = await params;
   const meeting = await getMeetingByRoomCode(code);
-  return { title: meeting ? `${meeting.title} · Live` : "Live room" };
+  if (!meeting) {
+    return { title: "Live class", description: "This class link is not valid." };
+  }
+
+  const when = formatIstSlot(meeting.scheduledStart, meeting.scheduledEnd);
+  const title = `${meeting.title} · Live class`;
+  const description = meeting.courseTitle
+    ? `${meeting.courseTitle} — ${when}. Tap to join.`
+    : `${when}. Tap to join the live class.`;
+
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      type: "website",
+      siteName: "SkillForCareer",
+    },
+    twitter: { card: "summary_large_image", title, description },
+    // A class room is not something to index; it is a link sent to people.
+    robots: { index: false, follow: false },
+  };
 }
 
 export default async function LiveRoomPage({
@@ -39,9 +72,27 @@ export default async function LiveRoomPage({
   // `?join=1` comes from the class email (and survives the sign-in round trip),
   // and means "open the class, not the lobby".
   const autoJoin = (await searchParams).join === "1";
-  const user = await requireUser();
   const meeting = await getMeetingByRoomCode(code);
   if (!meeting) notFound();
+
+  // Signed out, the room shows its own lobby rather than bouncing to /login.
+  // Two reasons: a link-preview crawler has to get a page to read, and a
+  // learner who taps a class link in WhatsApp should see which class it is
+  // before being asked who they are. Nobody reaches the class from here —
+  // joining still goes through sign-in and `checkRoomAccess`.
+  const viewer = await getCurrentUser();
+  if (!viewer) {
+    return (
+      <RoomLobby
+        title={meeting.title}
+        courseTitle={meeting.courseTitle}
+        when={formatIstSlot(meeting.scheduledStart, meeting.scheduledEnd)}
+        hostName={meeting.host.name}
+        code={code}
+      />
+    );
+  }
+  const user = viewer;
 
   const allowed = await checkRoomAccess(user.id, user.role, meeting);
   if (!allowed) {
@@ -133,6 +184,59 @@ export default async function LiveRoomPage({
         autoJoin={autoJoin}
       />
     </>
+  );
+}
+
+/**
+ * The public face of a class link: what it is, when it is, who is taking it.
+ *
+ * Modelled on what every meeting product shows a signed-out visitor — enough
+ * to know you are in the right place, and a way in. The sign-in carries the
+ * room in `next`, so accepting it lands back here rather than on a dashboard.
+ */
+function RoomLobby({
+  title,
+  courseTitle,
+  when,
+  hostName,
+  code,
+}: {
+  title: string;
+  courseTitle: string | null;
+  when: string;
+  hostName: string;
+  code: string;
+}) {
+  const next = encodeURIComponent(`/live/room/${code}?join=1`);
+  return (
+    <div className="flex min-h-svh flex-col items-center justify-center gap-8 bg-neutral-950 px-4 text-center text-white">
+      <Logo onDark className="h-9" />
+      <div className="max-w-md space-y-4">
+        <span className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-white/10">
+          <Video className="size-7 text-emerald-300" />
+        </span>
+        <p className="text-sm tracking-wide text-white/50 uppercase">Live class</p>
+        <h1 className="text-2xl font-semibold">{title}</h1>
+        <p className="text-white/70">
+          {courseTitle && (
+            <>
+              {courseTitle}
+              <br />
+            </>
+          )}
+          {when}
+        </p>
+        <p className="text-sm text-white/60">Taken by {hostName}</p>
+        <div className="flex justify-center pt-2">
+          <ButtonLink href={`/login?next=${next}`} size="lg">
+            Sign in to join
+          </ButtonLink>
+        </div>
+        <p className="text-xs text-white/40">
+          Use the account your institute gave you.
+        </p>
+      </div>
+    </div>
   );
 }
 
