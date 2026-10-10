@@ -446,7 +446,7 @@ export function QuizEditor({
                 "ICD-10" can't end up under "Soft Skills". */}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label>Category</Label>
+                <Label>Quiz group</Label>
                 <Select
                   value={form.categoryId || "none"}
                   onValueChange={(v) => set("categoryId", v === "none" ? "" : (v ?? ""))}
@@ -471,7 +471,7 @@ export function QuizEditor({
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label>Sub-category</Label>
+                <Label>Sub-group</Label>
                 <Select
                   value={form.subCategoryId || "none"}
                   onValueChange={(v) => set("subCategoryId", v === "none" ? "" : (v ?? ""))}

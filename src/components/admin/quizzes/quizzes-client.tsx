@@ -1337,7 +1337,7 @@ export function QuizzesClient({
             />
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label>Category</Label>
+                <Label>Quiz group</Label>
                 <Select
                   value={newCategory || "none"}
                   onValueChange={(v) => {
@@ -1366,7 +1366,7 @@ export function QuizzesClient({
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label>Sub-category</Label>
+                <Label>Sub-group</Label>
                 <Select
                   value={newSubCategory || "none"}
                   onValueChange={(v) =>
@@ -1398,9 +1398,9 @@ export function QuizzesClient({
               </div>
             </div>
             <p className="text-muted-foreground text-xs">
-              The quiz is numbered automatically inside its group — use{" "}
-              <strong>Groups</strong> to add categories, and the arrows in the
-              list to reorder.
+              These are the folders from <strong>Quiz groups</strong>. The quiz
+              is numbered automatically inside the one you pick, and the arrows
+              in the list reorder it.
             </p>
             <DialogFooter>
               <Button

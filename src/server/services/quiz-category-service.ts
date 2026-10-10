@@ -56,8 +56,18 @@ export interface QuizCategoryOption {
   parentId: string | null;
 }
 
+/**
+ * The folders a quiz can be filed in — read from the shared group tree, the
+ * one the Groups page curates.
+ *
+ * It used to read `QuizCategory`, a second table that stopped being maintained
+ * the day Groups arrived: the academy had built four subjects in Groups while
+ * this list still offered one, so the New quiz dialog showed "Ungrouped" and
+ * "Medical Coding" and nothing else. One tree, one answer.
+ */
 export async function listQuizCategoryOptions(): Promise<QuizCategoryOption[]> {
-  const rows = await prisma.quizCategory.findMany({
+  const rows = await prisma.contentGroup.findMany({
+    where: { kind: "QUIZ" },
     orderBy: [{ order: "asc" }, { name: "asc" }],
     select: { id: true, name: true, parentId: true },
   });

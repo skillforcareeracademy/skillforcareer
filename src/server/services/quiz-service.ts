@@ -6,6 +6,7 @@ import { toCsv, parseCsv } from "@/lib/csv";
 import { copyTitle, type ImportMode } from "@/lib/validations/import-mode";
 import {
   groupOptions,
+  groupsOf,
   groupsOfMany,
   itemsInGroups,
   setGroupsFor,
@@ -89,8 +90,6 @@ export async function listQuizzesAdmin(q: QuizListQuery) {
       include: {
         course: { select: { title: true } },
         createdBy: { select: { name: true } },
-        category: { select: { id: true, name: true } },
-        subCategory: { select: { id: true, name: true } },
         _count: { select: { questions: true, attempts: true } },
         batches: { select: { batch: { select: { id: true, name: true } } } },
       },
@@ -104,6 +103,10 @@ export async function listQuizzesAdmin(q: QuizListQuery) {
     groupOptions("QUIZ"),
   ]);
   const pathOf = new Map(options.map((o) => [o.id, o.path]));
+  // `categoryId`/`subCategoryId` hold ContentGroup ids — the same folders the
+  // Groups page curates — so their names come from the tree, not from a second
+  // table that nobody has maintained since Groups arrived.
+  const nameOf = new Map(options.map((o) => [o.id, o.name]));
 
   return {
     total,
@@ -117,9 +120,11 @@ export async function listQuizzesAdmin(q: QuizListQuery) {
       courseId: z.courseId,
       courseTitle: z.course?.title ?? null,
       categoryId: z.categoryId,
-      categoryName: z.category?.name ?? null,
+      categoryName: z.categoryId ? (nameOf.get(z.categoryId) ?? null) : null,
       subCategoryId: z.subCategoryId,
-      subCategoryName: z.subCategory?.name ?? null,
+      subCategoryName: z.subCategoryId
+        ? (nameOf.get(z.subCategoryId) ?? null)
+        : null,
       groupIds: membership.get(z.id) ?? [],
       groupPaths: (membership.get(z.id) ?? [])
         .map((g) => pathOf.get(g) ?? "")
@@ -298,7 +303,30 @@ export async function createQuiz(input: CreateQuizInput, createdById: string): P
     },
     select: { id: true },
   });
+  // Filing it in a folder is also what puts it in that folder's listing: the
+  // numbering reads the column, the folder view reads the membership, and a
+  // paper the academy has just filed should appear in both.
+  await fileInGroup(z.id, categoryId, subCategoryId);
   return z.id;
+}
+
+/**
+ * Keep a quiz's folder membership in step with the group it is numbered in.
+ *
+ * Additive on purpose: the editor's Groups panel can file one paper in several
+ * folders, and choosing its numbering group must not quietly un-file it from
+ * the others.
+ */
+async function fileInGroup(
+  quizId: string,
+  categoryId: string | null,
+  subCategoryId: string | null,
+): Promise<void> {
+  const primary = subCategoryId || categoryId;
+  if (!primary) return;
+  const already = await groupsOf("QUIZ", quizId);
+  if (already.includes(primary)) return;
+  await setGroupsFor("QUIZ", quizId, [...already, primary]);
 }
 
 /**
@@ -372,6 +400,7 @@ export async function updateQuiz(id: string, input: UpdateQuizInput): Promise<vo
       releaseAt: input.releaseAt ? new Date(input.releaseAt) : null,
     },
   });
+  if (moved) await fileInGroup(id, categoryId, subCategoryId);
   await setQuizAudience(id, input.batchIds, input.studentIds);
 }
 
@@ -903,8 +932,8 @@ export async function exportQuizzes(
       perQuestionSeconds: true,
       isPublished: true,
       course: { select: { title: true } },
-      category: { select: { name: true } },
-      subCategory: { select: { name: true } },
+      categoryId: true,
+      subCategoryId: true,
       batches: { select: { batch: { select: { name: true } } } },
       createdBy: { select: { name: true } },
       _count: { select: { questions: true, attempts: true } },
@@ -916,6 +945,7 @@ export async function exportQuizzes(
     groupOptions("QUIZ"),
   ]);
   const pathOf = new Map(options.map((o) => [o.id, o.path]));
+  const nameOf = new Map(options.map((o) => [o.id, o.name]));
 
   return toCsv(
     quizHeaders(picked),
@@ -928,8 +958,10 @@ export async function exportQuizzes(
         groupPaths: (membership.get(z.id) ?? [])
           .map((g) => pathOf.get(g) ?? "")
           .filter(Boolean),
-        categoryName: z.category?.name ?? null,
-        subCategoryName: z.subCategory?.name ?? null,
+        categoryName: z.categoryId ? (nameOf.get(z.categoryId) ?? null) : null,
+        subCategoryName: z.subCategoryId
+          ? (nameOf.get(z.subCategoryId) ?? null)
+          : null,
         courseTitle: z.course?.title ?? null,
         batchNames: z.batches.map((b) => b.batch.name),
         difficulty: z.difficulty,
