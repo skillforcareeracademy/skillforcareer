@@ -319,6 +319,16 @@ export function LiveRoom({
   }
 
   async function onToggleShare() {
+    // Nothing on iPadOS can capture a screen from a web page, in any browser.
+    // Rather than fail at the press, hand over to the one thing that does
+    // work there and say why — once, not as an error.
+    if (!sharing && !room.canShareScreen) {
+      toast.info(
+        "A tablet can't share its screen — no browser allows it. Pick a picture to show the class instead.",
+      );
+      pictureRef.current?.click();
+      return;
+    }
     const problem = await room.toggleShare();
     if (problem) toast.error(problem);
   }
@@ -857,14 +867,24 @@ export function LiveRoom({
           onSelect={room.selectCamera}
           pickerLabel="Camera"
         />
-        {/* A tablet cannot capture its screen — no browser on iPadOS implements
-            it — so there it offers the picture instead, which teaches the same
-            lesson. On a computer both are available. */}
-        {room.canShareScreen && (
-          <RoundButton active={sharing} onClick={onToggleShare} label="Share screen">
-            <MonitorUp className="size-5" />
-          </RoundButton>
-        )}
+        {/* Always here, for the host above all — an instructor who cannot find
+            the button assumes the feature is missing. On a tablet it cannot
+            capture the screen (no browser on iPadOS implements it at all), so
+            pressing it says so once and opens the picture instead, which
+            teaches the same lesson rather than leaving them stuck. */}
+        <RoundButton
+          active={sharing && room.canShareScreen}
+          onClick={() => void onToggleShare()}
+          label={
+            sharing
+              ? "Stop sharing"
+              : room.canShareScreen
+                ? "Share your screen"
+                : "Share your screen — not possible on a tablet, so this shows a picture instead"
+          }
+        >
+          <MonitorUp className="size-5" />
+        </RoundButton>
         <RoundButton
           active={sharing && !room.canShareScreen}
           onClick={() => {
