@@ -3,7 +3,13 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, ArrowRight, Compass, Volume2, VolumeX, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { speak, stopSpeaking, speechSupported, warmVoices } from "@/lib/speech";
+import {
+  currentVoiceName,
+  speak,
+  speechSupported,
+  stopSpeaking,
+  warmVoices,
+} from "@/lib/speech";
 import { tourFor, tourStorageKey, type TourStep } from "@/config/tours";
 import type { Role } from "@/config/roles";
 import { cn } from "@/lib/utils";
@@ -42,6 +48,8 @@ export function PanelTour({
   const [index, setIndex] = useState(0);
   const [voice, setVoice] = useState(false);
   const [spot, setSpot] = useState<Spotlight | null>(null);
+  /** Filled once the browser has published its voice list. */
+  const [voiceName, setVoiceName] = useState<string | null>(null);
 
   const step: TourStep | undefined = steps[index];
 
@@ -53,6 +61,12 @@ export function PanelTour({
   // for the same reason — it would cascade a second render before first paint.
   useEffect(() => {
     warmVoices();
+    // Chrome publishes its voice list a beat after load, so the name is read
+    // back shortly rather than at once.
+    const timers = [
+      window.setTimeout(() => setVoiceName(currentVoiceName()), 600),
+    ];
+
     let seen = true;
     try {
       seen = Boolean(localStorage.getItem(tourStorageKey(role)));
@@ -61,9 +75,9 @@ export function PanelTour({
       // an exception.
       seen = true;
     }
-    if (seen) return;
-    const timer = window.setTimeout(() => setOpen(true), 600);
-    return () => window.clearTimeout(timer);
+    if (!seen) timers.push(window.setTimeout(() => setOpen(true), 600));
+
+    return () => timers.forEach(window.clearTimeout);
   }, [role]);
 
   // "Replay the tour" from the user menu dispatches this.
@@ -239,6 +253,11 @@ export function PanelTour({
                 });
               }}
               aria-pressed={voice}
+              // Which voice the machine actually found, so "why does it sound
+              // American?" can be answered by hovering rather than guessing.
+              title={
+                voiceName ? `Reading in ${voiceName}` : "Reads each step aloud"
+              }
             >
               {voice ? <Volume2 className="size-4" /> : <VolumeX className="size-4" />}
               {voice ? "Voice on" : "Voice guide"}
