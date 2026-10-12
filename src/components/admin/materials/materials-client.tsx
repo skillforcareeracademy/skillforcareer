@@ -112,6 +112,8 @@ interface CourseOption {
 interface BatchOption {
   id: string;
   name: string;
+  /** Which course it belongs to, so the picker can narrow by it. */
+  courseId: string | null;
 }
 
 /** A file, image, video or link attached to a piece of reading. */
@@ -218,6 +220,21 @@ export function MaterialsClient({
   const [openFolders, setOpenFolders] = useState<Set<string>>(new Set());
   const [exporting, setExporting] = useState(false);
   const [form, setForm] = useState<FormState | null>(null);
+
+  /**
+   * The cohorts worth offering: those on the courses currently ticked, or all
+   * of them while no course is. A batch already chosen stays in the list even
+   * if its course is later unticked, so unticking cannot silently strand a
+   * selection the form is still carrying.
+   */
+  const batchesForCourses = useMemo(() => {
+    const courseIds = form?.courseIds ?? [];
+    if (courseIds.length === 0) return batches;
+    const chosen = new Set(form?.batchIds ?? []);
+    return batches.filter(
+      (b) => (b.courseId && courseIds.includes(b.courseId)) || chosen.has(b.id),
+    );
+  }, [batches, form?.courseIds, form?.batchIds]);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [deleting, setDeleting] = useState<MaterialRow | null>(null);
@@ -1172,13 +1189,28 @@ export function MaterialsClient({
                   onChange={(next) => setForm({ ...form, courseIds: next })}
                   emptyHint="No courses yet."
                 />
+                {/* Narrowed to the courses ticked beside it. The academy runs
+                    dozens of cohorts and only a handful belong to the course in
+                    hand, so showing all of them is how the wrong one gets
+                    picked. With no course chosen, every batch is offered. */}
                 <MultiPicker
                   label="Batches"
-                  hint="Empty means everyone on the courses above."
-                  options={batches.map((b) => ({ id: b.id, label: b.name }))}
+                  hint={
+                    form.courseIds.length > 0
+                      ? "Batches of the chosen courses. Empty means everyone on them."
+                      : "Empty means everyone on the courses above."
+                  }
+                  options={batchesForCourses.map((b) => ({
+                    id: b.id,
+                    label: b.name,
+                  }))}
                   value={form.batchIds}
                   onChange={(next) => setForm({ ...form, batchIds: next })}
-                  emptyHint="No batches yet."
+                  emptyHint={
+                    form.courseIds.length > 0
+                      ? "No batches on those courses."
+                      : "No batches yet."
+                  }
                 />
               </div>
 

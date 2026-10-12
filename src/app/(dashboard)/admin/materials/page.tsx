@@ -32,7 +32,10 @@ export default async function MaterialsPage() {
       where: ownerId
         ? { OR: [{ instructorId: ownerId }, { associates: { some: { userId: ownerId } } }] }
         : {},
-      select: { id: true, name: true },
+      // `courseId` so the picker can narrow the cohorts to the course that
+      // has just been ticked — "course ke according batch filter hi jaane
+      // chahiye. It will make selection easier."
+      select: { id: true, name: true, courseId: true },
       orderBy: { name: "asc" },
       take: 300,
     }),

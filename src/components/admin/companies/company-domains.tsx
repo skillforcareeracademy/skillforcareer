@@ -5,9 +5,11 @@ import {
   CheckCircle2,
   Copy,
   Globe,
+  LogIn,
   Loader2,
   Plus,
   RefreshCw,
+  ShieldCheck,
   Star,
   Trash2,
   TriangleAlert,
@@ -232,6 +234,37 @@ export function CompanyDomains({
           </p>
         </TabsContent>
       </Tabs>
+
+      {/* The two questions this screen kept being asked. A subdomain has
+          nothing to verify — the academy owns the apex — and a company that
+          wants no address of its own does not need one: its people sign in on
+          the academy's own site like everybody else. */}
+      <div className="text-muted-foreground space-y-2 rounded-lg border border-dashed p-3 text-xs">
+        <p className="flex items-start gap-2">
+          <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-emerald-500" />
+          <span>
+            <strong className="text-foreground">
+              A subdomain needs no verification.
+            </strong>{" "}
+            It is on {rootDomain}, which the academy already owns, so it is
+            live the moment it is added. Only a company&rsquo;s own domain has
+            to be proved and pointed.
+          </span>
+        </p>
+        <p className="flex items-start gap-2">
+          <LogIn className="mt-0.5 size-3.5 shrink-0" />
+          <span>
+            <strong className="text-foreground">
+              An address is optional.
+            </strong>{" "}
+            With none set, this company&rsquo;s admin signs in at{" "}
+            <span className="font-mono">{rootDomain}/login</span> with their own
+            account and lands in their own company — exactly as they would on a
+            domain of their own. An address only changes where they arrive, not
+            what they can see.
+          </span>
+        </p>
+      </div>
 
       {domains === null ? (
         <p className="text-muted-foreground flex items-center gap-2 py-4 text-sm">

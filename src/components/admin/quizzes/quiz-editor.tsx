@@ -238,9 +238,17 @@ export function QuizEditor({
     });
   }
 
-  /** Cohorts of the course this quiz belongs to. */
+  /**
+   * Cohorts of the course this quiz belongs to.
+   *
+   * A batch already ticked stays in the list even after the course is changed
+   * beneath it: it is still in `batchIds` and still being saved, and hiding it
+   * would leave the paper set for a cohort nobody can see or untick.
+   */
   const formBatches = form.courseId
-    ? batches.filter((b) => b.courseId === form.courseId)
+    ? batches.filter(
+        (b) => b.courseId === form.courseId || form.batchIds.includes(b.id),
+      )
     : batches;
 
   const parentCategories = categories.filter((c) => !c.parentId);

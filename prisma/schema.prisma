@@ -2314,9 +2314,28 @@ model CurriculumTab {
   description  String? @db.Text
   order        Int     @default(0)
 
+  /// The section this one sits inside, for a syllabus that goes two levels
+  /// deep — "curriculum me sections ke saath saath subsections banne ka
+  /// option". Null is a top-level section.
+  ///
+  /// NoAction rather than Cascade: Prisma forbids a cascading self-relation.
+  /// Deleting a parent takes its children with it in the service.
+  parentId String?
+  parent   CurriculumTab?  @relation("CurriculumTabTree", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  children CurriculumTab[] @relation("CurriculumTabTree")
+
+  /// Something to open from the section — a recording, a sheet, a reference.
+  /// `linkInApp` keeps it inside the panel's own viewer rather than sending
+  /// the learner out to a new tab: "link daalne ka option which should open
+  /// in LMS only".
+  linkUrl   String? @db.VarChar(1000)
+  linkLabel String?
+  linkInApp Boolean @default(true)
+
   curriculum Curriculum @relation(fields: [curriculumId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([curriculumId])
+  @@index([parentId])
 }
 
 model CurriculumCourse {

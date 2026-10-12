@@ -7,6 +7,8 @@ import {
   ArrowUp,
   BookMarked,
   Check,
+  ChevronLeft,
+  GripVertical,
   History,
   Loader2,
   Pencil,
@@ -39,11 +41,17 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Checkbox } from "@/components/ui/checkbox";
+import { cn } from "@/lib/utils";
 
 interface Tab {
   id?: string;
   heading: string;
   description: string | null;
+  parentId?: string | null;
+  linkUrl?: string | null;
+  linkLabel?: string | null;
+  linkInApp?: boolean;
 }
 interface Curriculum {
   id: string;
@@ -73,20 +81,40 @@ interface BatchOpt {
   courseTitle: string;
 }
 
+/** A section as the editor holds it: `parent` is a position, not an id. */
+interface FormTab {
+  heading: string;
+  description: string;
+  /** The index of the section this sits inside, or null for a top-level one. */
+  parent: number | null;
+  linkUrl: string;
+  linkLabel: string;
+  linkInApp: boolean;
+}
+
 interface FormState {
   title: string;
   year: string;
   isPublished: boolean;
-  tabs: { heading: string; description: string }[];
+  tabs: FormTab[];
   courseIds: string[];
   batchIds: string[];
 }
+
+const blankTab = (parent: number | null = null): FormTab => ({
+  heading: "",
+  description: "",
+  parent,
+  linkUrl: "",
+  linkLabel: "",
+  linkInApp: true,
+});
 
 const blank = (): FormState => ({
   title: "",
   year: String(new Date().getFullYear()),
   isPublished: true,
-  tabs: [{ heading: "", description: "" }],
+  tabs: [blankTab()],
   courseIds: [],
   batchIds: [],
 });
@@ -111,6 +139,8 @@ export function CurriculumClient({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(blank());
   const [saving, setSaving] = useState(false);
+  /** Which section is being dragged, if any. */
+  const [dragging, setDragging] = useState<number | null>(null);
   const [moving, setMoving] = useState(false);
   const [deleting, setDeleting] = useState<Curriculum | null>(null);
   const [historyFor, setHistoryFor] = useState<string | null>(null);
@@ -144,6 +174,69 @@ export function CurriculumClient({
     }
   }
 
+  /**
+   * Parent positions after the list has been rearranged.
+   *
+   * Every parent is an index, so inserting, removing or moving a section
+   * invalidates all of them. Rather than patch each case by hand, the old
+   * list is matched against the new one by object identity and the indices
+   * are rewritten — a section object is never copied when it merely moves.
+   */
+  function reparent(
+    next: FormTab[],
+    previous: FormTab[],
+    skip = -1,
+  ): FormTab[] {
+    return next.map((t, i) => {
+      if (i === skip || t.parent == null) return t;
+      const parentObject = previous[t.parent];
+      const at = parentObject ? next.indexOf(parentObject) : -1;
+      return { ...t, parent: at === -1 || at === i ? null : at };
+    });
+  }
+
+  function patchTab(index: number, patch: Partial<FormTab>) {
+    setForm((f) => ({
+      ...f,
+      tabs: f.tabs.map((t, j) => (j === index ? { ...t, ...patch } : t)),
+    }));
+  }
+
+  /** Removing a section takes its subsections with it — they have no home. */
+  function removeTab(index: number) {
+    setForm((f) => {
+      const doomed = new Set([index]);
+      f.tabs.forEach((t, j) => {
+        if (t.parent === index) doomed.add(j);
+      });
+      const kept = f.tabs.filter((_, j) => !doomed.has(j));
+      return { ...f, tabs: reparent(kept, f.tabs) };
+    });
+  }
+
+  /** Drop one section onto another. A subsection follows its parent. */
+  function moveTab(from: number | null, to: number) {
+    if (from === null || from === to) return;
+    setForm((f) => {
+      const moving = f.tabs[from];
+      if (!moving) return f;
+      // A whole section travels with the subsections filed under it.
+      const block =
+        moving.parent == null
+          ? [from, ...f.tabs.map((t, j) => (t.parent === from ? j : -1))].filter(
+              (j) => j >= 0,
+            )
+          : [from];
+      const taken = block.map((j) => f.tabs[j]);
+      const rest = f.tabs.filter((_, j) => !block.includes(j));
+      const target = f.tabs[to];
+      const at = rest.indexOf(target);
+      const next = [...rest];
+      next.splice(at === -1 ? next.length : at, 0, ...taken);
+      return { ...f, tabs: reparent(next, f.tabs) };
+    });
+  }
+
   function startNew() {
     setEditingId("new");
     setForm(blank());
@@ -155,10 +248,24 @@ export function CurriculumClient({
       title: c.title,
       year: c.year ?? "",
       isPublished: c.isPublished,
+      // Parents come back as ids and go out as positions, so they are mapped
+      // through the same ordered list the server sent.
       tabs:
         c.tabs.length > 0
-          ? c.tabs.map((t) => ({ heading: t.heading, description: t.description ?? "" }))
-          : [{ heading: "", description: "" }],
+          ? c.tabs.map((t) => ({
+              heading: t.heading,
+              description: t.description ?? "",
+              parent: t.parentId
+                ? (() => {
+                    const at = c.tabs.findIndex((p) => p.id === t.parentId);
+                    return at === -1 ? null : at;
+                  })()
+                : null,
+              linkUrl: t.linkUrl ?? "",
+              linkLabel: t.linkLabel ?? "",
+              linkInApp: t.linkInApp ?? true,
+            }))
+          : [blankTab()],
       courseIds: c.courseIds,
       batchIds: c.batchIds,
     });
@@ -171,7 +278,19 @@ export function CurriculumClient({
         title: form.title,
         year: form.year || undefined,
         isPublished: form.isPublished,
-        tabs: form.tabs.filter((t) => t.heading.trim()),
+        // Blank sections are dropped, so every parent position has to be
+        // renumbered against what actually survives — otherwise a subsection
+        // ends up inside whatever happens to sit at the old index.
+        tabs: (() => {
+          const keep = form.tabs
+            .map((t, i) => ({ t, i }))
+            .filter(({ t }) => t.heading.trim());
+          const newIndex = new Map(keep.map(({ i }, at) => [i, at]));
+          return keep.map(({ t }) => ({
+            ...t,
+            parent: t.parent == null ? null : (newIndex.get(t.parent) ?? null),
+          }));
+        })(),
         courseIds: form.courseIds,
         batchIds: form.batchIds,
       };
@@ -290,8 +409,34 @@ export function CurriculumClient({
             <div className="space-y-3">
               <Label>Sections</Label>
               {form.tabs.map((tab, i) => (
-                <div key={i} className="space-y-2 rounded-xl border p-3">
+                <div
+                  key={i}
+                  // Dropping one section onto another is how the order is
+                  // changed — "drag and drop krke rearrange krne ka option".
+                  draggable
+                  onDragStart={() => setDragging(i)}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    moveTab(dragging, i);
+                    setDragging(null);
+                  }}
+                  onDragEnd={() => setDragging(null)}
+                  className={cn(
+                    "space-y-2 rounded-xl border p-3 transition-colors",
+                    // A subsection is stepped in, so the shape of the syllabus
+                    // is visible at a glance rather than only on the heading.
+                    tab.parent != null && "border-l-primary/40 ml-6 border-l-2",
+                    dragging === i && "opacity-50",
+                  )}
+                >
                   <div className="flex items-center gap-2">
+                    <span
+                      className="text-muted-foreground shrink-0 cursor-grab active:cursor-grabbing"
+                      aria-hidden
+                    >
+                      <GripVertical className="size-4" />
+                    </span>
                     <Input
                       value={tab.heading}
                       onChange={(e) =>
@@ -308,9 +453,7 @@ export function CurriculumClient({
                       variant="ghost"
                       size="icon-sm"
                       aria-label={`Remove section ${i + 1}`}
-                      onClick={() =>
-                        setForm((f) => ({ ...f, tabs: f.tabs.filter((_, j) => j !== i) }))
-                      }
+                      onClick={() => removeTab(i)}
                     >
                       <X className="size-4" />
                     </Button>
@@ -328,13 +471,68 @@ export function CurriculumClient({
                     }
                     placeholder="What this section covers"
                   />
+
+                  {/* Something to open from the section. Kept inside the panel
+                      by default — "link daalne ka option which should open in
+                      LMS only" — with the way out available when the academy
+                      means to send the learner somewhere else. */}
+                  <div className="grid gap-2 sm:grid-cols-[1fr_12rem]">
+                    <Input
+                      value={tab.linkUrl}
+                      onChange={(e) => patchTab(i, { linkUrl: e.target.value })}
+                      placeholder="Link (optional) — a recording, a sheet, a reference"
+                      className="font-mono text-xs"
+                    />
+                    <Input
+                      value={tab.linkLabel}
+                      onChange={(e) => patchTab(i, { linkLabel: e.target.value })}
+                      placeholder="Button text"
+                    />
+                  </div>
+                  {tab.linkUrl.trim() !== "" && (
+                    <label className="text-muted-foreground flex cursor-pointer items-center gap-2 text-xs">
+                      <Checkbox
+                        checked={tab.linkInApp}
+                        onCheckedChange={(v: boolean) =>
+                          patchTab(i, { linkInApp: Boolean(v) })
+                        }
+                      />
+                      Open inside the panel rather than a new tab
+                    </label>
+                  )}
+
+                  {/* Only one level deep: a syllabus that nests further is a
+                      syllabus nobody can read on a phone. */}
+                  {tab.parent == null ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() =>
+                        setForm((f) => {
+                          const tabs = [...f.tabs];
+                          tabs.splice(i + 1, 0, blankTab(i));
+                          return { ...f, tabs: reparent(tabs, f.tabs, i + 1) };
+                        })
+                      }
+                    >
+                      <Plus className="size-4" /> Add a subsection
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => patchTab(i, { parent: null })}
+                    >
+                      <ChevronLeft className="size-4" /> Make it a section
+                    </Button>
+                  )}
                 </div>
               ))}
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() =>
-                  setForm((f) => ({ ...f, tabs: [...f.tabs, { heading: "", description: "" }] }))
+                  setForm((f) => ({ ...f, tabs: [...f.tabs, blankTab()] }))
                 }
               >
                 <Plus className="size-4" /> Add section

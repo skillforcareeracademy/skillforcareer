@@ -32,7 +32,8 @@ export default async function MaterialsPage() {
       where: ownerId
         ? { OR: [{ instructorId: ownerId }, { associates: { some: { userId: ownerId } } }] }
         : {},
-      select: { id: true, name: true },
+      // See the admin page: the batch picker narrows by the chosen course.
+      select: { id: true, name: true, courseId: true },
       orderBy: { name: "asc" },
       take: 300,
     }),

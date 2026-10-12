@@ -13,6 +13,9 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import { ExternalLink } from "lucide-react";
+import { ButtonLink } from "@/components/shared/button-link";
+import { Button } from "@/components/ui/button";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Curriculum" };
@@ -66,7 +69,9 @@ export default async function StudentCurriculumPage() {
                   // Folded away by default: a full curriculum is pages long,
                   // and the academy asked for it to open a section at a time.
                   <Accordion className="space-y-2">
-                    {c.tabs.map((t, i) => (
+                    {c.tabs
+                      .filter((t) => !t.parentId)
+                      .map((t, i) => (
                       <AccordionItem key={t.id} value={t.id} className="rounded-xl border px-4">
                         <AccordionTrigger className="text-left text-sm font-medium">
                           {i + 1}. {t.heading}
@@ -81,6 +86,29 @@ export default async function StudentCurriculumPage() {
                               Nothing written under this heading yet.
                             </p>
                           )}
+                          <CurriculumLink tab={t} />
+
+                          {/* Whatever is filed inside this heading, stepped in
+                              so the shape of the syllabus is readable. */}
+                          {c.tabs.filter((sub) => sub.parentId === t.id).length > 0 && (
+                            <ol className="border-muted mt-1 space-y-3 border-l pb-3 pl-4">
+                              {c.tabs
+                                .filter((sub) => sub.parentId === t.id)
+                                .map((sub, j) => (
+                                  <li key={sub.id} className="space-y-1">
+                                    <p className="text-sm font-medium">
+                                      {i + 1}.{j + 1} {sub.heading}
+                                    </p>
+                                    {sub.description && (
+                                      <p className="text-muted-foreground text-sm whitespace-pre-wrap">
+                                        {sub.description}
+                                      </p>
+                                    )}
+                                    <CurriculumLink tab={sub} />
+                                  </li>
+                                ))}
+                            </ol>
+                          )}
                         </AccordionContent>
                       </AccordionItem>
                     ))}
@@ -92,5 +120,45 @@ export default async function StudentCurriculumPage() {
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Whatever the section points at.
+ *
+ * Opened inside the panel unless the academy said otherwise — "link daalne ka
+ * option which should open in LMS only" — so a reference does not throw the
+ * learner out of their class into a browser tab they then have to find their
+ * way back from.
+ */
+function CurriculumLink({
+  tab,
+}: {
+  tab: { linkUrl?: string | null; linkLabel?: string | null; linkInApp?: boolean };
+}) {
+  if (!tab.linkUrl) return null;
+  const label = tab.linkLabel?.trim() || "Open";
+  const href = tab.linkInApp
+    ? `/student/viewer?url=${encodeURIComponent(tab.linkUrl)}&title=${encodeURIComponent(label)}`
+    : tab.linkUrl;
+  // Inside the panel it is an ordinary route; sent outward it is a plain
+  // anchor, so the new tab and the no-referrer both actually apply.
+  if (!tab.linkInApp) {
+    return (
+      <Button
+        size="sm"
+        variant="outline"
+        className="mb-3"
+        nativeButton={false}
+        render={<a href={href} target="_blank" rel="noreferrer" />}
+      >
+        <ExternalLink className="size-4" /> {label}
+      </Button>
+    );
+  }
+  return (
+    <ButtonLink href={href} size="sm" variant="outline" className="mb-3">
+      <ExternalLink className="size-4" /> {label}
+    </ButtonLink>
   );
 }

@@ -22,6 +22,11 @@ export interface CurriculumTabRow {
   id: string;
   heading: string;
   description: string | null;
+  /** The section this one sits inside; null for a top-level one. */
+  parentId: string | null;
+  linkUrl: string | null;
+  linkLabel: string | null;
+  linkInApp: boolean;
 }
 
 export interface CurriculumRow {
@@ -55,7 +60,19 @@ const SELECT = {
   createdAt: true,
   updatedAt: true,
   createdBy: { select: { name: true } },
-  tabs: { orderBy: { order: "asc" as const }, select: { id: true, heading: true, description: true } },
+  tabs: {
+    orderBy: { order: "asc" as const },
+    select: {
+      id: true,
+      heading: true,
+      description: true,
+      parentId: true,
+      linkUrl: true,
+      linkLabel: true,
+      linkInApp: true,
+      order: true,
+    },
+  },
   courses: { select: { courseId: true, course: { select: { title: true } } } },
   batches: { select: { batchId: true, batch: { select: { name: true } } } },
   changes: {
@@ -79,7 +96,15 @@ function toRow(c: Row): CurriculumRow {
     createdByName: c.createdBy.name,
     createdAt: c.createdAt.toISOString(),
     updatedAt: c.updatedAt.toISOString(),
-    tabs: c.tabs.map((t) => ({ id: t.id, heading: t.heading, description: t.description })),
+    tabs: c.tabs.map((t) => ({
+      id: t.id,
+      heading: t.heading,
+      description: t.description,
+      parentId: t.parentId,
+      linkUrl: t.linkUrl,
+      linkLabel: t.linkLabel,
+      linkInApp: t.linkInApp,
+    })),
     courseIds: c.courses.map((x) => x.courseId),
     courseTitles: c.courses.map((x) => x.course.title),
     batchIds: c.batches.map((x) => x.batchId),
@@ -176,16 +201,10 @@ export async function createCurriculum(input: CurriculumInput, createdById: stri
       year: input.year || null,
       isPublished: input.isPublished,
       createdById,
-      tabs: {
-        create: input.tabs.map((t, i) => ({
-          heading: t.heading,
-          description: t.description || null,
-          order: i,
-        })),
-      },
     },
     select: { id: true },
   });
+  await writeTabs(row.id, input.tabs);
   await setLinks(row.id, input.courseIds, input.batchIds);
   // SFCMCCC001 — allocated after the course links exist, since the course's
   // abbreviation is part of it.
@@ -193,6 +212,61 @@ export async function createCurriculum(input: CurriculumInput, createdById: stri
   await record(row.id, createdById, "Curriculum created");
   await announce(row.id, input.title, "A new curriculum is available");
   return row.id;
+}
+
+/**
+ * Replace a curriculum's sections.
+ *
+ * Two passes, because a section can now sit inside another and the editor
+ * sends parents as positions in the list rather than ids — a section being
+ * written for the first time has no id to refer to. The rows go in flat, then
+ * the parents are filled in from the positions.
+ */
+async function writeTabs(
+  curriculumId: string,
+  tabs: CurriculumInput["tabs"],
+): Promise<void> {
+  await prisma.curriculumTab.deleteMany({ where: { curriculumId } });
+  if (tabs.length === 0) return;
+
+  await prisma.curriculumTab.createMany({
+    data: tabs.map((t, i) => ({
+      curriculumId,
+      heading: t.heading,
+      description: t.description || null,
+      linkUrl: t.linkUrl || null,
+      linkLabel: t.linkLabel || null,
+      linkInApp: t.linkInApp,
+      order: i,
+    })),
+  });
+
+  const needsParent = tabs.some(
+    (t, i) => t.parent != null && t.parent !== i && t.parent < tabs.length,
+  );
+  if (!needsParent) return;
+
+  const written = await prisma.curriculumTab.findMany({
+    where: { curriculumId },
+    orderBy: { order: "asc" },
+    select: { id: true, order: true },
+  });
+  const idAt = new Map(written.map((w) => [w.order, w.id]));
+
+  for (const [i, tab] of tabs.entries()) {
+    // Only one level deep, and never its own parent: a section that claims a
+    // child as its parent would make a loop nothing could render.
+    const parent = tab.parent;
+    if (parent == null || parent === i || parent >= tabs.length) continue;
+    if (tabs[parent]?.parent != null) continue;
+    const childId = idAt.get(i);
+    const parentId = idAt.get(parent);
+    if (!childId || !parentId) continue;
+    await prisma.curriculumTab.updateMany({
+      where: { id: childId },
+      data: { parentId },
+    });
+  }
 }
 
 export async function updateCurriculum(
@@ -214,17 +288,7 @@ export async function updateCurriculum(
 
   // Sections are replaced wholesale — they are a list, and the editor always
   // sends the whole thing.
-  await prisma.curriculumTab.deleteMany({ where: { curriculumId: id } });
-  if (input.tabs.length > 0) {
-    await prisma.curriculumTab.createMany({
-      data: input.tabs.map((t, i) => ({
-        curriculumId: id,
-        heading: t.heading,
-        description: t.description || null,
-        order: i,
-      })),
-    });
-  }
+  await writeTabs(id, input.tabs);
   await setLinks(id, input.courseIds, input.batchIds);
 
   // What actually changed, in words, for the record and for the learners.
@@ -390,7 +454,7 @@ export async function importCurriculums(
     title: string;
     year: string;
     isPublished: boolean;
-    tabs: { heading: string; description: string }[];
+    tabs: CurriculumInput["tabs"];
     courseIds: string[];
     batchIds: string[];
     line: number;
@@ -422,6 +486,10 @@ export async function importCurriculums(
       draft.tabs.push({
         heading,
         description: descriptionCol ? (row[descriptionCol] ?? "").trim() : "",
+        // A sheet describes a flat syllabus; nesting and links are things the
+        // academy adds in the editor afterwards.
+        parent: null,
+        linkInApp: true,
       });
     }
     for (const [col, lookup, into] of [
