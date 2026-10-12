@@ -26,6 +26,23 @@ export const ROOT_DOMAIN = (
 export const CNAME_TARGET =
   process.env.NEXT_PUBLIC_DOMAIN_CNAME ?? `cname.${ROOT_DOMAIN}`;
 
+/** Where the wildcard that serves every tenant subdomain points. */
+export const CNAME_TARGET_WILDCARD =
+  process.env.NEXT_PUBLIC_WILDCARD_CNAME ?? "cname.vercel-dns.com";
+
+/** Whether a name exists in DNS at all, by either kind of record. */
+async function hostResolves(host: string): Promise<boolean> {
+  for (const lookup of [dns.resolveCname, dns.resolve4, dns.resolve6]) {
+    try {
+      const found = await lookup.call(dns, host);
+      if (found.length > 0) return true;
+    } catch {
+      // Try the next record type.
+    }
+  }
+  return false;
+}
+
 /** Names nobody may take as a subdomain — they are the academy's own. */
 const RESERVED = new Set([
   "www", "api", "admin", "app", "mail", "smtp", "imap", "ftp", "cdn",
@@ -62,7 +79,14 @@ export interface DomainRow {
 }
 
 function recordsFor(host: string, kind: string, token: string | null) {
-  if (kind === "SUBDOMAIN") return [];
+  if (kind === "SUBDOMAIN") {
+    // The one-time setup that makes *every* tenant subdomain resolve. Shown
+    // against the subdomain itself because that is where somebody discovers it
+    // is missing — by the address not opening.
+    return [
+      { type: "CNAME", name: "*", value: "cname.vercel-dns.com" },
+    ];
+  }
   const apex = host.split(".").length === 2;
   return [
     apex
@@ -169,9 +193,13 @@ export async function addDomain(
       companyId,
       host,
       kind: input.kind,
-      // A subdomain of our own apex needs no proof and no pointing.
-      status: input.kind === "SUBDOMAIN" ? "VERIFIED" : "PENDING",
-      verifiedAt: input.kind === "SUBDOMAIN" ? new Date() : null,
+      // Nothing is live until DNS says so, a subdomain included. It used to
+      // be marked verified on the spot — "it is our own domain, what is there
+      // to check" — and the answer turned out to be the wildcard record,
+      // without which every tenant address is NXDOMAIN while the panel calls
+      // it Live.
+      status: "PENDING",
+      verifiedAt: null,
       verifyToken:
         input.kind === "SUBDOMAIN"
           ? null
@@ -194,9 +222,27 @@ export async function addDomain(
 export async function verifyDomain(id: string): Promise<DomainRow> {
   const d = await prisma.companyDomain.findUnique({ where: { id } });
   if (!d) throw AppError.notFound("That domain isn't here.");
-  if (d.kind === "SUBDOMAIN") return toRow(d);
 
   let error: string | null = null;
+
+  // A subdomain of our own apex has nothing to prove — but it does have to
+  // exist. One wildcard record covers every tenant; until it is there, the
+  // address does not resolve at all.
+  if (d.kind === "SUBDOMAIN") {
+    const resolves = await hostResolves(d.host);
+    const updated = await prisma.companyDomain.update({
+      where: { id },
+      data: {
+        status: resolves ? "VERIFIED" : "FAILED",
+        verifiedAt: resolves ? new Date() : null,
+        lastError: resolves
+          ? null
+          : `${d.host} doesn't resolve. Add a wildcard CNAME for * on ${ROOT_DOMAIN} pointing at ${CNAME_TARGET_WILDCARD}, and add *.${ROOT_DOMAIN} to the hosting project. One record covers every company.`,
+        lastCheckedAt: new Date(),
+      },
+    });
+    return toRow(updated);
+  }
 
   const txtName = `_sfc-verify.${d.host}`;
   try {

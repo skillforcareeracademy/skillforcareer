@@ -204,7 +204,7 @@ export function CompanyDomains({
               ? free.available
                 ? `${label}.${rootDomain} is free.`
                 : free.reason
-              : "Free, instant, and nothing to set up — it is on the academy's own domain."}
+              : `Free, and on ${rootDomain} — the academy's own domain. It still has to resolve, so press Verify after adding it.`}
           </p>
         </TabsContent>
 
@@ -244,11 +244,13 @@ export function CompanyDomains({
           <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-emerald-500" />
           <span>
             <strong className="text-foreground">
-              A subdomain needs no verification.
+              A subdomain needs no proof, but it does need a wildcard.
             </strong>{" "}
-            It is on {rootDomain}, which the academy already owns, so it is
-            live the moment it is added. Only a company&rsquo;s own domain has
-            to be proved and pointed.
+            It is on {rootDomain}, so there is nothing for the company to
+            verify — but one record has to exist on the academy&rsquo;s own DNS
+            before any of these addresses resolve. Add it once and every
+            company&rsquo;s subdomain works; the records are shown below any
+            address that is not live yet.
           </span>
         </p>
         <p className="flex items-start gap-2">
@@ -316,8 +318,7 @@ export function CompanyDomains({
                 </Badge>
 
                 <div className="flex shrink-0 gap-1">
-                  {d.kind === "CUSTOM" && (
-                    <Button
+                  <Button
                       size="sm"
                       variant="outline"
                       onClick={() => void act(d.id, "verify")}
@@ -330,7 +331,6 @@ export function CompanyDomains({
                       )}
                       Verify
                     </Button>
-                  )}
                   {!d.isPrimary && d.status === "VERIFIED" && (
                     <Button
                       size="sm"
@@ -356,7 +356,9 @@ export function CompanyDomains({
               {d.records.length > 0 && d.status !== "VERIFIED" && (
                 <div className="bg-muted/40 space-y-2 border-t px-4 py-3">
                   <p className="text-xs font-medium">
-                    Add these at their DNS provider
+                    {d.kind === "SUBDOMAIN"
+                      ? `Add this once at the academy's own DNS — one record serves every company`
+                      : "Add these at their DNS provider"}
                   </p>
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs">
