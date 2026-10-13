@@ -350,6 +350,60 @@ export async function consumeMaterialDownload(
   return { url: m.fileUrl, name: m.fileName ?? m.title };
 }
 
+/**
+ * The same, for one of the attachments beneath the main file.
+ *
+ * "Student ko pehle pdf ko open and download ka button dikh rha hai but baaki
+ * ki me nhi dikha rha" — only the main file could be taken, and a reading with
+ * four documents on it gave the learner one. The access check, the downloads
+ * switch and the counting are all the material's own, since an attachment is
+ * part of it rather than a thing of its own.
+ */
+export async function consumeAssetDownload(
+  userId: string,
+  materialId: string,
+  assetId: string,
+): Promise<{ url: string; name: string }> {
+  const scope = await audienceScope(userId);
+  const m = scope
+    ? await prisma.studyMaterial.findFirst({
+        where: { AND: [{ id: materialId }, scope] },
+        select: {
+          downloadsEnabled: true,
+          assets: {
+            where: { id: assetId },
+            select: { url: true, name: true, kind: true },
+          },
+        },
+      })
+    : null;
+  if (!m) throw AppError.notFound("That material isn't available to you.");
+  if (!m.downloadsEnabled) {
+    throw AppError.forbidden("This material is for reading in the panel — downloads are off.");
+  }
+  const asset = m.assets[0];
+  if (!asset) throw AppError.notFound("That attachment isn't here.");
+  // A pasted address is not ours to serve as a file; it is opened, not taken.
+  if (asset.kind === "LINK") {
+    throw AppError.badRequest("That one is a link — open it instead.");
+  }
+
+  const existing = await prisma.materialRead.findUnique({
+    where: { materialId_userId: { materialId, userId } },
+    select: { id: true },
+  });
+  if (existing) {
+    await prisma.$executeRaw`
+      UPDATE \`MaterialRead\` SET downloads = downloads + 1, lastReadAt = NOW()
+       WHERE id = ${existing.id}`;
+  } else {
+    await prisma.materialRead.create({
+      data: { materialId, userId, opens: 1, downloads: 1 },
+    });
+  }
+  return { url: asset.url, name: asset.name ?? "attachment" };
+}
+
 // ── The learner's own marks ─────────────────────────────────────────────────
 
 export async function addHighlight(

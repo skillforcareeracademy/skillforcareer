@@ -258,6 +258,16 @@ export function navFor(
 ): NavSection[] {
   const base = ROLE_BASE[role];
   const held = new Set(permissions);
+  /**
+   * Hrefs already placed, so one page cannot appear twice.
+   *
+   * An item can match on two counts at once: by role, and again through the
+   * permission fallback below. An admin holding `curriculum:manage` matched
+   * the staff entry *and* the instructor entry, and both resolve to
+   * /admin/curriculum — which is how two Curriculum tabs ended up in the
+   * sidebar.
+   */
+  const placed = new Set<string>();
 
   return NAV_SECTIONS.map((section) => ({
     label: section.label,
@@ -277,7 +287,12 @@ export function navFor(
         if (!needed || !held.has(needed)) return null;
         return { ...item, href: `${ROLE_BASE[ROLES.ADMIN]}${item.href}` };
       })
-      .filter((item): item is NavItem => item !== null),
+      .filter((item): item is NavItem => item !== null)
+      .filter((item) => {
+        if (placed.has(item.href)) return false;
+        placed.add(item.href);
+        return true;
+      }),
   })).filter((section) => section.items.length > 0);
 }
 

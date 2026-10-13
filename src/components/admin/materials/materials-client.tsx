@@ -1310,6 +1310,25 @@ export function MaterialsClient({
                             </Button>
                           </>
                         )}
+                        {/* See it before the learners do — "link jo daale hain
+                            yahan unke preview ka option hona chahiye." A
+                            pasted address is easy to get wrong, and the first
+                            person to find out should not be a learner. */}
+                        {a.url && (
+                          <Button
+                            type="button"
+                            size="icon-sm"
+                            variant="ghost"
+                            nativeButton={false}
+                            aria-label={`Preview ${a.name || a.url}`}
+                            title="Preview this in a new tab"
+                            render={
+                              <a href={a.url} target="_blank" rel="noreferrer" />
+                            }
+                          >
+                            <Eye className="size-4" />
+                          </Button>
+                        )}
                         <Button
                           type="button"
                           size="icon-sm"

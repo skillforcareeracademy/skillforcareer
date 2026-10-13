@@ -401,6 +401,25 @@ export function StudentMaterialsClient({
     }
   }
 
+  /** One of the attachments beneath the reading, rather than the main file. */
+  async function downloadAsset(materialId: string, assetId: string) {
+    try {
+      const file = await api.post<{ url: string; name: string }>(
+        `/api/student/materials/${materialId}/assets/${assetId}/download`,
+      );
+      const a = document.createElement("a");
+      a.href = file.url;
+      a.download = file.name;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      a.click();
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError ? err.message : "That download isn't available.",
+      );
+    }
+  }
+
   async function download(id: string) {
     try {
       const file = await api.post<{ url: string; name: string }>(
@@ -646,6 +665,25 @@ export function StudentMaterialsClient({
                     >
                       <span className="block truncate">{a.name || a.url}</span>
                     </LinkViewer>
+
+                    {/* The same two buttons the main file has. Without them a
+                        reading with four documents on it gave the learner one
+                        they could take and three they could only look at. */}
+                    <LinkViewer url={a.url} name={a.name} className="shrink-0">
+                      <span className="border-input hover:bg-accent inline-flex h-7 items-center gap-1.5 rounded-md border px-2 text-xs font-medium">
+                        <Eye className="size-3.5" /> Open
+                      </span>
+                    </LinkViewer>
+                    {a.kind !== "LINK" && detail.downloadsEnabled && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 shrink-0 px-2 text-xs"
+                        onClick={() => void downloadAsset(detail.id, a.id)}
+                      >
+                        <Download className="size-3.5" /> Download
+                      </Button>
+                    )}
                   </li>
                 ))}
               </ul>
