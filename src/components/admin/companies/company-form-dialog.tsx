@@ -141,6 +141,15 @@ export function CompanyFormDialog({
       onOpenChange(false);
       router.refresh();
     } catch (error) {
+      // Saving to a company that has since been removed — a tab left open
+      // while somebody else deleted it. Close and refresh rather than leave a
+      // row on screen that no longer exists and cannot be saved.
+      if (error instanceof ApiError && error.status === 404) {
+        toast.error("That company has been removed. Refreshing the list.");
+        onOpenChange(false);
+        router.refresh();
+        return;
+      }
       toast.error(
         error instanceof ApiError ? error.message : "Couldn't save that.",
       );

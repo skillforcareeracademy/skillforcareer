@@ -84,6 +84,13 @@ export function CompaniesClient({
       setRemoving(null);
       router.refresh();
     } catch (error) {
+      // Already gone is the outcome that was wanted; say so and move on.
+      if (error instanceof ApiError && error.status === 404) {
+        toast.success("That company was already removed.");
+        setRemoving(null);
+        router.refresh();
+        return;
+      }
       toast.error(
         error instanceof ApiError ? error.message : "Couldn't remove that.",
       );
