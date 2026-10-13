@@ -8,7 +8,12 @@ import {
   Video as VideoIcon,
   VideoOff,
   ImageUp,
+  Maximize,
+  Minimize,
+  MinusCircle,
   MonitorUp,
+  MoreHorizontal,
+  Pin,
   MessageSquare,
   Users,
   PhoneOff,
@@ -49,6 +54,8 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
@@ -142,6 +149,12 @@ export function LiveRoom({
   const [panel, setPanel] = useState<"chat" | "people" | null>(null);
   const [draft, setDraft] = useState("");
   const [copied, setCopied] = useState(false);
+  /** Whose tile is held large, and whose picture this viewer has turned off. */
+  const [pinnedId, setPinnedId] = useState<string | null>(null);
+  const [unwatched, setUnwatched] = useState<Set<string>>(new Set());
+  /** The whole room, filling the screen. */
+  const roomRef = useRef<HTMLDivElement>(null);
+  const [fullScreen, setFullScreen] = useState(false);
   /** The hidden file input behind "Present a picture". */
   const pictureRef = useRef<HTMLInputElement>(null);
   const [recording, setRecording] = useState(false);
@@ -181,6 +194,7 @@ export function LiveRoom({
     sessionElsewhere,
     waitingForHost,
     admissionDenied,
+    removedBy,
     knocking,
   } = room;
 
@@ -318,6 +332,34 @@ export function LiveRoom({
     leave();
   }
 
+  /**
+   * The class, and nothing else on the screen.
+   *
+   * Tracked from the browser's own event rather than from the click, because
+   * Escape and the system chrome also leave full screen and the button has to
+   * agree with what is actually on the screen.
+   */
+  useEffect(() => {
+    const onChange = () => setFullScreen(Boolean(document.fullscreenElement));
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+
+  function toggleFullScreen() {
+    if (document.fullscreenElement) {
+      void document.exitFullscreen().catch(() => {});
+      return;
+    }
+    const el = roomRef.current;
+    if (!el?.requestFullscreen) {
+      toast.info("This browser won't let a page fill the screen.");
+      return;
+    }
+    void el.requestFullscreen().catch(() => {
+      toast.error("Couldn't fill the screen.");
+    });
+  }
+
   async function onToggleShare() {
     // Nothing on iPadOS can capture a screen from a web page, in any browser.
     // Rather than fail at the press, hand over to the one thing that does
@@ -361,6 +403,22 @@ export function LiveRoom({
   const cancelled = meeting.status === "CANCELLED";
   const ended = meeting.status === "ENDED";
   const showSelfVideo = sharing || (camOn && Boolean(localStream?.getVideoTracks().length));
+
+  // ── Put out of the class ───────────────────────────────────────────────────
+  if (joined && removedBy) {
+    return (
+      <RoomMessage
+        icon={<MinusCircle className="size-7 text-rose-400" />}
+        title={`${removedBy} removed you from this class`}
+        body="You have been taken out of the room. If you think that's a mistake, message your instructor — you can ask to join again and they can let you back in."
+        action={
+          <Button size="lg" onClick={goHome}>
+            Back to my classes
+          </Button>
+        }
+      />
+    );
+  }
 
   // ── Held at the door ───────────────────────────────────────────────────────
   //
@@ -579,7 +637,10 @@ export function LiveRoom({
   const tileCount = participantCount;
 
   return (
-    <div className="fixed inset-0 flex flex-col overflow-hidden bg-neutral-950 text-white">
+    <div
+      ref={roomRef}
+      className="fixed inset-0 flex flex-col overflow-hidden bg-neutral-950 text-white"
+    >
       {/* Header */}
       <header className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 bg-neutral-950/60 px-3 py-2.5 backdrop-blur sm:px-4 sm:py-3">
         <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
@@ -741,7 +802,29 @@ export function LiveRoom({
 
             {/* Remote peer tiles */}
             {peers.map((peer) => (
-              <PeerTile key={peer.socketId} peer={peer} />
+              <PeerTile
+                key={peer.socketId}
+                peer={peer}
+                pinned={pinnedId === peer.socketId}
+                onPin={() =>
+                  setPinnedId((id) =>
+                    id === peer.socketId ? null : peer.socketId,
+                  )
+                }
+                hidden={unwatched.has(peer.socketId)}
+                onHide={() =>
+                  setUnwatched((set) => {
+                    const next = new Set(set);
+                    if (next.has(peer.socketId)) next.delete(peer.socketId);
+                    else next.add(peer.socketId);
+                    return next;
+                  })
+                }
+                // The teaching team runs the room; one host cannot put another
+                // out, and a learner cannot put anybody out.
+                canRemove={isHost && !peer.user.isHost}
+                onRemove={() => room.removePeer(peer.socketId)}
+              />
             ))}
 
             {/* Invite tile — shown only while you're alone */}
@@ -912,6 +995,18 @@ export function LiveRoom({
             if (file) void onPresent(file);
           }}
         />
+        {/* The class filling the screen — the laptop lid becomes the room. */}
+        <RoundButton
+          active={fullScreen}
+          onClick={toggleFullScreen}
+          label={fullScreen ? "Leave full screen" : "Fill the screen"}
+        >
+          {fullScreen ? (
+            <Minimize className="size-5" />
+          ) : (
+            <Maximize className="size-5" />
+          )}
+        </RoundButton>
         <RoundButton
           active={panel === "chat"}
           onClick={() => setPanel(panel === "chat" ? null : "chat")}
@@ -986,9 +1081,43 @@ export function LiveRoom({
  * offers a tap rather than sitting there silently. It is never muted — muting
  * the remote tiles is exactly how a "nobody can hear anyone" class happens.
  */
-function PeerTile({ peer }: { peer: PeerView }) {
+/**
+ * One person's tile, with the handful of controls everybody expects from a
+ * meeting: keep them large, stop watching them, fill the screen with them,
+ * and — if you are running the class — put them out.
+ *
+ * "Don't watch" hides their picture here rather than asking them to stop
+ * sending it: on a mesh there is no server to re-encode anything, so the
+ * saving is the decoding and the screen space, which is what the person who
+ * turns it off actually wanted.
+ */
+function PeerTile({
+  peer,
+  pinned,
+  onPin,
+  hidden,
+  onHide,
+  canRemove,
+  onRemove,
+}: {
+  peer: PeerView;
+  pinned: boolean;
+  onPin: () => void;
+  hidden: boolean;
+  onHide: () => void;
+  canRemove: boolean;
+  onRemove: () => void;
+}) {
   const ref = useRef<HTMLVideoElement>(null);
+  const shell = useRef<HTMLDivElement>(null);
   const [needsTap, setNeedsTap] = useState(false);
+
+  function goFullScreen() {
+    const el = shell.current;
+    if (!el) return;
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+    else void el.requestFullscreen?.().catch(() => {});
+  }
 
   useEffect(() => {
     const el = ref.current;
@@ -999,13 +1128,17 @@ function PeerTile({ peer }: { peer: PeerView }) {
       .catch(() => setNeedsTap(true));
   }, [peer.stream]);
 
-  const showVideo = peer.hasVideo && (peer.state.camOn || peer.state.sharing);
+  const showVideo =
+    !hidden && peer.hasVideo && (peer.state.camOn || peer.state.sharing);
 
   return (
     <div
+      ref={shell}
       className={cn(
-        "relative min-h-0 overflow-hidden rounded-2xl bg-neutral-900 ring-1 ring-white/10",
+        "group relative min-h-0 overflow-hidden rounded-2xl bg-neutral-900 ring-1 ring-white/10",
         peer.state.speaking && peer.state.micOn && "ring-2 ring-emerald-400",
+        // A pinned tile takes the room: everybody else lines up beside it.
+        pinned && "ring-2 ring-sky-400 sm:col-span-2 sm:row-span-2",
       )}
       data-tile="remote"
       data-peer-id={peer.socketId}
@@ -1056,6 +1189,54 @@ function PeerTile({ peer }: { peer: PeerView }) {
           <Volume2 className="size-3.5" /> Tap to hear {peer.user.name || "them"}
         </button>
       )}
+
+      {/* The tile's own menu. Shown on hover, and always on a touch screen,
+          where there is no hover to reveal it with. */}
+      <div className="absolute top-2 right-2 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <button
+                type="button"
+                className="grid size-8 place-items-center rounded-full bg-black/60 text-white backdrop-blur hover:bg-black/80"
+              />
+            }
+            aria-label={`Options for ${peer.user.name || "this person"}`}
+          >
+            <MoreHorizontal className="size-4" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>{peer.user.name || "Guest"}</DropdownMenuLabel>
+              <DropdownMenuItem onClick={onHide}>
+                {hidden ? (
+                  <>
+                    <VideoIcon className="size-4" /> Watch again
+                  </>
+                ) : (
+                  <>
+                    <VideoOff className="size-4" /> Don&rsquo;t watch
+                  </>
+                )}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={onPin}>
+                <Pin className="size-4" /> {pinned ? "Unpin" : "Pin"}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={goFullScreen}>
+                <Maximize className="size-4" /> Full screen
+              </DropdownMenuItem>
+              {canRemove && (
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onClick={onRemove}
+                >
+                  <MinusCircle className="size-4" /> Remove from class
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
 
       <TileLabel
         name={`${peer.user.name || "Guest"}${peer.user.isHost ? " (Host)" : ""}`}

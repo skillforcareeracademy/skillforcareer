@@ -227,6 +227,8 @@ export function useLiveRoom({ signalUrl, token, joined, selfName, isHost }: Live
   /** Held at the door until the teaching team lets us in. */
   const [waitingForHost, setWaitingForHost] = useState(false);
   const [admissionDenied, setAdmissionDenied] = useState(false);
+  /** Who put us out, if the host did. */
+  const [removedBy, setRemovedBy] = useState<string | null>(null);
   /** Who is outside, for a host. */
   const [knocking, setKnocking] = useState<KnockRequest[]>([]);
 
@@ -1029,6 +1031,11 @@ export function useLiveRoom({ signalUrl, token, joined, selfName, isHost }: Live
         setAdmissionDenied(true);
       });
 
+      socket.on("removed", ({ by }: { by: string }) => {
+        if (!mine()) return;
+        setRemovedBy(by || "The host");
+      });
+
       socket.on("waiting-list", (list: KnockRequest[]) => {
         if (!mine()) return;
         setKnocking(Array.isArray(list) ? list : []);
@@ -1309,6 +1316,11 @@ export function useLiveRoom({ signalUrl, token, joined, selfName, isHost }: Live
     setKnocking((list) => list.filter((k) => k.socketId !== socketId));
   }, []);
 
+  /** Put somebody out of the class. The host's own decision. */
+  const removePeer = useCallback((socketId: string) => {
+    socketRef.current?.emit("remove-peer", { socketId });
+  }, []);
+
   const endClass = useCallback(() => {
     socketRef.current?.emit("end-class");
   }, []);
@@ -1459,6 +1471,8 @@ export function useLiveRoom({ signalUrl, token, joined, selfName, isHost }: Live
       knocking,
       admit,
       deny,
+      removePeer,
+      removedBy,
       selectCamera,
       selectMicrophone,
       retryMedia,
@@ -1500,6 +1514,8 @@ export function useLiveRoom({ signalUrl, token, joined, selfName, isHost }: Live
       knocking,
       admit,
       deny,
+      removePeer,
+      removedBy,
       selectCamera,
       selectMicrophone,
       retryMedia,

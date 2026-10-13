@@ -527,6 +527,29 @@ function enterRoom(socket: Socket, roomCode: string, user: RoomUser) {
     void pushWaitingList(roomCode);
   });
 
+  /**
+   * Put somebody out of the class.
+   *
+   * The host's own decision, and a real one: the socket is disconnected and
+   * told why, and the person is taken off the admitted list so the link does
+   * not simply walk them back in — they would have to knock again, and the
+   * host would have to let them.
+   */
+  socket.on("remove-peer", ({ socketId }: { socketId?: string }) => {
+    if (!user.isHost || !socketId) return;
+    const target = io.sockets.sockets.get(String(socketId));
+    if (!target || target.data.roomCode !== roomCode) return;
+    const theirUser = target.data.user as RoomUser | undefined;
+    // A host cannot be thrown out by another host: the teaching team runs the
+    // room together, and this is for learners.
+    if (theirUser?.isHost) return;
+    if (theirUser) lobbyFor(roomCode).admitted.delete(theirUser.id);
+    target.emit("removed", { by: user.name });
+    socket.to(roomCode).emit("peer-left", { socketId: target.id });
+    // A beat, so the message paints before the socket goes.
+    setTimeout(() => target.disconnect(true), 250);
+  });
+
   socket.on("deny", ({ socketId }: { socketId?: string }) => {
     if (!user.isHost || !socketId) return;
     const lobby = lobbyFor(roomCode);
