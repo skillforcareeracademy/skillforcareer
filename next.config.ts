@@ -23,7 +23,9 @@ const CSP = [
   "object-src 'none'",
   "frame-ancestors 'self'",
   "form-action 'self'",
-  "upgrade-insecure-requests",
+  // `upgrade-insecure-requests` is deliberately *not* here: a browser ignores
+  // it in a report-only policy and says so in the console. It is enforced
+  // instead, alongside frame-ancestors below, where it actually takes effect.
   // Razorpay's checkout and the academy's own Google tag, which Settings can
   // switch on at any time.
   `script-src 'self' 'unsafe-inline' 'unsafe-eval' https://checkout.razorpay.com https://*.razorpay.com https://www.googletagmanager.com https://www.google-analytics.com`,
@@ -120,11 +122,13 @@ const nextConfig: NextConfig = {
               "camera=(self), microphone=(self), display-capture=(self), geolocation=(), payment=(self), interest-cohort=()",
           },
           {
-            // The framing clause stays enforced on its own: it is the
-            // clickjacking defence, it carries no risk of breaking a page,
-            // and it should not wait for the rest of the policy to settle.
+            // The two clauses that are safe to enforce on their own, ahead of
+            // the rest of the policy settling: frame-ancestors is the
+            // clickjacking defence, and upgrade-insecure-requests only rewrites
+            // a stray http:// subresource to https:// — neither can break a
+            // working page, and both are meaningless delivered report-only.
             key: "Content-Security-Policy",
-            value: "frame-ancestors 'self'",
+            value: "frame-ancestors 'self'; upgrade-insecure-requests",
           },
           {
             // Everything else, watched rather than enforced. See the note
