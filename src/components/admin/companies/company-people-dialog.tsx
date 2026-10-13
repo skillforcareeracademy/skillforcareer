@@ -8,6 +8,7 @@ import {
   Check,
   Copy,
   Loader2,
+  LogIn,
   Search,
   ShieldCheck,
   UserMinus,
@@ -169,6 +170,29 @@ export function CompanyPeopleDialog({
     return () => clearTimeout(t);
   }, [open, tab, search, loadCandidates]);
 
+  // Personalised login — sign in as this person to see and run the company as
+  // they do. The endpoint is the same "Secret login" used from Users, and it
+  // alone decides who may do it: only a super admin may take over a company
+  // admin. Nothing on the company's side records or is told of it.
+  async function signInAs(person: CompanyPerson) {
+    setBusy(`imp:${person.id}`);
+    try {
+      const res = await api.post<{ redirect?: string }>(
+        `/api/admin/users/${person.id}/impersonate`,
+        {},
+      );
+      toast.success(`Signed in as ${person.name}.`);
+      window.location.href = res.redirect ?? "/admin";
+    } catch (error) {
+      toast.error(
+        error instanceof ApiError
+          ? error.message
+          : "Couldn't sign in as this person.",
+      );
+      setBusy(null);
+    }
+  }
+
   async function add() {
     if (picked.length === 0) return;
     setBusy("add");
@@ -307,7 +331,22 @@ export function CompanyPeopleDialog({
                       <Button
                         variant="ghost"
                         size="icon-sm"
+                        aria-label={`Sign in as ${p.name}`}
+                        title={`Sign in as ${p.name}`}
+                        disabled={busy === `imp:${p.id}`}
+                        onClick={() => void signInAs(p)}
+                      >
+                        {busy === `imp:${p.id}` ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : (
+                          <LogIn className="size-4" />
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
                         aria-label={`Open ${p.name}`}
+                        title={`Open ${p.name}'s profile`}
                         render={<Link href={`/admin/users/${p.id}`} />}
                       >
                         <ArrowRight className="size-4" />
@@ -316,6 +355,7 @@ export function CompanyPeopleDialog({
                         variant="ghost"
                         size="icon-sm"
                         aria-label={`Take ${p.name} out`}
+                        title={`Take ${p.name} out of the company`}
                         disabled={busy === p.id}
                         onClick={() => void remove(p)}
                       >
@@ -329,6 +369,16 @@ export function CompanyPeopleDialog({
                   }
                 />
               ))}
+              {people && people.length > 0 && (
+                <p className="text-muted-foreground flex items-start gap-2 pt-1 text-xs">
+                  <LogIn className="mt-0.5 size-3.5 shrink-0" />
+                  <span>
+                    Sign in as anyone here to see and run the company exactly as
+                    they do — a banner reminds you, and one click returns you to
+                    your own account.
+                  </span>
+                </p>
+              )}
             </TabsContent>
 
             <TabsContent value="add" className="space-y-2">
