@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import {
   Building2,
+  ChevronRight,
   Crown,
   KeyRound,
   Loader2,
@@ -43,6 +44,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { CompanyFormDialog } from "./company-form-dialog";
+import { CompanyPeopleDialog } from "./company-people-dialog";
 
 const SEAT_LABEL: Record<string, string> = {
   STUDENT: "Learners",
@@ -69,6 +71,7 @@ export function CompaniesClient({
   const [editing, setEditing] = useState<CompanyRow | null>(null);
   const [creating, setCreating] = useState(false);
   const [removing, setRemoving] = useState<CompanyRow | null>(null);
+  const [opening, setOpening] = useState<CompanyRow | null>(null);
   const [busy, setBusy] = useState(false);
 
   const customers = companies.filter((c) => !c.isOwner);
@@ -122,7 +125,17 @@ export function CompaniesClient({
                   ) : (
                     <Building2 className="text-muted-foreground size-4" />
                   )}
-                  <span className="font-medium">{c.name}</span>
+                  {c.isOwner ? (
+                    <span className="font-medium">{c.name}</span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="hover:text-primary cursor-pointer font-medium transition-colors"
+                      onClick={() => setOpening(c)}
+                    >
+                      {c.name}
+                    </button>
+                  )}
                   {c.isOwner ? (
                     <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
                       The academy
@@ -136,7 +149,8 @@ export function CompaniesClient({
                           : "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
                       }
                     >
-                      {COMPANY_STATUS_LABEL[c.status as CompanyStatus] ?? c.status}
+                      {COMPANY_STATUS_LABEL[c.status as CompanyStatus] ??
+                        c.status}
                     </Badge>
                   )}
                   {c.plan && <Badge variant="outline">{c.plan}</Badge>}
@@ -167,7 +181,9 @@ export function CompaniesClient({
                       return (
                         <span
                           key={role}
-                          className={full ? "text-rose-600 dark:text-rose-400" : ""}
+                          className={
+                            full ? "text-rose-600 dark:text-rose-400" : ""
+                          }
                         >
                           {SEAT_LABEL[role] ?? role} {used}
                           {limit != null ? `/${limit}` : ""}
@@ -177,37 +193,45 @@ export function CompaniesClient({
                 </div>
               </div>
 
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  render={<Button variant="ghost" size="icon-sm" />}
-                  aria-label="Actions"
-                >
-                  <MoreHorizontal className="size-4" />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => setEditing(c)}>
-                    <Pencil className="size-4" />{" "}
-                    {c.isOwner ? "Edit details" : "Edit & seats"}
-                  </DropdownMenuItem>
-                  {!c.isOwner && (
-                    <DropdownMenuItem
-                      onClick={() =>
-                        router.push(`/admin/users?company=${c.id}`)
-                      }
-                    >
-                      <Users className="size-4" /> Its people
+              <div className="flex shrink-0 items-center gap-1">
+                {!c.isOwner && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setOpening(c)}
+                  >
+                    <Users className="size-4" /> Open
+                    <ChevronRight className="size-3.5" />
+                  </Button>
+                )}
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={<Button variant="ghost" size="icon-sm" />}
+                    aria-label="Actions"
+                  >
+                    <MoreHorizontal className="size-4" />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => setEditing(c)}>
+                      <Pencil className="size-4" />{" "}
+                      {c.isOwner ? "Edit details" : "Edit & seats"}
                     </DropdownMenuItem>
-                  )}
-                  {!c.isOwner && (
-                    <DropdownMenuItem
-                      className="text-destructive focus:text-destructive"
-                      onClick={() => setRemoving(c)}
-                    >
-                      <Trash2 className="size-4" /> Remove
-                    </DropdownMenuItem>
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
+                    {!c.isOwner && (
+                      <DropdownMenuItem onClick={() => setOpening(c)}>
+                        <Users className="size-4" /> Its people
+                      </DropdownMenuItem>
+                    )}
+                    {!c.isOwner && (
+                      <DropdownMenuItem
+                        className="text-destructive focus:text-destructive"
+                        onClick={() => setRemoving(c)}
+                      >
+                        <Trash2 className="size-4" /> Remove
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </CardContent>
           </Card>
         ))}
@@ -234,6 +258,15 @@ export function CompaniesClient({
           their admin under Users and use Secret login.
         </span>
       </p>
+
+      {opening && (
+        <CompanyPeopleDialog
+          company={opening}
+          rootDomain={rootDomain}
+          open
+          onOpenChange={(o) => !o && setOpening(null)}
+        />
+      )}
 
       {(creating || editing) && (
         <CompanyFormDialog

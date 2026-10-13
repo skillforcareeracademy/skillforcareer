@@ -2,9 +2,11 @@ import { randomBytes } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
-import { ROLES } from "@/config/roles";
-import { seatUsage, type SeatRole } from "@/lib/auth/tenant";
-import type { CompanyInput } from "@/lib/validations/company";
+import { ROLES, type Role } from "@/config/roles";
+import { assertSeatAvailable, seatUsage, type SeatRole } from "@/lib/auth/tenant";
+import type { CompanyInput, CompanyPersonInput } from "@/lib/validations/company";
+import type { CreateUserAdminInput } from "@/lib/validations/user";
+import { createUserAdmin } from "@/server/services/user-service";
 
 /**
  * Companies — the organisations the platform is sold to.
@@ -286,4 +288,206 @@ export async function rotateCompanyTokens(id: string): Promise<void> {
     where: { id },
     data: { enrolToken: token(), formToken: token() },
   });
+}
+
+// ── Who belongs to a company ─────────────────────────────────────────────────
+
+export interface CompanyPerson {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  roleLabel: string;
+  avatarUrl: string | null;
+  status: string;
+}
+
+const PERSON_SELECT = {
+  id: true,
+  name: true,
+  email: true,
+  avatarUrl: true,
+  status: true,
+  role: { select: { slug: true, name: true } },
+} satisfies Prisma.UserSelect;
+
+type PersonRow = Prisma.UserGetPayload<{ select: typeof PERSON_SELECT }>;
+
+const toPerson = (u: PersonRow): CompanyPerson => ({
+  id: u.id,
+  name: u.name,
+  email: u.email,
+  role: u.role.slug,
+  roleLabel: u.role.name,
+  avatarUrl: u.avatarUrl,
+  status: u.status,
+});
+
+/** Everyone who belongs to this company. */
+export async function listCompanyPeople(
+  companyId: string,
+): Promise<CompanyPerson[]> {
+  const rows = await prisma.user.findMany({
+    where: { companyId },
+    orderBy: [{ name: "asc" }],
+    select: PERSON_SELECT,
+    take: 500,
+  });
+  return rows.map(toPerson);
+}
+
+/**
+ * The roles a company's own account may hold.
+ *
+ * An academy Admin is deliberately not one of them. Its role carries sections
+ * that belong to the academy and no seat kind meters it, so moving one into a
+ * company would hand a customer's staff the academy's own panel and cost the
+ * customer nothing. A company's admin is a Company Admin.
+ */
+const COMPANY_ROLES: readonly string[] = [
+  ROLES.COMPANY_ADMIN,
+  ROLES.INSTRUCTOR,
+  ROLES.STUDENT,
+  ROLES.SALES_AGENT,
+];
+
+/**
+ * Accounts that could be moved into a company.
+ *
+ * Only the academy's own people are offered — anybody already in a company
+ * belongs to that one, and moving them between customers behind their back is
+ * not something a search box should make easy.
+ */
+export async function listAssignableUsers(
+  search: string,
+): Promise<CompanyPerson[]> {
+  const q = search.trim();
+  const rows = await prisma.user.findMany({
+    where: {
+      companyId: null,
+      role: { slug: { in: [...COMPANY_ROLES] } },
+      ...(q
+        ? {
+            OR: [
+              { name: { contains: q } },
+              { email: { contains: q } },
+            ],
+          }
+        : {}),
+    },
+    orderBy: [{ name: "asc" }],
+    select: PERSON_SELECT,
+    take: 25,
+  });
+  return rows.map(toPerson);
+}
+
+/**
+ * Move people into a company.
+ *
+ * Each one is checked against that company's seats for its own kind, one at a
+ * time rather than in bulk: handing over five learners when four places are
+ * left should place four and say why the fifth did not, instead of refusing
+ * the lot or quietly exceeding the limit.
+ */
+export async function addPeopleToCompany(
+  companyId: string,
+  userIds: string[],
+): Promise<{ added: number; skipped: { name: string; reason: string }[] }> {
+  const company = await prisma.company.findUnique({
+    where: { id: companyId },
+    select: { isOwner: true },
+  });
+  if (!company) throw AppError.notFound("That company isn't here.");
+  if (company.isOwner) {
+    throw AppError.badRequest(
+      "The academy's own people are everybody without a company — there is nothing to assign.",
+    );
+  }
+
+  const people = await prisma.user.findMany({
+    where: { id: { in: userIds } },
+    select: { id: true, name: true, companyId: true, role: { select: { slug: true } } },
+  });
+
+  let added = 0;
+  const skipped: { name: string; reason: string }[] = [];
+  for (const person of people) {
+    if (person.companyId === companyId) continue;
+    if (person.companyId) {
+      skipped.push({ name: person.name, reason: "Already with another company" });
+      continue;
+    }
+    if (!COMPANY_ROLES.includes(person.role.slug)) {
+      skipped.push({
+        name: person.name,
+        reason: `A ${person.role.slug === ROLES.SUPER_ADMIN ? "super admin" : "academy admin"} cannot belong to a company`,
+      });
+      continue;
+    }
+    try {
+      await assertSeatAvailable(companyId, person.role.slug as Role);
+    } catch (error) {
+      skipped.push({
+        name: person.name,
+        reason: error instanceof AppError ? error.message : "No seat left",
+      });
+      continue;
+    }
+    await prisma.user.updateMany({
+      where: { id: person.id },
+      data: { companyId },
+    });
+    added += 1;
+  }
+  return { added, skipped };
+}
+
+/**
+ * Take somebody out of a company.
+ *
+ * They become one of the academy's own again rather than being deleted —
+ * removing a person from a customer is an administrative move, not the end of
+ * their account, their enrolments or their certificates.
+ */
+export async function removePersonFromCompany(
+  companyId: string,
+  userId: string,
+): Promise<void> {
+  const person = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { companyId: true },
+  });
+  if (!person || person.companyId !== companyId) {
+    throw AppError.notFound("That person isn't in this company.");
+  }
+  await prisma.user.updateMany({ where: { id: userId }, data: { companyId: null } });
+}
+
+/**
+ * A brand-new account that starts inside a company.
+ *
+ * The company that has just been created has nobody in it and no free account
+ * to move in, so this is how its first admin comes to exist — without it, a
+ * new customer could be set up but never handed over.
+ */
+export async function createCompanyPerson(
+  companyId: string,
+  input: CompanyPersonInput,
+): Promise<{ id: string }> {
+  const company = await prisma.company.findUnique({
+    where: { id: companyId },
+    select: { isOwner: true },
+  });
+  if (!company) throw AppError.notFound("That company isn't here.");
+  if (company.isOwner) {
+    throw AppError.badRequest("Make the academy's own people under Users.");
+  }
+  await assertSeatAvailable(companyId, input.roleSlug as Role);
+  // The company's own roles are a different set from the academy's, so the
+  // shape widens here rather than in the general user form.
+  return createUserAdmin(
+    { ...input, status: "ACTIVE", roleSlug: input.roleSlug as CreateUserAdminInput["roleSlug"] },
+    companyId,
+  );
 }

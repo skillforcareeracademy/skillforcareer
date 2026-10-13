@@ -264,6 +264,12 @@ async function paidTotalsFor(userIds: string[]): Promise<Map<string, number>> {
  *  pre-verified (they skip the email-OTP flow) and default to ACTIVE. */
 export async function createUserAdmin(
   input: CreateUserAdminInput,
+  /**
+   * The company the account belongs to, passed as an argument rather than
+   * taken from the request body: only the paths that have already checked the
+   * caller may own a company can set it.
+   */
+  companyId: string | null = null,
 ): Promise<{ id: string }> {
   const existing = await prisma.user.findUnique({
     where: { email: input.email },
@@ -296,6 +302,7 @@ export async function createUserAdmin(
       passwordHash,
       roleId: role.id,
       status: input.status as Prisma.UserUncheckedCreateInput["status"],
+      companyId,
       // Admin-provisioned accounts are trusted — no verification email needed.
       emailVerified: new Date(),
     },

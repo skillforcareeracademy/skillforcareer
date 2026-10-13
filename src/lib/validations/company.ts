@@ -66,3 +66,27 @@ export const companySchema = z.object({
 });
 
 export type CompanyInput = z.infer<typeof companySchema>;
+
+/**
+ * The kinds of account a company may hold, and the form that makes one.
+ *
+ * `COMPANY_ADMIN` lives here and not in the general user form on purpose: an
+ * account with that role but no company would be scoped to nothing, which is
+ * the same as being scoped to everything. It can only be made where a company
+ * is already in hand.
+ */
+export const COMPANY_PERSON_ROLES = [
+  "COMPANY_ADMIN",
+  "INSTRUCTOR",
+  "STUDENT",
+  "SALES_AGENT",
+] as const;
+
+export const companyPersonSchema = z.object({
+  name: z.string().trim().min(2, "Name is too short.").max(120),
+  email: z.string().trim().toLowerCase().email("Enter a valid email."),
+  password: z.string().min(8, "Password must be at least 8 characters."),
+  roleSlug: z.enum(COMPANY_PERSON_ROLES),
+});
+
+export type CompanyPersonInput = z.infer<typeof companyPersonSchema>;
