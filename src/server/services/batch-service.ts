@@ -12,6 +12,7 @@ import {
 import { activeStudentWhere } from "@/server/repositories/role-filters";
 import type { BatchInput, BatchSchedule } from "@/lib/validations/batch";
 import { ensureBatchIdentity } from "./academy-ids-service";
+import { copyTitle } from "@/lib/validations/import-mode";
 import { academyDayEnd, academyDayStart } from "@/lib/ist";
 
 /**
@@ -346,6 +347,104 @@ export async function createBatch(input: BatchInput): Promise<string> {
   // from the moment it exists rather than whenever a list happens to be opened.
   await ensureBatchIdentity(batch.id);
   return batch.id;
+}
+
+/**
+ * A copy of a cohort: its schedule, its capacity, its teaching team.
+ *
+ * "Duplicate batches ka bhi option nhi hai." A new intake of the same course
+ * runs on the same timetable with the same instructors, so that is what
+ * carries. Nobody comes with it — no enrolments, no attendance, no classes
+ * already held — and it gets its own code and its own permanent batch number,
+ * because the number is printed on certificates and cannot be shared.
+ *
+ * Content set for the original comes too: the quizzes, assignments, study
+ * material and curriculums handed to that cohort. A second intake of a course
+ * is taught the same things, and re-attaching them by hand is the tedious half
+ * of setting one up.
+ */
+export async function duplicateBatch(id: string): Promise<string> {
+  const source = await prisma.batch.findUnique({
+    where: { id },
+    include: {
+      associates: { select: { userId: true } },
+      quizzes: { select: { quizId: true } },
+      assignments: { select: { assignmentId: true } },
+      studyMaterials: { select: { materialId: true } },
+      curriculumBatches: { select: { curriculumId: true } },
+      groupAccess: { select: { groupId: true } },
+    },
+  });
+  if (!source) throw AppError.notFound("That batch no longer exists.");
+
+  const siblings = await prisma.batch.findMany({
+    where: { courseId: source.courseId },
+    select: { name: true },
+  });
+  const name = copyTitle(
+    source.name,
+    new Set(siblings.map((b) => b.name.toLowerCase())),
+  );
+
+  const copy = await prisma.batch.create({
+    data: {
+      name,
+      code: await uniqueCode(name),
+      courseId: source.courseId,
+      instructorId: source.instructorId,
+      // A copy is the next intake, whatever state the original is in.
+      status: "UPCOMING",
+      capacity: source.capacity,
+      startDate: source.startDate,
+      endDate: source.endDate,
+      schedule: source.schedule ?? Prisma.DbNull,
+      enrolledCount: 0,
+    },
+    select: { id: true },
+  });
+
+  if (source.associates.length > 0) {
+    await prisma.batchInstructor.createMany({
+      data: source.associates.map((a) => ({ batchId: copy.id, userId: a.userId })),
+    });
+  }
+  if (source.quizzes.length > 0) {
+    await prisma.quizBatch.createMany({
+      data: source.quizzes.map((q) => ({ batchId: copy.id, quizId: q.quizId })),
+    });
+  }
+  if (source.assignments.length > 0) {
+    await prisma.assignmentBatch.createMany({
+      data: source.assignments.map((a) => ({
+        batchId: copy.id,
+        assignmentId: a.assignmentId,
+      })),
+    });
+  }
+  if (source.studyMaterials.length > 0) {
+    await prisma.studyMaterialBatch.createMany({
+      data: source.studyMaterials.map((m) => ({
+        batchId: copy.id,
+        materialId: m.materialId,
+      })),
+    });
+  }
+  if (source.curriculumBatches.length > 0) {
+    await prisma.curriculumBatch.createMany({
+      data: source.curriculumBatches.map((c) => ({
+        batchId: copy.id,
+        curriculumId: c.curriculumId,
+      })),
+    });
+  }
+  if (source.groupAccess.length > 0) {
+    await prisma.batchGroupAccess.createMany({
+      data: source.groupAccess.map((g) => ({ batchId: copy.id, groupId: g.groupId })),
+    });
+  }
+
+  await ensureBatchIdentity(copy.id);
+  return copy.id;
 }
 
 export async function updateBatch(id: string, input: BatchInput): Promise<void> {

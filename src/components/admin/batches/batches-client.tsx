@@ -9,6 +9,7 @@ import {
   MoreHorizontal,
   Pencil,
   Trash2,
+  Copy,
   Loader2,
   Layers,
   CalendarClock,
@@ -284,6 +285,27 @@ export function BatchesClient({
   const [form, setForm] = useState<FormState>(EMPTY);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<BatchRow | null>(null);
+  /** Which cohort is being copied, so its row can show it working. */
+  const [duplicating, setDuplicating] = useState<string | null>(null);
+
+  /** Copy a cohort and refresh; the copy arrives as the next intake. */
+  async function duplicate(b: BatchRow) {
+    setDuplicating(b.id);
+    try {
+      const res = await api.post<{ message: string }>(
+        `/api/batches/${b.id}/duplicate`,
+        {},
+      );
+      toast.success(res.message);
+      router.refresh();
+    } catch (error) {
+      toast.error(
+        error instanceof ApiError ? error.message : "Couldn't copy that batch.",
+      );
+    } finally {
+      setDuplicating(null);
+    }
+  }
   const [detailId, setDetailId] = useState<string | null>(null);
   const [managing, setManaging] = useState<BatchStudentsTarget | null>(null);
 
@@ -526,6 +548,17 @@ export function BatchesClient({
 
   const columns: Column<BatchRow>[] = [
     {
+      // First and pinned. At the far right of a table this wide it took a long
+      // horizontal scroll to reach — "ye 3 dots sabse aage lekar aao. Mujhe
+      // scroll krna pdta hai left right bhot to access these three dots."
+      key: "actions",
+      header: <span className="sr-only">Actions</span>,
+      headerClassName: "w-12",
+      sticky: "left",
+      width: 56,
+      cell: (b) => rowActions(b),
+    },
+    {
       key: "name",
       header: "Batch",
       cell: (b) => (
@@ -638,12 +671,6 @@ export function BatchesClient({
         </Badge>
       ),
     },
-    {
-      key: "actions",
-      header: <span className="sr-only">Actions</span>,
-      headerClassName: "w-10",
-      cell: (b) => rowActions(b),
-    },
   ];
 
   function rowActions(b: BatchRow) {
@@ -669,6 +696,20 @@ export function BatchesClient({
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => manageStudents(b)}>
                 <UserPlus className="size-4" /> Manage students
+              </DropdownMenuItem>
+              {/* "Duplicate batches ka bhi option nhi hai." The next intake of
+                  a course runs the same timetable with the same team and the
+                  same content set for it; only the people are new. */}
+              <DropdownMenuItem
+                disabled={duplicating === b.id}
+                onClick={() => void duplicate(b)}
+              >
+                {duplicating === b.id ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Copy className="size-4" />
+                )}
+                Duplicate
               </DropdownMenuItem>
               <DropdownMenuItem
                 className="text-destructive focus:text-destructive"
@@ -793,6 +834,9 @@ export function BatchesClient({
         columns={columns}
         data={batches}
         rowKey={(b) => b.id}
+        // Named, so each person's column widths are remembered on their own
+        // screen — "allow me to adjust the column width of this list".
+        storageKey="admin-batches"
         renderCard={renderBatchCard}
         emptyIcon={CalendarDays}
         emptyTitle={hasFilters ? "No matching batches" : "No batches yet"}

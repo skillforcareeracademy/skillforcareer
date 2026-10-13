@@ -9,6 +9,7 @@ import {
   Trash2,
   Send,
   Undo2,
+  Copy,
   Loader2,
   BookOpen,
   Users,
@@ -148,6 +149,8 @@ export function CoursesClient({
   const [newTitle, setNewTitle] = useState("");
   const [newCategory, setNewCategory] = useState("");
   const [creating, setCreating] = useState(false);
+  /** Which course is being copied, so its row can show it working. */
+  const [duplicating, setDuplicating] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<CourseRow | null>(null);
 
   const totalPages = Math.max(1, Math.ceil(total / query.pageSize));
@@ -219,6 +222,24 @@ export function CoursesClient({
         err instanceof ApiError ? err.message : "Couldn't create course.",
       );
       setCreating(false);
+    }
+  }
+
+  /** Copy a course and open the copy, which is where the work continues. */
+  async function duplicate(c: CourseRow) {
+    setDuplicating(c.id);
+    try {
+      const res = await api.post<{ id: string; message: string }>(
+        `/api/courses/${c.id}/duplicate`,
+        {},
+      );
+      toast.success(res.message);
+      router.push(`${basePath}/${res.id}`);
+    } catch (error) {
+      toast.error(
+        error instanceof ApiError ? error.message : "Couldn't copy that course.",
+      );
+      setDuplicating(null);
     }
   }
 
@@ -408,6 +429,18 @@ export function CoursesClient({
               onClick={() => router.push(`${basePath}/${c.id}`)}
             >
               <Pencil className="size-4" /> Edit
+            </DropdownMenuItem>
+            {/* "Duplicate course ka option nhi hai abhi tak." */}
+            <DropdownMenuItem
+              disabled={duplicating === c.id}
+              onClick={() => void duplicate(c)}
+            >
+              {duplicating === c.id ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Copy className="size-4" />
+              )}
+              Duplicate
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => togglePublish(c)}>
               {c.status === "PUBLISHED" ? (

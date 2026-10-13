@@ -8,6 +8,7 @@ import {
 } from "@/lib/validations/course";
 import { invalidateHeaderMenus } from "./header-menu-service";
 import { ensureCourseIdentity } from "./academy-ids-service";
+import { copyTitle } from "@/lib/validations/import-mode";
 
 function slugify(value: string): string {
   return value
@@ -70,6 +71,105 @@ export async function createCourse(
   // Its number and abbreviation — the SFCMC001 every batch under it inherits.
   await ensureCourseIdentity(course.id);
   return course.id;
+}
+
+/**
+ * A copy of a course, with its chapters and lessons.
+ *
+ * "Duplicate course ka option nhi hai abhi tak." What is being reused is the
+ * work of building the syllabus — so the structure comes, and everything
+ * earned against the original stays behind: no enrolments, no reviews, no
+ * ratings, no discussions. The copy is a draft with its own slug and its own
+ * number, because two courses sharing an identifier is how the wrong one ends
+ * up on an invoice.
+ */
+export async function duplicateCourse(
+  id: string,
+  instructorId: string,
+): Promise<string> {
+  const source = await prisma.course.findUnique({
+    where: { id },
+    include: {
+      chapters: {
+        orderBy: { order: "asc" },
+        include: { lessons: { orderBy: { order: "asc" } } },
+      },
+    },
+  });
+  if (!source) throw AppError.notFound("That course no longer exists.");
+
+  const taken = await prisma.course.findMany({ select: { title: true } });
+  const title = copyTitle(
+    source.title,
+    new Set(taken.map((c) => c.title.toLowerCase())),
+  );
+
+  const copy = await prisma.course.create({
+    data: {
+      title,
+      slug: await uniqueSlug(slugify(title)),
+      subtitle: source.subtitle,
+      description: source.description,
+      thumbnailUrl: source.thumbnailUrl,
+      promoVideoUrl: source.promoVideoUrl,
+      level: source.level,
+      deliveryMode: source.deliveryMode,
+      language: source.language,
+      pricingType: source.pricingType,
+      price: source.price,
+      discountPrice: source.discountPrice,
+      currency: source.currency,
+      requirements: source.requirements ?? Prisma.DbNull,
+      objectives: source.objectives ?? Prisma.DbNull,
+      tags: source.tags ?? Prisma.DbNull,
+      durationMinutes: source.durationMinutes,
+      icon: source.icon,
+      pageDisplay: source.pageDisplay ?? Prisma.DbNull,
+      categoryId: source.categoryId,
+      // The person making the copy owns it, not whoever wrote the original.
+      instructorId,
+      // Never live on arrival, and nothing it has not earned.
+      status: "DRAFT",
+      isFeatured: false,
+      ratingAvg: 0,
+      ratingCount: 0,
+      enrollmentCount: 0,
+    },
+    select: { id: true },
+  });
+
+  // Chapters one at a time: each owns its lessons, and `createMany` cannot
+  // write the two levels together.
+  for (const chapter of source.chapters) {
+    await prisma.chapter.create({
+      data: {
+        courseId: copy.id,
+        title: chapter.title,
+        description: chapter.description,
+        order: chapter.order,
+        lessons: {
+          create: chapter.lessons.map((l) => ({
+            title: l.title,
+            type: l.type,
+            order: l.order,
+            isPreview: l.isPreview,
+            durationSeconds: l.durationSeconds,
+            content: l.content,
+            releaseMode: l.releaseMode,
+            releaseAt: l.releaseAt,
+            dripDays: l.dripDays,
+            viewLimit: l.viewLimit,
+            downloadLimit: l.downloadLimit,
+            downloadsEnabled: l.downloadsEnabled,
+          })),
+        },
+      },
+      select: { id: true },
+    });
+  }
+
+  await ensureCourseIdentity(copy.id);
+  return copy.id;
 }
 
 export async function updateCourse(
