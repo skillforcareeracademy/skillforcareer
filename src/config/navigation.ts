@@ -45,6 +45,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { ROLES, type Role } from "./roles";
+import { permissionForAdminPath } from "./section-permissions";
 
 /** Nav items that only appear when something is switched on for the viewer. */
 export type NavFeature = "codingPractice" | "curriculum";
@@ -250,20 +251,43 @@ const ROLE_BASE: Record<Role, string> = {
  * `features` lists what is switched on for this viewer; items gated on anything
  * else are left out.
  */
-export function navFor(role: Role, features: readonly NavFeature[] = []): NavSection[] {
+export function navFor(
+  role: Role,
+  features: readonly NavFeature[] = [],
+  permissions: readonly string[] = [],
+): NavSection[] {
   const base = ROLE_BASE[role];
+  const held = new Set(permissions);
+
   return NAV_SECTIONS.map((section) => ({
     label: section.label,
     items: section.items
-      .filter((item) => item.roles.includes(role))
-      .filter((item) => !item.feature || features.includes(item.feature))
-      .map((item) => ({ ...item, href: item.external ? item.href : `${base}${item.href}` })),
+      .map((item) => {
+        if (item.roles.includes(role)) {
+          if (item.feature && !features.includes(item.feature)) return null;
+          return { ...item, href: item.external ? item.href : `${base}${item.href}` };
+        }
+        // Not their role — but an admin may have granted this one person the
+        // permission that opens the page. The page itself already asks for
+        // exactly this (see section-permissions.ts), and it lives under /admin,
+        // so that is where the link goes: an instructor with `leads:manage`
+        // gets /admin/leads, because /instructor/leads does not exist.
+        if (item.external) return null;
+        const needed = permissionForAdminPath(item.href);
+        if (!needed || !held.has(needed)) return null;
+        return { ...item, href: `${ROLE_BASE[ROLES.ADMIN]}${item.href}` };
+      })
+      .filter((item): item is NavItem => item !== null),
   })).filter((section) => section.items.length > 0);
 }
 
 /** Flattened nav items for a role (used by the mobile bottom nav). */
-export function flatNavFor(role: Role): NavItem[] {
-  return navFor(role).flatMap((s) => s.items);
+export function flatNavFor(
+  role: Role,
+  features: readonly NavFeature[] = [],
+  permissions: readonly string[] = [],
+): NavItem[] {
+  return navFor(role, features, permissions).flatMap((s) => s.items);
 }
 
 /** True when `href` is the active route for `pathname` (exact for role home). */

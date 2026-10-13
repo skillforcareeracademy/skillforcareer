@@ -46,7 +46,7 @@ export function DashboardShell({
   return (
     <SidebarProvider>
       <AuthHydrator user={user} />
-      <DashboardSidebar role={user.role} features={navFeatures} />
+      <DashboardSidebar role={user.role} features={navFeatures} permissions={user.permissions} />
       <SidebarInset>
         {impersonating && (
           <ImpersonationBanner name={user.name} email={user.email} />
@@ -54,8 +54,8 @@ export function DashboardShell({
         <DashboardHeader user={user} />
         <main className="min-w-0 flex-1 p-4 pb-24 sm:p-6 md:pb-6">{children}</main>
       </SidebarInset>
-      <CommandPalette role={user.role} features={navFeatures} />
-      <MobileNav role={user.role} />
+      <CommandPalette role={user.role} features={navFeatures} permissions={user.permissions} />
+      <MobileNav role={user.role} features={navFeatures} permissions={user.permissions} />
       {/* The guided walkthrough — "jaise hi panel khule tour guide and also
           voice guide honi chahiye". It decides for itself whether this is a
           first visit. */}

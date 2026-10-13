@@ -5,6 +5,7 @@ import { accessCookieOptions, refreshCookieOptions } from "@/lib/auth/session";
 import { renewFromRefreshToken } from "@/lib/auth/renew";
 import { ROLE_HOME, ROLES, type Role } from "@/config/roles";
 import { companyAdminMayOpen } from "@/lib/auth/tenant-sections";
+import { permissionForAdminPath } from "@/config/section-permissions";
 import { SECTION_HEADER } from "@/lib/auth/section";
 import { prisma } from "@/lib/prisma";
 
@@ -145,6 +146,37 @@ export async function proxy(req: NextRequest) {
 }
 
 /**
+ * Does this person hold `key`, counting their roles AND their own overrides?
+ *
+ * A revoke beats a grant, the same way auth-service resolves it: taking one
+ * thing back from one person is the only reason that row exists, and it must
+ * not be undone by the role that granted it.
+ */
+async function holdsPermission(userId: string, key: string): Promise<boolean> {
+  const rows = await prisma.$queryRaw<{ source: string; allow: number }[]>`
+    SELECT 'role' AS source, 1 AS allow
+      FROM \`User\` u
+      JOIN \`RolePermission\` rp ON rp.roleId = u.roleId
+      JOIN \`Permission\` p ON p.id = rp.permissionId AND p.key = ${key}
+     WHERE u.id = ${userId}
+    UNION ALL
+    SELECT 'role' AS source, 1 AS allow
+      FROM \`UserRole\` ur
+      JOIN \`RolePermission\` rp ON rp.roleId = ur.roleId
+      JOIN \`Permission\` p ON p.id = rp.permissionId AND p.key = ${key}
+     WHERE ur.userId = ${userId}
+    UNION ALL
+    SELECT 'user' AS source, up.allow AS allow
+      FROM \`UserPermission\` up
+      JOIN \`Permission\` p ON p.id = up.permissionId AND p.key = ${key}
+     WHERE up.userId = ${userId}`;
+
+  const override = rows.find((r) => r.source === "user");
+  if (override) return Boolean(override.allow);
+  return rows.some((r) => r.source === "role");
+}
+
+/**
  * Continue the request, or bounce to the caller's own dashboard home.
  *
  * The token carries the primary role only, and it was written at sign-in, so a
@@ -157,10 +189,25 @@ async function authorize(req: NextRequest, userId: string, role: Role, section: 
     const extra = await prisma.$queryRaw<{ slug: string }[]>`
       SELECT r.slug FROM \`UserRole\` ur JOIN \`Role\` r ON r.id = ur.roleId WHERE ur.userId = ${userId}`;
     if (!extra.some((r) => SECTION_ROLES[section].includes(r.slug as Role))) {
-      const url = req.nextUrl.clone();
-      url.pathname = ROLE_HOME[role] ?? "/login";
-      url.search = "";
-      return NextResponse.redirect(url);
+      // One last look, and the reason user-level permissions exist at all: an
+      // admin may have granted THIS person the permission that opens THIS page
+      // ("sirf shagun ko dena hai"). Before this, the redirect below fired
+      // first and the page's own requirePermission() never ran — so granting
+      // somebody `leads:manage` changed nothing they could see.
+      const needed =
+        section === "/admin"
+          ? permissionForAdminPath(req.nextUrl.pathname.slice("/admin".length))
+          : null;
+      if (!needed || !(await holdsPermission(userId, needed))) {
+        const url = req.nextUrl.clone();
+        url.pathname = ROLE_HOME[role] ?? "/login";
+        url.search = "";
+        return NextResponse.redirect(url);
+      }
+      // Allowed by permission, so the company-admin allowlist below — which is
+      // about a role, not this person — does not apply.
+      if (section) req.headers.set(SECTION_HEADER, section);
+      return NextResponse.next({ request: { headers: req.headers } });
     }
   }
   // A company admin may be inside /admin and still have no business on this

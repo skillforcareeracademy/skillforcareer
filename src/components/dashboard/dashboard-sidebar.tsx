@@ -27,13 +27,17 @@ import { imageProps } from "@/lib/image-sizes";
 export function DashboardSidebar({
   role,
   features,
+  permissions,
 }: {
   role: Role;
   features?: readonly NavFeature[];
+  /** The viewer's effective permissions — a granted page is listed even when
+      their role would not show it (src/config/section-permissions.ts). */
+  permissions?: readonly string[];
 }) {
   const pathname = usePathname();
   const { isMobile, setOpenMobile } = useSidebar();
-  const sections = navFor(role, features);
+  const sections = navFor(role, features, permissions);
 
   /**
    * On a phone the sidebar is a sheet over the page, so following a link left

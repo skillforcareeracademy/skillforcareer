@@ -20,15 +20,18 @@ import type { Role } from "@/config/roles";
 export function CommandPalette({
   role,
   features,
+  permissions,
 }: {
   role: Role;
   features?: readonly NavFeature[];
+  /** So ⌘K finds a page granted to this person alone, like the sidebar does. */
+  permissions?: readonly string[];
 }) {
   const open = useUIStore((s) => s.commandOpen);
   const setOpen = useUIStore((s) => s.setCommandOpen);
   const toggle = useUIStore((s) => s.toggleCommand);
   const router = useRouter();
-  const sections = navFor(role, features);
+  const sections = navFor(role, features, permissions);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

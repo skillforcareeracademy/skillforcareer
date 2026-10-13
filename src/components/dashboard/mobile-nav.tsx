@@ -2,14 +2,23 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { flatNavFor, isNavActive } from "@/config/navigation";
+import { flatNavFor, isNavActive, type NavFeature } from "@/config/navigation";
 import { cn } from "@/lib/utils";
 import type { Role } from "@/config/roles";
 
-/** Fixed bottom navigation for mobile (first few role nav items). */
-export function MobileNav({ role }: { role: Role }) {
+/** Fixed bottom navigation for mobile (first few nav items). */
+export function MobileNav({
+  role,
+  features,
+  permissions,
+}: {
+  role: Role;
+  features?: readonly NavFeature[];
+  /** So a page granted to this person alone is reachable on a phone too. */
+  permissions?: readonly string[];
+}) {
   const pathname = usePathname();
-  const items = flatNavFor(role).slice(0, 5);
+  const items = flatNavFor(role, features, permissions).slice(0, 5);
 
   return (
     <nav className="bg-background/95 fixed inset-x-0 bottom-0 z-40 flex border-t backdrop-blur-xl md:hidden">
