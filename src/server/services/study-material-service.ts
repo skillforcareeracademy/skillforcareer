@@ -609,6 +609,36 @@ export async function exportMaterials(
 }
 
 /**
+ * The same narrowed set as the spreadsheet export, but handed back as rows so
+ * the caller can pull each piece's actual files into a download — "export
+ * including pdfs and files".
+ */
+export async function materialsForBundle(
+  opts: MaterialExportOptions = {},
+  ownerId?: string,
+): Promise<{ csv: string; rows: MaterialRow[] }> {
+  const { columns, ...query } = opts;
+  const rows = await listMaterials(
+    { ...query, sort: query.sort ?? "sequence" },
+    ownerId,
+  );
+  const picked = wanted(columns);
+  const bodyOf = new Map<string, string>();
+  if (picked.includes("body") && rows.length > 0) {
+    const bodies = await prisma.studyMaterial.findMany({
+      where: { id: { in: rows.map((r) => r.id) } },
+      select: { id: true, body: true },
+    });
+    bodies.forEach((b) => bodyOf.set(b.id, b.body ?? ""));
+  }
+  const csv = toCsv(
+    headersFor(picked),
+    rows.map((m) => picked.map((key) => columnValue(key, m, bodyOf.get(m.id) ?? ""))),
+  );
+  return { csv, rows };
+}
+
+/**
  * A blank sheet with the chosen columns and one filled-in row to copy —
  * "allow me to download sample sheet as per my requirement to upload". The
  * example is what makes it usable: a header on its own doesn't say whether

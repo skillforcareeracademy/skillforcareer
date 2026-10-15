@@ -885,6 +885,47 @@ function wantedQuizColumns(columns?: string[]): QuizExportColumn[] {
 const quizHeaders = (columns: QuizExportColumn[]) =>
   columns.map((key) => QUIZ_EXPORT_COLUMNS.find((c) => c.key === key)?.label ?? key);
 
+/**
+ * The same narrowed quiz set as the spreadsheet export, plus the ids/titles so
+ * a caller can gather each paper's full question bank into a download — "quiz
+ * export including … files".
+ */
+export async function quizzesForBundle(
+  opts: QuizExportOptions = {},
+  ownerId?: string,
+): Promise<{ csv: string; quizzes: { id: string; quizNo: number; title: string }[] }> {
+  const csv = await exportQuizzes(opts, ownerId);
+  const inGroup = opts.groupId ? await itemsInGroups("QUIZ", [opts.groupId]) : null;
+  const and: Prisma.QuizWhereInput[] = [];
+  if (opts.search) and.push({ title: { contains: opts.search } });
+  if (opts.courseId) and.push({ courseId: opts.courseId });
+  if (opts.batchId) and.push({ batches: { some: { batchId: opts.batchId } } });
+  if (opts.status === "yes") and.push({ isPublished: true });
+  if (opts.status === "no") and.push({ isPublished: false });
+  if (opts.difficulty && DIFFICULTIES.has(opts.difficulty)) {
+    and.push({ difficulty: opts.difficulty as Prisma.QuizWhereInput["difficulty"] });
+  }
+  if (opts.ids && opts.ids.length > 0) and.push({ id: { in: opts.ids } });
+  if (inGroup) and.push({ id: { in: inGroup } });
+  if (opts.createdFrom || opts.createdTo) {
+    and.push({
+      createdAt: {
+        ...(opts.createdFrom ? { gte: new Date(`${opts.createdFrom}T00:00:00.000Z`) } : {}),
+        ...(opts.createdTo ? { lte: new Date(`${opts.createdTo}T23:59:59.999Z`) } : {}),
+      },
+    });
+  }
+  if (ownerId) {
+    and.push({ OR: [{ createdById: ownerId }, { course: { instructorId: ownerId } }] });
+  }
+  const quizzes = await prisma.quiz.findMany({
+    where: and.length > 0 ? { AND: and } : {},
+    orderBy: [{ sequence: "asc" }, { createdAt: "asc" }],
+    select: { id: true, quizNo: true, title: true },
+  });
+  return { csv, quizzes };
+}
+
 export async function exportQuizzes(
   opts: QuizExportOptions = {},
   ownerId?: string,

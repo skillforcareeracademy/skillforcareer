@@ -848,6 +848,8 @@ export function QuizzesClient({
         title="Export quizzes"
         description="Pick which papers go in the sheet and which columns it carries. The blank sample sheet comes out with the same columns, ready to fill in and import. Questions have their own import and export inside each quiz."
         endpoint="/api/quizzes/export"
+        bundleEndpoint="/api/quizzes/export/bundle"
+        bundleLabel="With questions (ZIP)"
         columns={[...QUIZ_EXPORT_COLUMNS]}
         defaultColumns={[...DEFAULT_QUIZ_COLUMNS]}
         scopes={[

@@ -7,6 +7,7 @@ import {
   Columns3,
   Download,
   FileSpreadsheet,
+  FolderArchive,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -71,6 +72,8 @@ export function ExportDialog({
   title,
   description,
   endpoint,
+  bundleEndpoint,
+  bundleLabel = "Download with files (ZIP)",
   columns,
   defaultColumns,
   scopes = [],
@@ -90,6 +93,9 @@ export function ExportDialog({
   title: string;
   description: string;
   endpoint: string;
+  /** When set, a second button downloads a ZIP that carries the actual files. */
+  bundleEndpoint?: string;
+  bundleLabel?: string;
   columns: ExportColumn[];
   defaultColumns: string[];
   scopes?: ExportScope[];
@@ -104,7 +110,7 @@ export function ExportDialog({
 
   const allOn = picked.length === columns.length;
 
-  const url = useMemo(() => {
+  const query = useMemo(() => {
     const qs = new URLSearchParams();
     if (picked.length > 0) qs.set("columns", picked.join(","));
     for (const [key, value] of Object.entries(scopeValues)) {
@@ -115,8 +121,10 @@ export function ExportDialog({
     for (const [key, value] of Object.entries(fixedParams ?? {})) {
       if (value) qs.set(key, value);
     }
-    return `${endpoint}?${qs.toString()}`;
-  }, [endpoint, picked, scopeValues, from, to, fixedParams]);
+    return qs.toString();
+  }, [picked, scopeValues, from, to, fixedParams]);
+  const url = `${endpoint}?${query}`;
+  const bundleUrl = bundleEndpoint ? `${bundleEndpoint}?${query}` : null;
 
   function toggle(key: string) {
     setPicked((p) => (p.includes(key) ? p.filter((k) => k !== key) : [...p, key]));
@@ -269,9 +277,20 @@ export function ExportDialog({
           ) : (
             <span />
           )}
-          <Button nativeButton={false} render={<a href={url} download />}>
-            <Download className="size-4" /> Download
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            {bundleUrl && (
+              <Button
+                variant="outline"
+                nativeButton={false}
+                render={<a href={bundleUrl} download />}
+              >
+                <FolderArchive className="size-4" /> {bundleLabel}
+              </Button>
+            )}
+            <Button nativeButton={false} render={<a href={url} download />}>
+              <Download className="size-4" /> Download
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

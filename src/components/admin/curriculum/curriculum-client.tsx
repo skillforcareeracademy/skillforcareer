@@ -16,6 +16,7 @@ import {
   Trash2,
   Upload,
   Download,
+  FolderArchive,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -355,6 +356,13 @@ export function CurriculumClient({
                 render={<a href="/api/curriculums/export" download />}
               >
                 <Download className="size-4" /> Export
+              </Button>
+              <Button
+                variant="outline"
+                nativeButton={false}
+                render={<a href="/api/curriculums/export/bundle" download />}
+              >
+                <FolderArchive className="size-4" /> With files (ZIP)
               </Button>
               <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={importing}>
                 {importing ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}

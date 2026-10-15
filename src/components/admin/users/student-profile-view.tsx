@@ -24,6 +24,7 @@ import {
   Activity as ActivityIcon,
   ClipboardCheck,
   IdCard,
+  FolderArchive,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
@@ -237,6 +238,13 @@ export function StudentProfileView({ profile }: { profile: StudentProfile }) {
               nativeButton={false}
             >
               <IdCard className="size-4" /> Details
+            </Button>
+            <Button
+              variant="outline"
+              nativeButton={false}
+              render={<a href={`/api/admin/users/${profile.id}/export`} download />}
+            >
+              <FolderArchive className="size-4" /> Export (ZIP)
             </Button>
             <Button variant="outline" render={<Link href="/admin/users" />} nativeButton={false}>
               Back to users

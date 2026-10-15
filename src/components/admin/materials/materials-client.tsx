@@ -814,6 +814,8 @@ export function MaterialsClient({
         title="Export study material"
         description="Pick what goes in the sheet and which columns it carries. The blank sample sheet comes out with the same columns, ready to fill in and import."
         endpoint="/api/materials/export"
+        bundleEndpoint="/api/materials/export/bundle"
+        bundleLabel="With files (ZIP)"
         columns={[...MATERIAL_EXPORT_COLUMNS]}
         defaultColumns={[...DEFAULT_MATERIAL_COLUMNS]}
         sampleKinds={MATERIAL_SAMPLE_KINDS.map((k) => ({
