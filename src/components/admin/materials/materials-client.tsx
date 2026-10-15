@@ -33,13 +33,17 @@ import { cn } from "@/lib/utils";
 import {
   FolderDepthFilter,
   deepestLevel,
-  rollUpToDepth,
   type FolderDepth,
 } from "@/components/shared/folder-depth-filter";
 import type {
   MaterialRow,
   MaterialStats,
 } from "@/server/services/study-material-service";
+import {
+  FolderExplorer,
+  segmentsOf,
+} from "@/components/shared/folder-explorer";
+import { LinkViewer } from "@/components/shared/link-viewer";
 import type { GroupOption } from "@/server/services/content-group-service";
 import { GroupPicker } from "@/components/admin/groups/group-picker";
 import { MultiPicker } from "@/components/admin/groups/multi-picker";
@@ -216,8 +220,7 @@ export function MaterialsClient({
    * level folder dikhne do. Phir jab second level folder kholne ho to wo khol
    * lu ya phir aage usse."
    */
-  const [depth, setDepth] = useState<FolderDepth>(1);
-  const [openFolders, setOpenFolders] = useState<Set<string>>(new Set());
+  const [depth, setDepth] = useState<FolderDepth>(0);
   const [exporting, setExporting] = useState(false);
   const [form, setForm] = useState<FormState | null>(null);
 
@@ -318,23 +321,6 @@ export function MaterialsClient({
     groups,
     groupPath,
   ]);
-
-  /**
-   * The filtered rows, gathered under the folders they are filed in and then
-   * rolled up to the chosen depth — the whole tree at once was unreadable.
-   */
-  const folders = useMemo(() => {
-    const map = new Map<string, MaterialRow[]>();
-    for (const m of rows) {
-      const paths = m.groupPaths.length ? m.groupPaths : ["Ungrouped"];
-      for (const path of paths) {
-        map.set(path, [...(map.get(path) ?? []), m]);
-      }
-    }
-    return rollUpToDepth([...map.entries()], depth).sort(([a], [b]) =>
-      a === "Ungrouped" ? 1 : b === "Ungrouped" ? -1 : a.localeCompare(b),
-    );
-  }, [rows, depth]);
 
   /** Only offer levels the academy's own tree actually reaches. */
   const deepest = useMemo(
@@ -512,6 +498,19 @@ export function MaterialsClient({
     const ids = group.map((m) => m.id);
     [ids[from], ids[target]] = [ids[target], ids[from]];
 
+    setMoving(true);
+    try {
+      await api.patch("/api/materials/reorder", { ids });
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Couldn't reorder.");
+    } finally {
+      setMoving(false);
+    }
+  }
+
+  /** Drag-and-drop handed us one folder's ids in their new order. */
+  async function reorderGroup(ids: string[]) {
     setMoving(true);
     try {
       await api.patch("/api/materials/reorder", { ids });
@@ -901,108 +900,88 @@ export function MaterialsClient({
         ]}
       />
 
-      {/* Folder view: the academy's own tree, each folder opening to what is
-          filed in it. The table is still a tap away for a flat list. */}
+      {/* Folder view: the academy's own tree, opened a shelf at a time —
+          sub-folders first, then what is filed in the folder you are in, as
+          deep as it was nested. The table is still a tap away for a flat list. */}
       {view === "folders" && (
-        <div className="space-y-2">
-          {folders.length === 0 ? (
-            <p className="text-muted-foreground rounded-xl border p-6 text-center text-sm">
-              Nothing matches those filters.
-            </p>
-          ) : (
-            folders.map(([path, list]) => {
-              const open = openFolders.has(path);
-              return (
-                <div key={path} className="overflow-hidden rounded-xl border">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setOpenFolders((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(path)) next.delete(path);
-                        else next.add(path);
-                        return next;
-                      })
-                    }
-                    className="hover:bg-accent/40 flex w-full items-center gap-2 px-4 py-3 text-left"
-                  >
-                    <ChevronRight
-                      className={cn(
-                        "text-muted-foreground size-4 shrink-0 transition-transform",
-                        open && "rotate-90",
-                      )}
-                    />
-                    <FolderTree className="text-muted-foreground size-4 shrink-0" />
-                    <span className="min-w-0 flex-1 truncate font-medium">
-                      {path}
-                    </span>
-                    <Badge variant="secondary" className="shrink-0 text-[10px]">
-                      {list.length} {list.length === 1 ? "item" : "items"}
-                    </Badge>
-                  </button>
-                  {open && (
-                    <ul className="divide-y border-t">
-                      {list.map((m) => (
-                        <li
-                          key={m.id}
-                          className="flex items-center gap-3 px-4 py-2.5"
-                        >
-                          <span className="text-muted-foreground w-8 shrink-0 text-xs tabular-nums">
-                            {m.number}
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-medium">
-                              {m.title}
-                            </p>
-                            <p className="text-muted-foreground truncate text-xs">
-                              {m.courseTitles.join(", ") || "Any course"}
-                              {m.batchNames.length
-                                ? ` · ${m.batchNames.join(", ")}`
-                                : ""}
-                            </p>
-                          </div>
-                          <Badge
-                            variant="secondary"
-                            className="shrink-0 text-[10px]"
-                          >
-                            {m.fileUrl || m.assets.length ? "File" : "Written"}
-                          </Badge>
-                          <Badge
-                            variant="secondary"
-                            className={cn(
-                              "shrink-0 text-[10px]",
-                              m.isPublished &&
-                                "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
-                            )}
-                          >
-                            {m.isPublished ? "Published" : "Draft"}
-                          </Badge>
-                          {/* "When I open through folder then I can not edit
-                              it" — the same action the table row has. */}
-                          <Button
-                            size="icon-sm"
-                            variant="ghost"
-                            className="shrink-0"
-                            onClick={() => void openEdit(m)}
-                            disabled={loadingEdit === m.id}
-                            aria-label={`Edit ${m.title}`}
-                            title="Edit"
-                          >
-                            {loadingEdit === m.id ? (
-                              <Loader2 className="size-4 animate-spin" />
-                            ) : (
-                              <Pencil className="size-4" />
-                            )}
-                          </Button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+        <FolderExplorer
+          items={rows}
+          keyOf={(m) => m.id}
+          getPaths={(m) =>
+            m.groupPaths.length
+              ? m.groupPaths.map(segmentsOf)
+              : [["Ungrouped"]]
+          }
+          depth={depth}
+          query={search}
+          noun={{ one: "item", many: "material" }}
+          emptyLabel="Nothing matches those filters."
+          onReorder={(ids) => void reorderGroup(ids)}
+          renderItem={(m) => {
+            const previewUrl =
+              m.fileUrl ?? m.assets.find((a) => a.url)?.url ?? null;
+            return (
+              <div className="flex items-center gap-3 py-2.5 pr-3 pl-1">
+                <span className="text-muted-foreground w-8 shrink-0 text-xs tabular-nums">
+                  {m.number}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{m.title}</p>
+                  <p className="text-muted-foreground truncate text-xs">
+                    {m.courseTitles.join(", ") || "Any course"}
+                    {m.batchNames.length ? ` · ${m.batchNames.join(", ")}` : ""}
+                  </p>
                 </div>
-              );
-            })
-          )}
-        </div>
+                <Badge variant="secondary" className="shrink-0 text-[10px]">
+                  {m.fileUrl || m.assets.length ? "File" : "Written"}
+                </Badge>
+                <Badge
+                  variant="secondary"
+                  className={cn(
+                    "shrink-0 text-[10px]",
+                    m.isPublished &&
+                      "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
+                  )}
+                >
+                  {m.isPublished ? "Published" : "Draft"}
+                </Badge>
+                {/* Read it in place without opening the editor — "yahan bahar
+                    se bhi preview ka option hona chahiye". */}
+                {previewUrl && (
+                  <LinkViewer
+                    url={previewUrl}
+                    name={m.fileName ?? m.title}
+                    className="shrink-0"
+                  >
+                    <span
+                      role="button"
+                      aria-label={`Preview ${m.title}`}
+                      title="Preview"
+                      className="hover:bg-accent text-muted-foreground inline-grid size-8 place-items-center rounded-md"
+                    >
+                      <Eye className="size-4" />
+                    </span>
+                  </LinkViewer>
+                )}
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  className="shrink-0"
+                  onClick={() => void openEdit(m)}
+                  disabled={loadingEdit === m.id}
+                  aria-label={`Edit ${m.title}`}
+                  title="Edit"
+                >
+                  {loadingEdit === m.id ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Pencil className="size-4" />
+                  )}
+                </Button>
+              </div>
+            );
+          }}
+        />
       )}
 
       <DataTable

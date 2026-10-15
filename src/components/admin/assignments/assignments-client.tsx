@@ -20,12 +20,22 @@ import {
   Award,
   FolderTree,
   ListChecks,
+  Rows3,
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { GroupField } from "@/components/admin/groups/group-field";
 import { api, ApiError } from "@/lib/api-client";
 import { DataTable, type Column } from "@/components/shared/data-table";
+import {
+  FolderExplorer,
+  segmentsOf,
+} from "@/components/shared/folder-explorer";
+import {
+  FolderDepthFilter,
+  deepestLevel,
+  type FolderDepth,
+} from "@/components/shared/folder-depth-filter";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatCards, type StatCard } from "@/components/shared/stat-cards";
 import { AssignmentImportDialog } from "./assignment-import-dialog";
@@ -34,6 +44,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import {
   Select,
@@ -81,6 +92,8 @@ interface AssignmentRow {
   /** Permanent academy-wide number, and the order within the course. */
   assignmentNo: number;
   sequence: number;
+  groupIds: string[];
+  groupPaths: string[];
   title: string;
   type: string;
   gradingMode: string;
@@ -226,6 +239,8 @@ export function AssignmentsClient({
   const router = useRouter();
   const pathname = usePathname();
   const [search, setSearch] = useState(query.search ?? "");
+  const [view, setView] = useState<"folders" | "table">("folders");
+  const [depth, setDepth] = useState<FolderDepth>(0);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState<AssignmentRow | null>(null);
@@ -380,6 +395,20 @@ export function AssignmentsClient({
       setSaving(false);
     }
   }
+
+  /** Drag-and-drop in the folder view: one folder's ids in their new order. */
+  async function reorderGroup(ids: string[]) {
+    try {
+      await api.patch("/api/assignments/reorder", { ids });
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Couldn't reorder.");
+    }
+  }
+
+  const deepestFolders = deepestLevel(
+    assignments.flatMap((a) => a.groupPaths),
+  );
 
   async function confirmDelete() {
     if (!deleting) return;
@@ -655,9 +684,61 @@ export function AssignmentsClient({
         className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4"
       />
 
+      {/* Folder view: the shared drill-in the client asked for across every
+          list — sub-folders first, then the assignments in the folder you are
+          in, dragged to reorder. The table stays a tap away. */}
+      {view === "folders" && (
+        <FolderExplorer
+          items={[...assignments].sort((a, b) => a.sequence - b.sequence)}
+          keyOf={(a) => a.id}
+          getPaths={(a) =>
+            a.groupPaths.length ? a.groupPaths.map(segmentsOf) : [["Ungrouped"]]
+          }
+          depth={depth}
+          query={query.search}
+          noun={{ one: "assignment", many: "assignments" }}
+          emptyLabel={
+            hasFilters ? "No matching assignments." : "No assignments yet."
+          }
+          onReorder={(ids) => void reorderGroup(ids)}
+          renderItem={(a) => (
+            <div className="flex items-center gap-3 py-2.5 pr-3 pl-1">
+              <span className="text-muted-foreground w-10 shrink-0 text-xs tabular-nums">
+                #{a.assignmentNo}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">{a.title}</p>
+                <p className="text-muted-foreground truncate text-xs">
+                  {a.courseTitle ?? "No course"}
+                  {a.batchNames.length ? ` · ${a.batchNames.join(", ")}` : ""}
+                </p>
+              </div>
+              {a.needsGrading > 0 && (
+                <Badge
+                  variant="secondary"
+                  className="shrink-0 text-[10px] text-amber-700 dark:text-amber-300"
+                >
+                  {a.needsGrading} to grade
+                </Badge>
+              )}
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                className="shrink-0"
+                onClick={() => openEdit(a)}
+                aria-label={`Edit ${a.title}`}
+                title="Edit"
+              >
+                <Pencil className="size-4" />
+              </Button>
+            </div>
+          )}
+        />
+      )}
+
       <DataTable
         columns={columns}
-        data={assignments}
+        data={view === "folders" ? [] : assignments}
         rowKey={(a) => a.id}
         renderCard={renderCard}
         emptyIcon={ClipboardList}
@@ -685,6 +766,30 @@ export function AssignmentsClient({
               />
             </form>
             <div className="flex flex-wrap gap-2">
+              {view === "folders" && (
+                <FolderDepthFilter
+                  value={depth}
+                  onChange={setDepth}
+                  deepest={deepestFolders}
+                />
+              )}
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() =>
+                  setView(view === "folders" ? "table" : "folders")
+                }
+              >
+                {view === "folders" ? (
+                  <>
+                    <Rows3 className="size-4" /> Table
+                  </>
+                ) : (
+                  <>
+                    <FolderTree className="size-4" /> Folders
+                  </>
+                )}
+              </Button>
               <Select
                 value={query.courseId ?? ALL}
                 onValueChange={(v) =>

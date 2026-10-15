@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { moveToTrash } from "./trash-service";
 import { copyTitle, type ImportMode } from "@/lib/validations/import-mode";
 import { notify } from "./notification-service";
+import { groupsOfMany, groupOptions } from "./content-group-service";
 import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
 import { ASSIGNMENT_CSV_COLUMNS } from "@/lib/validations/assignment";
@@ -88,12 +89,24 @@ export async function listAssignmentsAdmin(q: AssignmentListQuery) {
     }),
   ]);
 
+  // The folders an assignment is filed under, from the shared group system —
+  // the same tree quizzes and study material use.
+  const [membership, options] = await Promise.all([
+    groupsOfMany("ASSIGNMENT", rows.map((a) => a.id)),
+    groupOptions("ASSIGNMENT"),
+  ]);
+  const pathOf = new Map(options.map((o) => [o.id, o.path]));
+
   return {
     total,
-    assignments: rows.map((a) => ({
+    assignments: rows.map((a) => {
+      const groupIds = membership.get(a.id) ?? [];
+      return {
       id: a.id,
       assignmentNo: a.assignmentNo,
       sequence: a.sequence,
+      groupIds,
+      groupPaths: groupIds.map((g) => pathOf.get(g) ?? "").filter(Boolean),
       title: a.title,
       type: a.type,
       gradingMode: a.gradingMode,
@@ -110,8 +123,35 @@ export async function listAssignmentsAdmin(q: AssignmentListQuery) {
       maxAttempts: a.maxAttempts,
       submissions: a._count.submissions,
       needsGrading: a.submissions.length,
-    })),
+      };
+    }),
   };
+}
+
+/** Renumber one folder of assignments 1…n; the body is ids in their new order. */
+export async function reorderAssignments(
+  ids: string[],
+  instructorId?: string,
+): Promise<number> {
+  const rows = await prisma.assignment.findMany({
+    where: {
+      AND: [
+        { id: { in: ids } },
+        instructorId ? { course: { instructorId } } : {},
+      ],
+    },
+    select: { id: true },
+  });
+  const allowed = new Set(rows.map((r) => r.id));
+  const ordered = ids.filter((id) => allowed.has(id));
+  if (ordered.length === 0) throw AppError.badRequest("Nothing to reorder.");
+
+  const cases = ordered.map((id, i) => Prisma.sql`WHEN ${id} THEN ${i + 1}`);
+  await prisma.$executeRaw`
+    UPDATE \`Assignment\`
+    SET \`sequence\` = CASE id ${Prisma.join(cases, " ")} END
+    WHERE id IN (${Prisma.join(ordered.map((id) => Prisma.sql`${id}`))})`;
+  return ordered.length;
 }
 
 export interface AssignmentStats {

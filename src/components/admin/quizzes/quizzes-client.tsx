@@ -86,9 +86,12 @@ import {
 import {
   FolderDepthFilter,
   deepestLevel,
-  rollUpToDepth,
   type FolderDepth,
 } from "@/components/shared/folder-depth-filter";
+import {
+  FolderExplorer,
+  segmentsOf,
+} from "@/components/shared/folder-explorer";
 
 interface QuizRow {
   id: string;
@@ -188,25 +191,14 @@ export function QuizzesClient({
   /** Folders, as the learner sees them, or the flat table. */
   const view: "folders" | "table" =
     query.view === "table" ? "table" : "folders";
-  const [openFolders, setOpenFolders] = useState<Set<string>>(new Set());
 
   /**
    * How deep the folder list goes. First level by default — the academy's
    * tree is several deep and all of it at once is unreadable.
    */
-  const [depth, setDepth] = useState<FolderDepth>(1);
+  const [depth, setDepth] = useState<FolderDepth>(0);
 
   /** This page's quizzes, gathered under the folders they are filed in. */
-  const folders = useMemo(() => {
-    const map = new Map<string, QuizRow[]>();
-    for (const z of quizzes) {
-      const paths = z.groupPaths.length ? z.groupPaths : ["Ungrouped"];
-      for (const path of paths) map.set(path, [...(map.get(path) ?? []), z]);
-    }
-    return rollUpToDepth([...map.entries()], depth).sort(([a], [b]) =>
-      a === "Ungrouped" ? 1 : b === "Ungrouped" ? -1 : a.localeCompare(b),
-    );
-  }, [quizzes, depth]);
 
   const deepest = useMemo(
     () => deepestLevel(quizzes.flatMap((z) => z.groupPaths)),
@@ -366,6 +358,19 @@ export function QuizzesClient({
     const ids = group.map((z) => z.id);
     [ids[from], ids[target]] = [ids[target], ids[from]];
 
+    setMoving(true);
+    try {
+      await api.patch("/api/quizzes/reorder", { ids });
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Couldn't reorder.");
+    } finally {
+      setMoving(false);
+    }
+  }
+
+  /** Drag-and-drop in the folder view: one folder's ids in their new order. */
+  async function reorderGroup(ids: string[]) {
     setMoving(true);
     try {
       await api.patch("/api/quizzes/reorder", { ids });
@@ -925,94 +930,54 @@ export function QuizzesClient({
         ))}
       </div>
 
-      {/* Folder view, the same as the learner sees — "admin me bhi quiz folder
-          wise dikhni chahiye jaise student panel me dikh rhi hai". */}
+      {/* Folder view, the learner's own drill-in — "admin me bhi quiz folder
+          wise dikhni chahiye jaise student panel me dikh rhi hai": sub-folders
+          first, then the papers in the folder you are in. */}
       {view === "folders" && (
-        <div className="space-y-2">
-          {folders.length === 0 ? (
-            <p className="text-muted-foreground rounded-xl border p-6 text-center text-sm">
-              {hasFilters ? "No matching quizzes." : "No quizzes yet."}
-            </p>
-          ) : (
-            folders.map(([path, list]) => {
-              const open = openFolders.has(path);
-              return (
-                <div key={path} className="overflow-hidden rounded-xl border">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setOpenFolders((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(path)) next.delete(path);
-                        else next.add(path);
-                        return next;
-                      })
-                    }
-                    className="hover:bg-accent/40 flex w-full items-center gap-2 px-4 py-3 text-left"
-                  >
-                    <ChevronRight
-                      className={cn(
-                        "text-muted-foreground size-4 shrink-0 transition-transform",
-                        open && "rotate-90",
-                      )}
-                    />
-                    <FolderTree className="text-muted-foreground size-4 shrink-0" />
-                    <span className="min-w-0 flex-1 truncate font-medium">
-                      {path}
-                    </span>
-                    <Badge variant="secondary" className="shrink-0 text-[10px]">
-                      {list.length} {list.length === 1 ? "quiz" : "quizzes"}
-                    </Badge>
-                  </button>
-                  {open && (
-                    <ul className="divide-y border-t">
-                      {list.map((z) => (
-                        <li
-                          key={z.id}
-                          className="flex items-center gap-3 px-4 py-2.5"
-                        >
-                          <span className="text-muted-foreground w-10 shrink-0 text-xs tabular-nums">
-                            Q{z.quizNo}
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <Link
-                              href={`${basePath}/${z.id}`}
-                              className="hover:text-primary block truncate text-sm font-medium"
-                            >
-                              {z.title}
-                            </Link>
-                            <p className="text-muted-foreground truncate text-xs">
-                              {z.courseTitle ?? "Any course"}
-                              {z.batchNames.length
-                                ? ` · ${z.batchNames.join(", ")}`
-                                : ""}
-                            </p>
-                          </div>
-                          <Badge
-                            variant="secondary"
-                            className="shrink-0 text-[10px]"
-                          >
-                            {z.questions} Qs
-                          </Badge>
-                          <Badge
-                            variant="secondary"
-                            className={cn(
-                              "shrink-0 text-[10px]",
-                              z.isPublished &&
-                                "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
-                            )}
-                          >
-                            {z.isPublished ? "Published" : "Draft"}
-                          </Badge>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              );
-            })
+        <FolderExplorer
+          items={quizzes}
+          keyOf={(z) => z.id}
+          getPaths={(z) =>
+            z.groupPaths.length ? z.groupPaths.map(segmentsOf) : [["Ungrouped"]]
+          }
+          depth={depth}
+          query={query.search}
+          noun={{ one: "quiz", many: "quizzes" }}
+          emptyLabel={hasFilters ? "No matching quizzes." : "No quizzes yet."}
+          onReorder={(ids) => void reorderGroup(ids)}
+          renderItem={(z) => (
+            <div className="flex items-center gap-3 py-2.5 pr-3 pl-1">
+              <span className="text-muted-foreground w-10 shrink-0 text-xs tabular-nums">
+                Q{z.quizNo}
+              </span>
+              <div className="min-w-0 flex-1">
+                <Link
+                  href={`${basePath}/${z.id}`}
+                  className="hover:text-primary block truncate text-sm font-medium"
+                >
+                  {z.title}
+                </Link>
+                <p className="text-muted-foreground truncate text-xs">
+                  {z.courseTitle ?? "Any course"}
+                  {z.batchNames.length ? ` · ${z.batchNames.join(", ")}` : ""}
+                </p>
+              </div>
+              <Badge variant="secondary" className="shrink-0 text-[10px]">
+                {z.questions} Qs
+              </Badge>
+              <Badge
+                variant="secondary"
+                className={cn(
+                  "shrink-0 text-[10px]",
+                  z.isPublished &&
+                    "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
+                )}
+              >
+                {z.isPublished ? "Published" : "Draft"}
+              </Badge>
+            </div>
           )}
-        </div>
+        />
       )}
 
       <DataTable
