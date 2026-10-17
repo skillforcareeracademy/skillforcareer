@@ -251,8 +251,6 @@ export function QuizEditor({
       )
     : batches;
 
-  const parentCategories = categories.filter((c) => !c.parentId);
-  const subCategories = categories.filter((c) => c.parentId === form.categoryId);
 
   /** Move one question up or down — the paper's own order, saved as it changes. */
   async function moveQuestion(index: number, delta: number) {
@@ -450,64 +448,6 @@ export function QuizEditor({
               onSubCategoryChange={setCourseSubCategory}
               noneLabel="None"
             />
-            {/* Grouping. Sub-categories are filtered to the chosen category, so
-                "ICD-10" can't end up under "Soft Skills". */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Quiz group</Label>
-                <Select
-                  value={form.categoryId || "none"}
-                  onValueChange={(v) => set("categoryId", v === "none" ? "" : (v ?? ""))}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue>
-                      {(v) =>
-                        !v || v === "none"
-                          ? "Ungrouped"
-                          : (parentCategories.find((c) => c.id === v)?.name ?? "Ungrouped")
-                      }
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Ungrouped</SelectItem>
-                    {parentCategories.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Sub-group</Label>
-                <Select
-                  value={form.subCategoryId || "none"}
-                  onValueChange={(v) => set("subCategoryId", v === "none" ? "" : (v ?? ""))}
-                  disabled={subCategories.length === 0}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue>
-                      {(v) =>
-                        !v || v === "none"
-                          ? subCategories.length === 0
-                            ? "None available"
-                            : "None"
-                          : (subCategories.find((c) => c.id === v)?.name ?? "None")
-                      }
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">None</SelectItem>
-                    {subCategories.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
             {/* Who sits this quiz. Nothing chosen = everyone on the course,
                 which is how quizzes behaved before cohorts could be named. */}
             <AudiencePicker

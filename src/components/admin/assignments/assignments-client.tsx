@@ -44,7 +44,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import {
   Select,
@@ -128,6 +127,7 @@ interface Query {
   dueFrom?: string;
   dueTo?: string;
   needsGrading?: boolean;
+  view?: string;
 }
 interface Opt {
   id: string;
@@ -239,7 +239,9 @@ export function AssignmentsClient({
   const router = useRouter();
   const pathname = usePathname();
   const [search, setSearch] = useState(query.search ?? "");
-  const [view, setView] = useState<"folders" | "table">("folders");
+  const [view, setView] = useState<"folders" | "table">(
+    query.view === "table" ? "table" : "folders",
+  );
   const [depth, setDepth] = useState<FolderDepth>(0);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -276,6 +278,7 @@ export function AssignmentsClient({
         from: query.dueFrom,
         to: query.dueTo,
         grading: query.needsGrading ? "pending" : undefined,
+        view: query.view,
         page: query.page,
         ...next,
       };
@@ -776,9 +779,11 @@ export function AssignmentsClient({
               <Button
                 type="button"
                 variant="outline"
-                onClick={() =>
-                  setView(view === "folders" ? "table" : "folders")
-                }
+                onClick={() => {
+                  const next = view === "folders" ? "table" : "folders";
+                  setView(next);
+                  setParams({ view: next, page: 1 });
+                }}
               >
                 {view === "folders" ? (
                   <>

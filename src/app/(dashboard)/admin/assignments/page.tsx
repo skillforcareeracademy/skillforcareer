@@ -26,7 +26,9 @@ export default async function AssignmentsPage({
   const sp = await searchParams;
   const query = {
     page: Math.max(1, Number(sp.page) || 1),
-    pageSize: 10,
+    // The client opens on the folder view, which needs the whole tree; only an
+    // explicit table view pages down to 10.
+    pageSize: str(sp.view) === "table" ? 10 : 500,
     search: str(sp.search),
     courseId: str(sp.course),
     batchId: str(sp.batch),
@@ -34,6 +36,7 @@ export default async function AssignmentsPage({
     dueFrom: str(sp.from),
     dueTo: str(sp.to),
     needsGrading: str(sp.grading) === "pending",
+    view: str(sp.view),
   };
 
   // Number anything made before numbering existed, so what an admin sees in the

@@ -19,7 +19,6 @@ import {
   X,
   ArrowUp,
   ArrowDown,
-  ChevronRight,
   FolderTree,
   Rows3,
 } from "lucide-react";
@@ -977,6 +976,10 @@ export function QuizzesClient({
               >
                 {z.isPublished ? "Published" : "Draft"}
               </Badge>
+              {/* The same edit/duplicate/publish/delete menu the table row has —
+                  "quiz me folder ke andar … edit ya duplicate ka option nhi aa
+                  rha". */}
+              <div className="shrink-0">{rowActions(z)}</div>
             </div>
           )}
         />
@@ -995,13 +998,13 @@ export function QuizzesClient({
             : "Create your first quiz to get started."
         }
         toolbar={
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
             <form
               onSubmit={(e) => {
                 e.preventDefault();
                 setParams({ search: search || undefined, page: 1 });
               }}
-              className="flex-1 sm:max-w-xs"
+              className="w-full sm:w-72"
             >
               <Input
                 placeholder="Search quizzes…"
@@ -1009,7 +1012,7 @@ export function QuizzesClient({
                 onChange={(e) => setSearch(e.target.value)}
               />
             </form>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Select
                 value={query.status ?? ALL}
                 onValueChange={(v) =>

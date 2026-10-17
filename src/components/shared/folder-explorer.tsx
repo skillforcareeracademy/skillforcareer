@@ -1,8 +1,16 @@
 "use client";
 
 import { useMemo, useRef, useState, type ReactNode } from "react";
-import { ChevronRight, FolderOpen, GripVertical, Layers } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  ChevronUp,
+  FolderOpen,
+  GripVertical,
+  Layers,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { PATH_SEPARATOR, type FolderDepth } from "./folder-depth-filter";
 
@@ -163,6 +171,21 @@ export function FolderExplorer<T>({
     await onReorder(next);
   }
 
+  /**
+   * Move one row up or down by a button, not a drag. A tablet has no
+   * drag-and-drop — "arrange nahi kar pa raha" on an iPad was this — so the
+   * arrows are the reliable way to reorder, and the drag handle is a bonus on a
+   * desktop with a mouse.
+   */
+  async function nudge(index: number, delta: number) {
+    if (!onReorder) return;
+    const to = index + delta;
+    const ids = here.map(({ item }) => keyOf(item));
+    if (to < 0 || to >= ids.length) return;
+    [ids[index], ids[to]] = [ids[to]!, ids[index]!];
+    await onReorder(ids);
+  }
+
   return (
     <div className="space-y-3">
       <nav className="text-muted-foreground flex flex-wrap items-center gap-1 text-sm">
@@ -222,7 +245,7 @@ export function FolderExplorer<T>({
 
       {here.length > 0 && (
         <ul className="divide-y rounded-xl border">
-          {here.map(({ item }) => {
+          {here.map(({ item }, index) => {
             const key = keyOf(item);
             return (
               <li
@@ -256,13 +279,42 @@ export function FolderExplorer<T>({
                 )}
               >
                 {onReorder && (
-                  <span
-                    className="text-muted-foreground hover:text-foreground shrink-0 cursor-grab pl-2 active:cursor-grabbing"
-                    aria-hidden
-                    title="Drag to reorder"
-                  >
-                    <GripVertical className="size-4" />
-                  </span>
+                  <div className="flex shrink-0 items-center pl-1">
+                    {/* Buttons work on a tablet; the drag handle is for a mouse. */}
+                    <div className="flex flex-col">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        className="h-5 w-6"
+                        aria-label="Move up"
+                        title="Move up"
+                        disabled={index === 0}
+                        onClick={() => void nudge(index, -1)}
+                      >
+                        <ChevronUp className="size-3.5" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        className="h-5 w-6"
+                        aria-label="Move down"
+                        title="Move down"
+                        disabled={index === here.length - 1}
+                        onClick={() => void nudge(index, 1)}
+                      >
+                        <ChevronDown className="size-3.5" />
+                      </Button>
+                    </div>
+                    <span
+                      className="text-muted-foreground hidden shrink-0 cursor-grab active:cursor-grabbing sm:block"
+                      aria-hidden
+                      title="Drag to reorder"
+                    >
+                      <GripVertical className="size-4" />
+                    </span>
+                  </div>
                 )}
                 <div className="min-w-0 flex-1">{renderItem(item)}</div>
               </li>

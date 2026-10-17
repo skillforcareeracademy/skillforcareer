@@ -19,6 +19,15 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { ButtonLink } from "@/components/shared/button-link";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+
+/** Level colours, easy → hardest, so the badge reads at a glance. */
+const DIFFICULTY_CLASS: Record<string, string> = {
+  EASY: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
+  INTERMEDIATE: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
+  DIFFICULT: "bg-orange-100 text-orange-700 dark:bg-orange-500/15 dark:text-orange-300",
+  VERY_DIFFICULT: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300",
+  SUPER_DIFFICULT: "bg-purple-100 text-purple-700 dark:bg-purple-500/15 dark:text-purple-300",
+};
 import { Input } from "@/components/ui/input";
 import { QuizBookmarkToggle } from "./quiz-bookmark-toggle";
 import { GroupBrowser } from "./group-browser";
@@ -192,13 +201,20 @@ export function StudentQuizzesClient({ quizzes }: { quizzes: StudentQuiz[] }) {
                           q.categoryName,
                           q.subCategoryName,
                           q.courseTitle,
-                          QUIZ_DIFFICULTY_LABEL[q.difficulty] ?? null,
                         ]
                           .filter(Boolean)
                           .join(" · ")}
                       </p>
                     </div>
-                    <div className="flex shrink-0 items-center gap-1">
+                    <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
+                      {/* The level, where a learner can see it before starting
+                          — "card ke upar students ko dikhna chahiye ki quiz
+                          type: easy, intermediate or Difficult". */}
+                      {q.difficulty && QUIZ_DIFFICULTY_LABEL[q.difficulty] && (
+                        <Badge variant="secondary" className={DIFFICULTY_CLASS[q.difficulty] ?? ""}>
+                          {QUIZ_DIFFICULTY_LABEL[q.difficulty]}
+                        </Badge>
+                      )}
                       {/* Practice or exam — "student differentiate kaise krega
                           quizes ke beech". */}
                       {q.quizType && (

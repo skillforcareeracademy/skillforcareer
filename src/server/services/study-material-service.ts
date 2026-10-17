@@ -13,6 +13,7 @@ import {
 } from "@/lib/validations/study-material";
 import {
   groupOptions,
+  groupsOf,
   groupsOfMany,
   itemsInGroups,
   setGroupsFor,
@@ -403,6 +404,91 @@ export async function createMaterial(
   // Its folders live in the shared group system, not on the row.
   await setGroupsFor("MATERIAL", row.id, input.groupIds ?? []);
   return row.id;
+}
+
+/**
+ * Copy a piece of study material, and open the copy — "here provide an option
+ * to duplicate in quiz, assignment, batches, courses, study material and all".
+ * The copy keeps the file, the written text, the folders, the courses, cohorts
+ * and learners it was set for, but lands as a draft so somebody looks before it
+ * reaches anyone.
+ */
+export async function duplicateMaterial(
+  id: string,
+  createdById: string,
+): Promise<string> {
+  const source = await prisma.studyMaterial.findUnique({
+    where: { id },
+    include: {
+      assets: { orderBy: { order: "asc" } },
+      courses: { select: { courseId: true } },
+      batches: { select: { batchId: true } },
+      students: { select: { userId: true } },
+    },
+  });
+  if (!source) throw AppError.notFound("That material no longer exists.");
+
+  const siblings = await prisma.studyMaterial.findMany({
+    where: { categoryId: source.categoryId, subCategoryId: source.subCategoryId },
+    select: { title: true },
+  });
+  const title = copyTitle(
+    source.title,
+    new Set(siblings.map((m) => m.title.toLowerCase())),
+  );
+
+  const copy = await prisma.studyMaterial.create({
+    data: {
+      title,
+      description: source.description,
+      courseId: source.courseId,
+      categoryId: source.categoryId,
+      subCategoryId: source.subCategoryId,
+      fileUrl: source.fileUrl,
+      fileName: source.fileName,
+      mimeType: source.mimeType,
+      body: source.body,
+      downloadsEnabled: source.downloadsEnabled,
+      isPublished: false,
+      number: await nextNumber(),
+      sequence: await nextSequence(source.categoryId, source.subCategoryId),
+      createdById,
+    },
+    select: { id: true },
+  });
+
+  // The joins one table at a time — `createMany` is safe here, nested writes
+  // under relationMode = "prisma" are the trap.
+  if (source.courses.length) {
+    await prisma.studyMaterialCourse.createMany({
+      data: source.courses.map((c) => ({ materialId: copy.id, courseId: c.courseId })),
+    });
+  }
+  if (source.batches.length) {
+    await prisma.studyMaterialBatch.createMany({
+      data: source.batches.map((b) => ({ materialId: copy.id, batchId: b.batchId })),
+    });
+  }
+  if (source.students.length) {
+    await prisma.studyMaterialStudent.createMany({
+      data: source.students.map((s) => ({ materialId: copy.id, userId: s.userId })),
+    });
+  }
+  if (source.assets.length) {
+    await prisma.materialAsset.createMany({
+      data: source.assets.map((a) => ({
+        materialId: copy.id,
+        kind: a.kind,
+        url: a.url,
+        name: a.name,
+        mimeType: a.mimeType,
+        order: a.order,
+      })),
+    });
+  }
+
+  await setGroupsFor("MATERIAL", copy.id, await groupsOf("MATERIAL", id));
+  return copy.id;
 }
 
 export async function updateMaterial(id: string, input: StudyMaterialInput): Promise<void> {

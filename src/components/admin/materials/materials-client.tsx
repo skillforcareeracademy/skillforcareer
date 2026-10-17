@@ -12,11 +12,11 @@ import {
   EyeOff,
   FileText,
   Check,
-  ChevronRight,
   FolderTree,
   Image as ImageIcon,
   Link as LinkIcon,
   Loader2,
+  Copy,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -190,7 +190,7 @@ export function MaterialsClient({
   /** Behind the Documents figure: material with a file attached. */
   const [kindFilter, setKindFilter] = useState(ALL);
   /** Which piece is having its text fetched before the editor opens. */
-  const [loadingEdit, setLoadingEdit] = useState<string | null>(null);
+  const [duplicating, setDuplicating] = useState<string | null>(null);
   /** Which attachment is being renamed or re-pointed, by index. */
   const [editingAsset, setEditingAsset] = useState<number | null>(null);
 
@@ -474,6 +474,70 @@ export function MaterialsClient({
     }
   }
 
+  /** Copy a piece and open the copy — the copy arrives as a draft. */
+  async function duplicate(m: MaterialRow) {
+    setDuplicating(m.id);
+    try {
+      await api.post(`/api/materials/${m.id}/duplicate`);
+      toast.success("Copied. The copy is a draft.");
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Couldn't duplicate.");
+    } finally {
+      setDuplicating(null);
+    }
+  }
+
+  /** The row action menu — the same one the table and the folder view use. */
+  function materialActions(m: MaterialRow) {
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={<Button variant="ghost" size="icon-sm" />}
+          aria-label="Actions"
+        >
+          <MoreHorizontal className="size-4" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={() => void openEdit(m)}>
+            <Pencil className="size-4" /> Edit
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={duplicating === m.id}
+            onClick={() => void duplicate(m)}
+          >
+            {duplicating === m.id ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Copy className="size-4" />
+            )}
+            Duplicate
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => void togglePublished(m)}>
+            {m.isPublished ? (
+              <>
+                <EyeOff className="size-4" /> Hide
+              </>
+            ) : (
+              <>
+                <Eye className="size-4" /> Publish
+              </>
+            )}
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => void openReaders(m)}>
+            <Users className="size-4" /> Who has read it
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className="text-destructive focus:text-destructive"
+            onClick={() => setDeleting(m)}
+          >
+            <Trash2 className="size-4" /> Delete
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  }
+
   async function confirmDelete() {
     if (!deleting) return;
     try {
@@ -577,7 +641,6 @@ export function MaterialsClient({
     };
     // Fetched *before* the dialog opens: the editor takes its content when it
     // mounts, so arriving with the text a moment later would leave it blank.
-    setLoadingEdit(m.id);
     try {
       const res = await api.get<{ material: { body: string | null } }>(
         `/api/materials/${m.id}`,
@@ -586,7 +649,6 @@ export function MaterialsClient({
     } catch {
       toast.error("Couldn't load that one — try again.");
     } finally {
-      setLoadingEdit(null);
     }
   }
 
@@ -740,41 +802,7 @@ export function MaterialsClient({
       key: "actions",
       header: "",
       className: "w-12",
-      cell: (m) => (
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={<Button variant="ghost" size="icon-sm" />}
-            aria-label="Actions"
-          >
-            <MoreHorizontal className="size-4" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => void openEdit(m)}>
-              <Pencil className="size-4" /> Edit
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => void togglePublished(m)}>
-              {m.isPublished ? (
-                <>
-                  <EyeOff className="size-4" /> Hide
-                </>
-              ) : (
-                <>
-                  <Eye className="size-4" /> Publish
-                </>
-              )}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => void openReaders(m)}>
-              <Users className="size-4" /> Who has read it
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className="text-destructive focus:text-destructive"
-              onClick={() => setDeleting(m)}
-            >
-              <Trash2 className="size-4" /> Delete
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ),
+      cell: (m) => materialActions(m),
     },
   ];
 
@@ -965,21 +993,7 @@ export function MaterialsClient({
                     </span>
                   </LinkViewer>
                 )}
-                <Button
-                  size="icon-sm"
-                  variant="ghost"
-                  className="shrink-0"
-                  onClick={() => void openEdit(m)}
-                  disabled={loadingEdit === m.id}
-                  aria-label={`Edit ${m.title}`}
-                  title="Edit"
-                >
-                  {loadingEdit === m.id ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <Pencil className="size-4" />
-                  )}
-                </Button>
+                <div className="shrink-0">{materialActions(m)}</div>
               </div>
             );
           }}
