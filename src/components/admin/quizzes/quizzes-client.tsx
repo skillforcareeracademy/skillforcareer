@@ -20,7 +20,6 @@ import {
   ArrowUp,
   ArrowDown,
   FolderTree,
-  Rows3,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
@@ -188,8 +187,7 @@ export function QuizzesClient({
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
   /** Folders, as the learner sees them, or the flat table. */
-  const view: "folders" | "table" =
-    query.view === "table" ? "table" : "folders";
+
 
   /**
    * How deep the folder list goes. First level by default — the academy's
@@ -934,7 +932,8 @@ export function QuizzesClient({
       {/* Folder view, the learner's own drill-in — "admin me bhi quiz folder
           wise dikhni chahiye jaise student panel me dikh rhi hai": sub-folders
           first, then the papers in the folder you are in. */}
-      {view === "folders" && (
+      {/* Folder view and table view show together — "upar folder niche table". */}
+      <div>
         <FolderExplorer
           items={quizzes}
           keyOf={(z) => z.id}
@@ -983,11 +982,11 @@ export function QuizzesClient({
             </div>
           )}
         />
-      )}
+      </div>
 
       <DataTable
         columns={columns}
-        data={view === "folders" ? [] : quizzes}
+        data={quizzes}
         rowKey={(z) => z.id}
         renderCard={renderCard}
         emptyIcon={FileQuestion}
@@ -1202,34 +1201,11 @@ export function QuizzesClient({
                   <SelectItem value="recent">Recently edited</SelectItem>
                 </SelectContent>
               </Select>
-              {view === "folders" && (
-                <FolderDepthFilter
-                  value={depth}
-                  onChange={setDepth}
-                  deepest={deepest}
-                />
-              )}
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  setParams({
-                    view: view === "folders" ? "table" : "folders",
-                    page: 1,
-                  })
-                }
-              >
-                {view === "folders" ? (
-                  <>
-                    <Rows3 className="size-4" /> Table
-                  </>
-                ) : (
-                  <>
-                    <FolderTree className="size-4" /> Folders
-                  </>
-                )}
-              </Button>
+              <FolderDepthFilter
+                value={depth}
+                onChange={setDepth}
+                deepest={deepest}
+              />
               {hasFilters && (
                 <Button
                   variant="ghost"

@@ -20,7 +20,6 @@ import {
   MoreHorizontal,
   Pencil,
   Plus,
-  Rows3,
   Trash2,
   Upload,
   Users,
@@ -214,7 +213,6 @@ export function MaterialsClient({
     "sequence",
   );
   /** "Content should be visible in folder format", beside the plain table. */
-  const [view, setView] = useState<"folders" | "table">("folders");
   /**
    * How deep the folder list goes. First level by default: "Normally first
    * level folder dikhne do. Phir jab second level folder kholne ho to wo khol
@@ -933,7 +931,9 @@ export function MaterialsClient({
       {/* Folder view: the academy's own tree, opened a shelf at a time —
           sub-folders first, then what is filed in the folder you are in, as
           deep as it was nested. The table is still a tap away for a flat list. */}
-      {view === "folders" && (
+      {/* Folder view and table view show together — "upar folder niche table".
+          The folders drill in; the table below is the flat, sortable list. */}
+      <div>
         <FolderExplorer
           items={rows}
           keyOf={(m) => m.id}
@@ -998,11 +998,11 @@ export function MaterialsClient({
             );
           }}
         />
-      )}
+      </div>
 
       <DataTable
         columns={columns}
-        data={view === "folders" ? [] : rows}
+        data={rows}
         rowKey={(m) => m.id}
         emptyTitle="No study material yet"
         emptyDescription="Upload a PDF, a spreadsheet or a document — or write the reading straight into the panel."
@@ -1081,29 +1081,11 @@ export function MaterialsClient({
               </SelectContent>
             </Select>
             {/* How many levels of the tree to show at once. */}
-            {view === "folders" && (
-              <FolderDepthFilter
-                value={depth}
-                onChange={setDepth}
-                deepest={deepest}
-              />
-            )}
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setView(view === "folders" ? "table" : "folders")}
-            >
-              {view === "folders" ? (
-                <>
-                  <Rows3 className="size-4" /> Table
-                </>
-              ) : (
-                <>
-                  <FolderTree className="size-4" /> Folders
-                </>
-              )}
-            </Button>
+            <FolderDepthFilter
+              value={depth}
+              onChange={setDepth}
+              deepest={deepest}
+            />
             <Select
               value={sort}
               onValueChange={(v) => setSort(String(v) as typeof sort)}

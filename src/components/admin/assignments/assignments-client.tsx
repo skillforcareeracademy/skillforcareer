@@ -20,7 +20,6 @@ import {
   Award,
   FolderTree,
   ListChecks,
-  Rows3,
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -239,9 +238,6 @@ export function AssignmentsClient({
   const router = useRouter();
   const pathname = usePathname();
   const [search, setSearch] = useState(query.search ?? "");
-  const [view, setView] = useState<"folders" | "table">(
-    query.view === "table" ? "table" : "folders",
-  );
   const [depth, setDepth] = useState<FolderDepth>(0);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -690,7 +686,8 @@ export function AssignmentsClient({
       {/* Folder view: the shared drill-in the client asked for across every
           list — sub-folders first, then the assignments in the folder you are
           in, dragged to reorder. The table stays a tap away. */}
-      {view === "folders" && (
+      {/* Folder view and table view show together — "upar folder niche table". */}
+      <div>
         <FolderExplorer
           items={[...assignments].sort((a, b) => a.sequence - b.sequence)}
           keyOf={(a) => a.id}
@@ -737,11 +734,11 @@ export function AssignmentsClient({
             </div>
           )}
         />
-      )}
+      </div>
 
       <DataTable
         columns={columns}
-        data={view === "folders" ? [] : assignments}
+        data={assignments}
         rowKey={(a) => a.id}
         renderCard={renderCard}
         emptyIcon={ClipboardList}
@@ -769,32 +766,11 @@ export function AssignmentsClient({
               />
             </form>
             <div className="flex flex-wrap gap-2">
-              {view === "folders" && (
-                <FolderDepthFilter
-                  value={depth}
-                  onChange={setDepth}
-                  deepest={deepestFolders}
-                />
-              )}
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  const next = view === "folders" ? "table" : "folders";
-                  setView(next);
-                  setParams({ view: next, page: 1 });
-                }}
-              >
-                {view === "folders" ? (
-                  <>
-                    <Rows3 className="size-4" /> Table
-                  </>
-                ) : (
-                  <>
-                    <FolderTree className="size-4" /> Folders
-                  </>
-                )}
-              </Button>
+              <FolderDepthFilter
+                value={depth}
+                onChange={setDepth}
+                deepest={deepestFolders}
+              />
               <Select
                 value={query.courseId ?? ALL}
                 onValueChange={(v) =>
