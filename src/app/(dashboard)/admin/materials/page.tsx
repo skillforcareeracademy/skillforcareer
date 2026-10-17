@@ -18,16 +18,10 @@ export default async function MaterialsPage() {
   const staff = user.roles.some((r) => r === ROLES.SUPER_ADMIN || r === ROLES.ADMIN);
   const ownerId = staff ? undefined : user.id;
 
-  const [materials, stats, groups, courses, batches] = await Promise.all([
+  const [materials, stats, groups, batches] = await Promise.all([
     listMaterials({ sort: "sequence" }, ownerId),
     materialStats(ownerId),
     groupOptions("MATERIAL"),
-    prisma.course.findMany({
-      where: ownerId ? { instructorId: ownerId } : {},
-      select: { id: true, title: true },
-      orderBy: { title: "asc" },
-      take: 300,
-    }),
     prisma.batch.findMany({
       where: ownerId
         ? { OR: [{ instructorId: ownerId }, { associates: { some: { userId: ownerId } } }] }
@@ -40,6 +34,22 @@ export default async function MaterialsPage() {
       take: 300,
     }),
   ]);
+
+  // An instructor sees not only the courses they own, but every course one of
+  // their batches belongs to — "jis jis course ke liye uske batch bne hue hain
+  // wo sab course use dikhne chahiye". A batch assigned to them is reason enough
+  // to file reading against its course.
+  const batchCourseIds = [
+    ...new Set(batches.map((b) => b.courseId).filter((c): c is string => Boolean(c))),
+  ];
+  const courses = await prisma.course.findMany({
+    where: ownerId
+      ? { OR: [{ instructorId: ownerId }, { id: { in: batchCourseIds } }] }
+      : {},
+    select: { id: true, title: true },
+    orderBy: { title: "asc" },
+    take: 300,
+  });
 
   return (
     <MaterialsClient

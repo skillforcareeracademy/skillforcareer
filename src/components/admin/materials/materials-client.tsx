@@ -164,6 +164,11 @@ function readable(seconds: number): string {
   return `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, "0")}m`;
 }
 
+/** Rich-text bodies are stored as HTML; anything older is plain text. */
+function looksLikeHtml(body: string): boolean {
+  return /<(p|h[1-6]|ul|ol|li|strong|em|blockquote|br|img)\b/i.test(body);
+}
+
 export function MaterialsClient({
   materials,
   stats,
@@ -190,6 +195,9 @@ export function MaterialsClient({
   const [kindFilter, setKindFilter] = useState(ALL);
   /** Which piece is having its text fetched before the editor opens. */
   const [duplicating, setDuplicating] = useState<string | null>(null);
+  const [viewing, setViewing] = useState<{ m: MaterialRow; body: string } | null>(
+    null,
+  );
   /** Which attachment is being renamed or re-pointed, by index. */
   const [editingAsset, setEditingAsset] = useState<number | null>(null);
 
@@ -486,6 +494,20 @@ export function MaterialsClient({
     }
   }
 
+  /** Read the piece without entering the editor — the written text and the
+   *  file, shown in place. "Text jo daala hai descriptor me wo yaha se dekhne
+   *  view krne ka option nahi hai." */
+  async function openView(m: MaterialRow) {
+    try {
+      const res = await api.get<{ material: { body: string | null } }>(
+        `/api/materials/${m.id}`,
+      );
+      setViewing({ m, body: res.material.body ?? "" });
+    } catch {
+      toast.error("Couldn't load that one — try again.");
+    }
+  }
+
   /** The row action menu — the same one the table and the folder view use. */
   function materialActions(m: MaterialRow) {
     return (
@@ -497,6 +519,9 @@ export function MaterialsClient({
           <MoreHorizontal className="size-4" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={() => void openView(m)}>
+            <FileText className="size-4" /> View
+          </DropdownMenuItem>
           <DropdownMenuItem onClick={() => void openEdit(m)}>
             <Pencil className="size-4" /> Edit
           </DropdownMenuItem>
@@ -1114,6 +1139,84 @@ export function MaterialsClient({
       />
 
       {/* ── Add / edit ──────────────────────────────────────────────────── */}
+      {/* Read-only view — the written text and any file, without the editor. */}
+      {viewing && (
+        <Dialog open onOpenChange={(o) => !o && setViewing(null)}>
+          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>{viewing.m.title}</DialogTitle>
+              {viewing.m.description && (
+                <DialogDescription>{viewing.m.description}</DialogDescription>
+              )}
+            </DialogHeader>
+
+            <div className="space-y-4">
+              {viewing.body.trim() ? (
+                looksLikeHtml(viewing.body) ? (
+                  <div
+                    className="prose-blog prose-blog-sm max-w-none"
+                    // Authored in the panel's editor, the same HTML the learner reads.
+                    dangerouslySetInnerHTML={{ __html: viewing.body }}
+                  />
+                ) : (
+                  <p className="text-sm whitespace-pre-wrap">{viewing.body}</p>
+                )
+              ) : null}
+
+              {(viewing.m.fileUrl || viewing.m.assets.length > 0) && (
+                <div className="space-y-2">
+                  {viewing.m.fileUrl && (
+                    <LinkViewer
+                      url={viewing.m.fileUrl}
+                      name={viewing.m.fileName ?? "Document"}
+                    >
+                      <span className="bg-muted/50 hover:bg-muted flex items-center gap-2 rounded-lg border px-3 py-2 text-sm">
+                        <Eye className="size-4 shrink-0" />
+                        <span className="min-w-0 flex-1 truncate text-left">
+                          {viewing.m.fileName ?? "Open document"}
+                        </span>
+                      </span>
+                    </LinkViewer>
+                  )}
+                  {viewing.m.assets.map((a) => (
+                    <LinkViewer key={a.id} url={a.url} name={a.name ?? "Attachment"}>
+                      <span className="bg-muted/50 hover:bg-muted flex items-center gap-2 rounded-lg border px-3 py-2 text-sm">
+                        <Eye className="size-4 shrink-0" />
+                        <span className="min-w-0 flex-1 truncate text-left">
+                          {a.name ?? a.url.split("/").pop() ?? "Attachment"}
+                        </span>
+                      </span>
+                    </LinkViewer>
+                  ))}
+                </div>
+              )}
+
+              {!viewing.body.trim() &&
+                !viewing.m.fileUrl &&
+                viewing.m.assets.length === 0 && (
+                  <p className="text-muted-foreground text-sm">
+                    Nothing to show for this one yet.
+                  </p>
+                )}
+            </div>
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  const m = viewing.m;
+                  setViewing(null);
+                  void openEdit(m);
+                }}
+              >
+                <Pencil className="size-4" /> Edit
+              </Button>
+              <Button onClick={() => setViewing(null)}>Close</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
       <Dialog open={form !== null} onOpenChange={(o) => !o && setForm(null)}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
