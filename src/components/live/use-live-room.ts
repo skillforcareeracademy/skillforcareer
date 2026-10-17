@@ -232,6 +232,14 @@ export function useLiveRoom({ signalUrl, token, joined, selfName, isHost }: Live
   /** Who is outside, for a host. */
   const [knocking, setKnocking] = useState<KnockRequest[]>([]);
 
+  // Host-controlled permissions: who may share, and whether chat is open.
+  const [chatLocked, setChatLockedState] = useState(false);
+  const [mayShare, setMayShare] = useState(false);
+  const [shareAllowedIds, setShareAllowedIds] = useState<string[]>([]);
+  // Read inside the share/chat callbacks without re-creating them each change.
+  const canShareRef = useRef(isHost);
+  const chatLockedRef = useRef(false);
+
   const localStreamRef = useRef<MediaStream | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
   /** Keeps a presented still picture emitting frames. */
@@ -1045,6 +1053,23 @@ export function useLiveRoom({ signalUrl, token, joined, selfName, isHost }: Live
         if (!mine()) return;
         setSessionElsewhere(true);
       });
+
+      socket.on(
+        "controls",
+        (c: { chatLocked?: boolean; shareAllowedIds?: string[] }) => {
+          if (!mine()) return;
+          chatLockedRef.current = Boolean(c?.chatLocked);
+          setChatLockedState(Boolean(c?.chatLocked));
+          setShareAllowedIds(
+            Array.isArray(c?.shareAllowedIds) ? c.shareAllowedIds : [],
+          );
+        },
+      );
+      socket.on("may-share", ({ allowed }: { allowed?: boolean }) => {
+        if (!mine()) return;
+        canShareRef.current = isHost || Boolean(allowed);
+        setMayShare(Boolean(allowed));
+      });
     })();
 
     return () => {
@@ -1121,6 +1146,9 @@ export function useLiveRoom({ signalUrl, token, joined, selfName, isHost }: Live
       if (!file.type.startsWith("image/")) {
         return "Choose a picture to present.";
       }
+      if (!canShareRef.current) {
+        return "The instructor hasn't allowed you to share yet — ask them to turn sharing on for you.";
+      }
       const url = URL.createObjectURL(file);
       try {
         const image = new Image();
@@ -1169,6 +1197,9 @@ export function useLiveRoom({ signalUrl, token, joined, selfName, isHost }: Live
   );
 
   const startSharing = useCallback(async () => {
+    if (!canShareRef.current) {
+      return "The instructor hasn't allowed you to share yet — ask them to turn sharing on for you.";
+    }
     if (!navigator.mediaDevices?.getDisplayMedia) {
       return "This device can't share its screen — no tablet or phone can. Use “Present a picture” to show a page instead.";
     }
@@ -1294,14 +1325,30 @@ export function useLiveRoom({ signalUrl, token, joined, selfName, isHost }: Live
     (text: string) => {
       const clean = text.trim();
       if (!clean) return;
+      if (chatLockedRef.current && !isHost) return;
       socketRef.current?.emit("chat", { text: clean });
       setMessages((m) => [
         ...m,
         { id: `me-${Date.now()}`, from: selfName, text: clean, me: true },
       ]);
     },
-    [selfName],
+    [selfName, isHost],
   );
+
+  /** The host allows (or stops) one student sharing their screen or image. */
+  const allowShare = useCallback((userId: string, allowed: boolean) => {
+    socketRef.current?.emit("set-share", { userId, allowed });
+  }, []);
+
+  /** Allow (or stop) everyone sharing at once — "option of all accept". */
+  const allowAllShare = useCallback((allowed: boolean) => {
+    socketRef.current?.emit("set-share-all", { allowed });
+  }, []);
+
+  /** The host turns student chat on or off for the whole room. */
+  const lockChat = useCallback((locked: boolean) => {
+    socketRef.current?.emit("set-chat-lock", { locked });
+  }, []);
 
   /** Let somebody in, or everyone who is waiting. */
   const admit = useCallback((socketId?: string) => {
@@ -1460,6 +1507,13 @@ export function useLiveRoom({ signalUrl, token, joined, selfName, isHost }: Live
       videoHeld,
       endedBy,
       sessionElsewhere,
+      // host controls
+      canShare: isHost || mayShare,
+      chatLocked,
+      shareAllowedIds,
+      allowShare,
+      allowAllShare,
+      lockChat,
       // actions
       toggleMic,
       toggleCam,
@@ -1504,6 +1558,13 @@ export function useLiveRoom({ signalUrl, token, joined, selfName, isHost }: Live
       videoHeld,
       endedBy,
       sessionElsewhere,
+      isHost,
+      mayShare,
+      chatLocked,
+      shareAllowedIds,
+      allowShare,
+      allowAllShare,
+      lockChat,
       toggleMic,
       toggleCam,
       toggleShare,

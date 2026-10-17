@@ -219,6 +219,31 @@ function lobbyFor(roomCode: string): Lobby {
   return lobby;
 }
 
+/**
+ * What the host has turned on or off for the room — "allow the instructor to
+ * allow students to share their screen or image … instructor can restrict
+ * student chat". A student can share only after the host allows them by id,
+ * and when chat is locked only the host may send.
+ */
+interface RoomControl {
+  chatLocked: boolean;
+  shareAllowed: Set<string>;
+}
+const controls = new Map<string, RoomControl>();
+
+function controlFor(roomCode: string): RoomControl {
+  let c = controls.get(roomCode);
+  if (!c) {
+    c = { chatLocked: false, shareAllowed: new Set() };
+    controls.set(roomCode, c);
+  }
+  return c;
+}
+
+function controlPayload(c: RoomControl) {
+  return { chatLocked: c.chatLocked, shareAllowedIds: [...c.shareAllowed] };
+}
+
 /** Everyone in the room who may answer the door. */
 async function hostSocketsIn(roomCode: string) {
   const all = await io.in(roomCode).fetchSockets();
@@ -384,6 +409,12 @@ function enterRoom(socket: Socket, roomCode: string, user: RoomUser) {
         state: (s.data.state as PeerState) ?? DEFAULT_STATE,
       }));
     socket.emit("peers", peers);
+    // The room's current controls, and whether this person may share.
+    const control = controlFor(roomCode);
+    socket.emit("controls", controlPayload(control));
+    socket.emit("may-share", {
+      allowed: user.isHost || control.shareAllowed.has(user.id),
+    });
   })();
 
   // Announce the newcomer to existing peers.
@@ -437,16 +468,58 @@ function enterRoom(socket: Socket, roomCode: string, user: RoomUser) {
     socket.to(roomCode).emit("peer-state", { socketId: socket.id, state: next });
   });
 
-  // Broadcast chat to everyone else in the room.
+  // Broadcast chat to everyone else in the room — unless the host has locked
+  // it, in which case only the host may send and the learner is told why.
   socket.on("chat", ({ text }: { text: string }) => {
     const clean = String(text ?? "").slice(0, 2000).trim();
     if (!clean) return;
+    if (controlFor(roomCode).chatLocked && !user.isHost) {
+      socket.emit("chat-locked");
+      return;
+    }
     socket.to(roomCode).emit("chat", {
       id: `${socket.id}-${Date.now()}`,
       userId: user.id,
       name: user.name,
       text: clean,
     });
+  });
+
+  // The host turns student chat on or off for everyone.
+  socket.on("set-chat-lock", ({ locked }: { locked?: boolean }) => {
+    if (!user.isHost) return;
+    const c = controlFor(roomCode);
+    c.chatLocked = Boolean(locked);
+    io.in(roomCode).emit("controls", controlPayload(c));
+  });
+
+  // The host allows (or stops) one student sharing their screen or image.
+  socket.on("set-share", ({ userId, allowed }: { userId?: string; allowed?: boolean }) => {
+    if (!user.isHost || !userId) return;
+    const c = controlFor(roomCode);
+    if (allowed) c.shareAllowed.add(String(userId));
+    else c.shareAllowed.delete(String(userId));
+    io.in(roomCode).emit("controls", controlPayload(c));
+    // Tell that student's sockets directly so their share button updates even
+    // if they are not looking at the list.
+    const members = rooms.get(roomCode);
+    for (const sid of members?.get(String(userId))?.sockets ?? []) {
+      io.to(sid).emit("may-share", { allowed: Boolean(allowed) });
+    }
+  });
+
+  // The host allows (or stops) everyone at once — "option of all accept". A
+  // host is always allowed, so broadcasting the flag to the room is safe: the
+  // client folds in its own host status.
+  socket.on("set-share-all", ({ allowed }: { allowed?: boolean }) => {
+    if (!user.isHost) return;
+    const c = controlFor(roomCode);
+    c.shareAllowed.clear();
+    if (allowed) {
+      for (const uid of rooms.get(roomCode)?.keys() ?? []) c.shareAllowed.add(uid);
+    }
+    io.in(roomCode).emit("controls", controlPayload(c));
+    io.in(roomCode).emit("may-share", { allowed: Boolean(allowed) });
   });
 
   // Only the host may end the class, and everyone is told rather than being
@@ -473,6 +546,7 @@ function enterRoom(socket: Socket, roomCode: string, user: RoomUser) {
       // The class is over: forget who was let in, so tomorrow's class asks
       // again rather than inheriting today's door list.
       lobbies.delete(roomCode);
+      controls.delete(roomCode);
     }
 
     const left = new Date();

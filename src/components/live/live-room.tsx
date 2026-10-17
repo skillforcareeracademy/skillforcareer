@@ -361,6 +361,11 @@ export function LiveRoom({
   }
 
   async function onToggleShare() {
+    // A student may share only once the instructor has allowed them.
+    if (!sharing && !room.canShare) {
+      toast.info("The instructor hasn't allowed you to share yet.");
+      return;
+    }
     // Nothing on iPadOS can capture a screen from a web page, in any browser.
     // Rather than fail at the press, hand over to the one thing that does
     // work there and say why — once, not as an error.
@@ -869,29 +874,78 @@ export function LiveRoom({
 
             {panel === "people" ? (
               <div className="flex-1 space-y-1 overflow-y-auto p-2">
+                {/* Host controls — "allow the instructor to allow students to
+                    share … instructor can restrict student chat", with an all
+                    at once ("option of all accept"). */}
+                {isHost && (
+                  <div className="mb-2 space-y-2 rounded-lg border border-white/10 bg-white/[0.03] p-2">
+                    <p className="text-xs font-medium text-white/60">Class controls</p>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          room.allowAllShare(room.shareAllowedIds.length === 0)
+                        }
+                        className="flex-1 rounded-md bg-white/10 px-2 py-1.5 text-xs hover:bg-white/20"
+                      >
+                        {room.shareAllowedIds.length > 0
+                          ? "Stop all sharing"
+                          : "Allow all to share"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => room.lockChat(!room.chatLocked)}
+                        className="flex-1 rounded-md bg-white/10 px-2 py-1.5 text-xs hover:bg-white/20"
+                      >
+                        {room.chatLocked ? "Turn chat on" : "Turn chat off"}
+                      </button>
+                    </div>
+                  </div>
+                )}
                 <PersonRow
                   name={`${me.name} (You)`}
                   sub={isHost ? "Host" : "Attendee"}
                   avatarUrl={me.avatarUrl}
                   muted={!micOn}
                 />
-                {peers.map((peer) => (
-                  <PersonRow
-                    key={peer.socketId}
-                    name={peer.user.name || "Guest"}
-                    sub={
-                      peer.status === "connected"
-                        ? peer.user.isHost
-                          ? "Host"
-                          : "Attendee"
-                        : peer.status === "failed"
-                          ? "Can't connect"
-                          : "Connecting…"
-                    }
-                    avatarUrl={peer.user.avatarUrl}
-                    muted={!peer.state.micOn}
-                  />
-                ))}
+                {peers.map((peer) => {
+                  const peerMayShare = room.shareAllowedIds.includes(peer.user.id);
+                  return (
+                    <PersonRow
+                      key={peer.socketId}
+                      name={peer.user.name || "Guest"}
+                      sub={
+                        peer.status === "connected"
+                          ? peer.user.isHost
+                            ? "Host"
+                            : "Attendee"
+                          : peer.status === "failed"
+                            ? "Can't connect"
+                            : "Connecting…"
+                      }
+                      avatarUrl={peer.user.avatarUrl}
+                      muted={!peer.state.micOn}
+                      action={
+                        isHost && !peer.user.isHost ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              room.allowShare(peer.user.id, !peerMayShare)
+                            }
+                            className={cn(
+                              "shrink-0 rounded-md px-2 py-1 text-xs transition-colors",
+                              peerMayShare
+                                ? "bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30"
+                                : "bg-white/10 text-white/70 hover:bg-white/20",
+                            )}
+                          >
+                            {peerMayShare ? "Sharing on" : "Allow share"}
+                          </button>
+                        ) : undefined
+                      }
+                    />
+                  );
+                })}
               </div>
             ) : (
               <>
@@ -910,15 +964,23 @@ export function LiveRoom({
                   )}
                 </div>
                 <form onSubmit={sendMessage} className="flex gap-2 border-t border-white/10 p-3">
-                  <Input
-                    value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
-                    placeholder="Message…"
-                    className="border-white/15 bg-white/5 text-white placeholder:text-white/40"
-                  />
-                  <Button type="submit" size="icon" aria-label="Send">
-                    <Send className="size-4" />
-                  </Button>
+                  {room.chatLocked && !isHost ? (
+                    <p className="flex-1 py-2 text-center text-xs text-white/40">
+                      The instructor has turned off chat.
+                    </p>
+                  ) : (
+                    <>
+                      <Input
+                        value={draft}
+                        onChange={(e) => setDraft(e.target.value)}
+                        placeholder={room.chatLocked ? "Chat is off for students" : "Message…"}
+                        className="border-white/15 bg-white/5 text-white placeholder:text-white/40"
+                      />
+                      <Button type="submit" size="icon" aria-label="Send">
+                        <Send className="size-4" />
+                      </Button>
+                    </>
+                  )}
                 </form>
               </>
             )}
@@ -972,6 +1034,8 @@ export function LiveRoom({
           active={sharing && !room.canShareScreen}
           onClick={() => {
             if (sharing) void onToggleShare();
+            else if (!room.canShare)
+              toast.info("The instructor hasn't allowed you to share yet.");
             else pictureRef.current?.click();
           }}
           label={
@@ -1455,11 +1519,13 @@ function PersonRow({
   sub,
   avatarUrl,
   muted,
+  action,
 }: {
   name: string;
   sub: string;
   avatarUrl: string | null;
   muted?: boolean;
+  action?: React.ReactNode;
 }) {
   return (
     <div className="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-white/5">
@@ -1471,7 +1537,8 @@ function PersonRow({
         <p className="truncate text-sm">{name}</p>
         <p className="truncate text-xs text-white/40">{sub}</p>
       </div>
-      {muted && <MicOff className="size-4 text-white/40" />}
+      {muted && <MicOff className="size-4 text-white/40 shrink-0" />}
+      {action}
     </div>
   );
 }
