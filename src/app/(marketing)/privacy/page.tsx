@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 };
 
 const { contact } = siteConfig;
-const UPDATED = "21 July 2026";
+const UPDATED = "17 October 2026";
 
 const SECTIONS: LegalSection[] = [
   {
@@ -23,8 +23,9 @@ const SECTIONS: LegalSection[] = [
           &ldquo;us&rdquo;) is an online and offline learning platform operated by Webeside
           Technology, with centres in Faridabad, Haryana and Greater Noida, Uttar Pradesh.
           This policy explains what we do with personal data collected through{" "}
-          {siteConfig.url.replace(/^https?:\/\//, "")}, our classrooms and our support
-          channels.
+          {siteConfig.url.replace(/^https?:\/\//, "")}, our Skill For Career app for
+          Android and iPhone, our classrooms and our support channels. It applies
+          equally to the website and the mobile apps — they are the same platform.
         </p>
         <p>
           For anything in this policy you can reach us at{" "}
@@ -76,6 +77,44 @@ const SECTIONS: LegalSection[] = [
             troubleshooting.
           </li>
         </ul>
+      </>
+    ),
+  },
+  {
+    id: "mobile-app",
+    heading: "Our mobile app and its permissions",
+    body: (
+      <>
+        <p>
+          The Skill For Career app shows the same courses, classes and account as the
+          website. It asks for a permission only when a feature needs it, and only to run
+          that feature on your device — never to gather data in the background:
+        </p>
+        <ul>
+          <li>
+            <strong>Camera and microphone</strong> — so you can turn on your video and speak
+            in a live class. They are used only during a live session, when you choose to
+            switch them on.
+          </li>
+          <li>
+            <strong>Photos, media and files</strong> — so you can upload an assignment, a
+            profile picture or a document you are asked for. The app reaches only the files
+            you pick.
+          </li>
+          <li>
+            <strong>Notifications</strong> — so we can remind you of a class, a result or a
+            due date. You can turn these off in your device settings at any time.
+          </li>
+          <li>
+            <strong>Internet and network state</strong> — so the app can load your content
+            and tell you when you are offline.
+          </li>
+        </ul>
+        <p>
+          The app does <strong>not</strong> collect your location, your contacts, your call
+          or message logs, or data from other apps. The data the app handles, and whether it
+          is shared, is also set out in the app&rsquo;s Data safety section on Google Play.
+        </p>
       </>
     ),
   },
@@ -246,6 +285,27 @@ const SECTIONS: LegalSection[] = [
           and we will respond within a reasonable period. If you are not satisfied with how
           we handled it, you may escalate the matter to the relevant data protection
           authority.
+        </p>
+      </>
+    ),
+  },
+  {
+    id: "delete-account",
+    heading: "Deleting your account and your data",
+    body: (
+      <>
+        <p>
+          You can ask us to delete your account and the personal data tied to it at any
+          time, whether you signed up on the website or in the app. To request deletion,
+          email <a href={`mailto:${contact.email}`}>{contact.email}</a> from the address on
+          your account, with the subject &ldquo;Delete my account&rdquo;.
+        </p>
+        <p>
+          We verify the request and then remove your account and personal data, usually
+          within 30 days. A small set of records is kept for longer only where the law
+          requires it — payment and invoice records for the period tax and accounting law
+          sets, and the record behind any certificate we issued, so it stays verifiable for
+          the employer you gave it to. Everything else is deleted or anonymised.
         </p>
       </>
     ),
