@@ -236,6 +236,7 @@ export function useLiveRoom({ signalUrl, token, joined, selfName, isHost }: Live
   const [chatLocked, setChatLockedState] = useState(false);
   const [mayShare, setMayShare] = useState(false);
   const [shareAllowedIds, setShareAllowedIds] = useState<string[]>([]);
+  const [requireApproval, setRequireApprovalState] = useState(true);
   // Read inside the share/chat callbacks without re-creating them each change.
   const canShareRef = useRef(isHost);
   const chatLockedRef = useRef(false);
@@ -1056,13 +1057,18 @@ export function useLiveRoom({ signalUrl, token, joined, selfName, isHost }: Live
 
       socket.on(
         "controls",
-        (c: { chatLocked?: boolean; shareAllowedIds?: string[] }) => {
+        (c: {
+          chatLocked?: boolean;
+          shareAllowedIds?: string[];
+          requireApproval?: boolean;
+        }) => {
           if (!mine()) return;
           chatLockedRef.current = Boolean(c?.chatLocked);
           setChatLockedState(Boolean(c?.chatLocked));
           setShareAllowedIds(
             Array.isArray(c?.shareAllowedIds) ? c.shareAllowedIds : [],
           );
+          setRequireApprovalState(c?.requireApproval !== false);
         },
       );
       socket.on("may-share", ({ allowed }: { allowed?: boolean }) => {
@@ -1350,6 +1356,11 @@ export function useLiveRoom({ signalUrl, token, joined, selfName, isHost }: Live
     socketRef.current?.emit("set-chat-lock", { locked });
   }, []);
 
+  /** The host turns the waiting room on or off — join by request, or straight in. */
+  const setRequireApproval = useCallback((required: boolean) => {
+    socketRef.current?.emit("set-approval", { required });
+  }, []);
+
   /** Let somebody in, or everyone who is waiting. */
   const admit = useCallback((socketId?: string) => {
     socketRef.current?.emit("admit", socketId ? { socketId } : { all: true });
@@ -1514,6 +1525,8 @@ export function useLiveRoom({ signalUrl, token, joined, selfName, isHost }: Live
       allowShare,
       allowAllShare,
       lockChat,
+      requireApproval,
+      setRequireApproval,
       // actions
       toggleMic,
       toggleCam,
@@ -1565,6 +1578,8 @@ export function useLiveRoom({ signalUrl, token, joined, selfName, isHost }: Live
       allowShare,
       allowAllShare,
       lockChat,
+      requireApproval,
+      setRequireApproval,
       toggleMic,
       toggleCam,
       toggleShare,

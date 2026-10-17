@@ -899,7 +899,23 @@ export function LiveRoom({
                       >
                         {room.chatLocked ? "Turn chat on" : "Turn chat off"}
                       </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          room.setRequireApproval(!room.requireApproval)
+                        }
+                        className="flex-1 rounded-md bg-white/10 px-2 py-1.5 text-xs hover:bg-white/20"
+                      >
+                        {room.requireApproval
+                          ? "Let anyone join"
+                          : "Require approval to join"}
+                      </button>
                     </div>
+                    <p className="text-[11px] text-white/40">
+                      {room.requireApproval
+                        ? "Students wait for you to let them in."
+                        : "Anyone with the link joins straight away."}
+                    </p>
                   </div>
                 )}
                 <PersonRow
@@ -1017,33 +1033,30 @@ export function LiveRoom({
             capture the screen (no browser on iPadOS implements it at all), so
             pressing it says so once and opens the picture instead, which
             teaches the same lesson rather than leaving them stuck. */}
-        <RoundButton
-          active={sharing && room.canShareScreen}
-          onClick={() => void onToggleShare()}
-          label={
-            sharing
-              ? "Stop sharing"
-              : room.canShareScreen
-                ? "Share your screen"
-                : "Share your screen — not possible on a tablet, so this shows a picture instead"
-          }
-        >
-          <MonitorUp className="size-5" />
-        </RoundButton>
+        {/* Only where a browser can actually capture the screen — a tablet
+            cannot, so the button is not shown there at all rather than pressed
+            into an error. "Present a picture" below is the way on a tablet. */}
+        {room.canShareScreen && (
+          <RoundButton
+            active={sharing}
+            onClick={() => void onToggleShare()}
+            label={sharing ? "Stop sharing" : "Share your screen"}
+          >
+            <MonitorUp className="size-5" />
+          </RoundButton>
+        )}
         <RoundButton
           active={sharing && !room.canShareScreen}
           onClick={() => {
-            if (sharing) void onToggleShare();
+            if (sharing && !room.canShareScreen) void onToggleShare();
             else if (!room.canShare)
               toast.info("The instructor hasn't allowed you to share yet.");
             else pictureRef.current?.click();
           }}
           label={
-            sharing
+            sharing && !room.canShareScreen
               ? "Stop showing the picture"
-              : room.canShareScreen
-                ? "Show a picture to the class — a page, a diagram, a photo of your notes"
-                : "Show a picture to the class (this device can't share its screen)"
+              : "Show a picture to the class — a page, a diagram, a photo of your notes"
           }
         >
           <ImageUp className="size-5" />

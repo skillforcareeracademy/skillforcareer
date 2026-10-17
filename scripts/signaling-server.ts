@@ -228,20 +228,26 @@ function lobbyFor(roomCode: string): Lobby {
 interface RoomControl {
   chatLocked: boolean;
   shareAllowed: Set<string>;
+  /** When false, anyone with the link joins straight in — no waiting room. */
+  requireApproval: boolean;
 }
 const controls = new Map<string, RoomControl>();
 
 function controlFor(roomCode: string): RoomControl {
   let c = controls.get(roomCode);
   if (!c) {
-    c = { chatLocked: false, shareAllowed: new Set() };
+    c = { chatLocked: false, shareAllowed: new Set(), requireApproval: true };
     controls.set(roomCode, c);
   }
   return c;
 }
 
 function controlPayload(c: RoomControl) {
-  return { chatLocked: c.chatLocked, shareAllowedIds: [...c.shareAllowed] };
+  return {
+    chatLocked: c.chatLocked,
+    shareAllowedIds: [...c.shareAllowed],
+    requireApproval: c.requireApproval,
+  };
 }
 
 /** Everyone in the room who may answer the door. */
@@ -289,10 +295,13 @@ io.on("connection", (socket) => {
   const roomCode: string = socket.data.roomCode;
   const user: RoomUser = socket.data.user;
   const lobby = lobbyFor(roomCode);
+  const control = controlFor(roomCode);
 
   // The teaching team walks in. So does anybody already let in today, so a
-  // reconnection is not a second knock.
-  const mayEnter = user.isHost || lobby.admitted.has(user.id);
+  // reconnection is not a second knock. And if the host has turned the waiting
+  // room off, anyone with the link walks straight in.
+  const mayEnter =
+    user.isHost || !control.requireApproval || lobby.admitted.has(user.id);
   if (!mayEnter) {
     lobby.waiting.set(socket.id, { user, since: Date.now() });
     socket.emit("waiting-room", { name: user.name });
@@ -599,6 +608,21 @@ function enterRoom(socket: Socket, roomCode: string, user: RoomUser) {
     const ids = all ? [...lobby.waiting.keys()] : socketId ? [String(socketId)] : [];
     for (const id of ids) await admit(id);
     void pushWaitingList(roomCode);
+  });
+
+  // The host decides whether students wait to be let in or join straight away —
+  // "allow only if request is accepted, or without any request student can
+  // join". Turning it off lets in anyone already waiting, so nobody is stranded.
+  socket.on("set-approval", async ({ required }: { required?: boolean }) => {
+    if (!user.isHost) return;
+    const c = controlFor(roomCode);
+    c.requireApproval = required !== false;
+    io.in(roomCode).emit("controls", controlPayload(c));
+    if (!c.requireApproval) {
+      const lob = lobbyFor(roomCode);
+      for (const id of [...lob.waiting.keys()]) await admit(id);
+      void pushWaitingList(roomCode);
+    }
   });
 
   /**
