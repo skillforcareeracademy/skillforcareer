@@ -481,7 +481,7 @@ export function LiveRoom({
   // ── Lobby ──────────────────────────────────────────────────────────────────
   if (!joined) {
     return (
-      <div className="fixed inset-0 flex flex-col overflow-y-auto bg-neutral-950 text-white">
+      <div className="fixed inset-x-0 top-0 h-dvh flex flex-col overflow-y-auto overflow-x-hidden bg-neutral-950 text-white">
         {/* brand glow */}
         <div
           aria-hidden
@@ -639,7 +639,7 @@ export function LiveRoom({
   return (
     <div
       ref={roomRef}
-      className="fixed inset-0 flex flex-col overflow-hidden bg-neutral-950 text-white"
+      className="fixed inset-x-0 top-0 h-dvh flex flex-col overflow-hidden bg-neutral-950 text-white"
     >
       {/* Header */}
       <header className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 bg-neutral-950/60 px-3 py-2.5 backdrop-blur sm:px-4 sm:py-3">
