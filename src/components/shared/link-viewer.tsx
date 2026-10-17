@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { resolveEmbed, type Embed, type EmbedKind } from "@/lib/media";
+import { PdfViewer } from "./pdf-viewer";
 import { cn } from "@/lib/utils";
 
 const ICON: Record<EmbedKind, typeof LinkIcon> = {
@@ -59,6 +60,10 @@ function EmbedBody({ embed }: { embed: Embed }) {
         Your browser can&apos;t play this file.
       </video>
     );
+  }
+  if (embed.kind === "pdf") {
+    // A PDF is drawn by pdf.js, not framed — an iframe shows nothing on an iPad.
+    return <PdfViewer url={embed.src} />;
   }
   return (
     <iframe
