@@ -699,6 +699,12 @@ export function MaterialsClient({
 
   const columns: Column<MaterialRow>[] = [
     {
+      key: "actions",
+      header: "",
+      className: "w-12",
+      cell: (m) => materialActions(m),
+    },
+    {
       key: "number",
       header: "No.",
       className: "w-16",
@@ -820,12 +826,6 @@ export function MaterialsClient({
             Draft
           </Badge>
         ),
-    },
-    {
-      key: "actions",
-      header: "",
-      className: "w-12",
-      cell: (m) => materialActions(m),
     },
   ];
 
@@ -976,7 +976,8 @@ export function MaterialsClient({
             const previewUrl =
               m.fileUrl ?? m.assets.find((a) => a.url)?.url ?? null;
             return (
-              <div className="flex items-center gap-3 py-2.5 pr-3 pl-1">
+              <div className="flex items-center gap-2 py-2.5 pr-3 pl-1">
+                <div className="shrink-0">{materialActions(m)}</div>
                 <span className="text-muted-foreground w-8 shrink-0 text-xs tabular-nums">
                   {m.number}
                 </span>
@@ -1018,7 +1019,6 @@ export function MaterialsClient({
                     </span>
                   </LinkViewer>
                 )}
-                <div className="shrink-0">{materialActions(m)}</div>
               </div>
             );
           }}
