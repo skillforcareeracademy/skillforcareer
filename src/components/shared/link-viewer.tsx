@@ -3,6 +3,8 @@
 import { useState, type ReactNode } from "react";
 import {
   ExternalLink,
+  Maximize2,
+  Minimize2,
   FileSpreadsheet,
   FileText,
   Image as ImageIcon,
@@ -32,8 +34,8 @@ const ICON: Record<EmbedKind, typeof LinkIcon> = {
 };
 
 /** The embed itself — a player, a picture or a frame, by what the link is. */
-function EmbedBody({ embed }: { embed: Embed }) {
-  const frame = "h-[70vh] w-full rounded-lg border bg-muted";
+function EmbedBody({ embed, maximized }: { embed: Embed; maximized?: boolean }) {
+  const frame = cn("w-full rounded-lg border bg-muted", maximized ? "h-[85vh]" : "h-[70vh]");
 
   if (embed.kind === "image") {
     return (
@@ -63,7 +65,7 @@ function EmbedBody({ embed }: { embed: Embed }) {
   }
   if (embed.kind === "pdf") {
     // A PDF is drawn by pdf.js, not framed — an iframe shows nothing on an iPad.
-    return <PdfViewer url={embed.src} />;
+    return <PdfViewer url={embed.src} maximized={maximized} />;
   }
   return (
     <iframe
@@ -101,6 +103,7 @@ export function LinkViewer({
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [maximized, setMaximized] = useState(false);
   // `resolveEmbed` only returns null for an empty string, which the callers
   // already guard; the fallback keeps the component total either way.
   const embed =
@@ -126,21 +129,40 @@ export function LinkViewer({
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent
-          className="max-h-[92vh] overflow-y-auto sm:max-w-4xl"
+          className={cn(
+            "overflow-y-auto",
+            maximized
+              ? "h-[96vh] w-[98vw] max-h-[96vh] sm:max-w-[98vw]"
+              : "max-h-[92vh] sm:max-w-4xl",
+          )}
           // The frame is the point of the dialog, so it gets the room.
           showCloseButton
         >
           <DialogHeader>
-            <DialogTitle className="flex min-w-0 items-center gap-2 pr-6">
+            <DialogTitle className="flex min-w-0 items-center gap-2 pr-16">
               <Icon className="size-4 shrink-0" />
               <span className="min-w-0 truncate">{name || embed.label}</span>
+              {/* Maximise / restore — the close (X) is on the far right. */}
+              <button
+                type="button"
+                onClick={() => setMaximized((v) => !v)}
+                aria-label={maximized ? "Restore" : "Maximise"}
+                title={maximized ? "Restore" : "Maximise"}
+                className="hover:bg-accent absolute top-3 right-10 grid size-7 place-items-center rounded-md"
+              >
+                {maximized ? (
+                  <Minimize2 className="size-4" />
+                ) : (
+                  <Maximize2 className="size-4" />
+                )}
+              </button>
             </DialogTitle>
             <DialogDescription className="truncate">
               {embed.href}
             </DialogDescription>
           </DialogHeader>
 
-          <EmbedBody embed={embed} />
+          <EmbedBody embed={embed} maximized={maximized} />
 
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-muted-foreground text-xs">

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ExternalLink, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 /**
  * A PDF rendered inside the app, on a canvas, rather than handed to the
@@ -16,7 +17,15 @@ import { Button } from "@/components/ui/button";
  * to the installed pdfjs-dist) so it needs no third-party origin and no CSP
  * exception.
  */
-export function PdfViewer({ url, name }: { url: string; name?: string | null }) {
+export function PdfViewer({
+  url,
+  name,
+  maximized,
+}: {
+  url: string;
+  name?: string | null;
+  maximized?: boolean;
+}) {
   const holder = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [pages, setPages] = useState(0);
@@ -104,7 +113,10 @@ export function PdfViewer({ url, name }: { url: string; name?: string | null }) 
         ref={holder}
         className={
           state === "ready"
-            ? "max-h-[72vh] overflow-y-auto rounded-lg"
+            ? cn(
+                "overflow-y-auto rounded-lg",
+                maximized ? "max-h-[86vh]" : "max-h-[72vh]",
+              )
             : "hidden"
         }
       />

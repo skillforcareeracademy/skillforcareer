@@ -525,6 +525,12 @@ export function QuizzesClient({
 
   const columns: Column<QuizRow>[] = [
     {
+      key: "actions",
+      header: <span className="sr-only">Actions</span>,
+      headerClassName: "w-10",
+      cell: (z) => rowActions(z),
+    },
+    {
       key: "sequence",
       header: "#",
       headerClassName: "w-20",
@@ -690,12 +696,6 @@ export function QuizzesClient({
       className: "tabular-nums",
     },
     { key: "status", header: "Status", cell: statusBadge },
-    {
-      key: "actions",
-      header: <span className="sr-only">Actions</span>,
-      headerClassName: "w-10",
-      cell: (z) => rowActions(z),
-    },
   ];
 
   function renderCard(z: QuizRow) {
@@ -946,7 +946,8 @@ export function QuizzesClient({
           emptyLabel={hasFilters ? "No matching quizzes." : "No quizzes yet."}
           onReorder={(ids) => void reorderGroup(ids)}
           renderItem={(z) => (
-            <div className="flex items-center gap-3 py-2.5 pr-3 pl-1">
+            <div className="flex items-center gap-2 py-2.5 pr-3 pl-1">
+              <div className="shrink-0">{rowActions(z)}</div>
               <span className="text-muted-foreground w-10 shrink-0 text-xs tabular-nums">
                 Q{z.quizNo}
               </span>
@@ -975,10 +976,6 @@ export function QuizzesClient({
               >
                 {z.isPublished ? "Published" : "Draft"}
               </Badge>
-              {/* The same edit/duplicate/publish/delete menu the table row has —
-                  "quiz me folder ke andar … edit ya duplicate ka option nhi aa
-                  rha". */}
-              <div className="shrink-0">{rowActions(z)}</div>
             </div>
           )}
         />
