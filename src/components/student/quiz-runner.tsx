@@ -64,6 +64,8 @@ interface QuizData {
   attemptsUsed: number;
   canAttempt: boolean;
   bookmarked: boolean;
+  /** A staff preview — records nothing; the runner shows a banner and no pause. */
+  preview?: boolean;
   /** Whether this paper may be stopped part-way and picked up later. */
   allowPause: boolean;
   /** What was saved at the last pause, if anything. */
@@ -475,10 +477,10 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
         return;
       setChecking(q.id);
       try {
-        const res = await api.post<Checked>(`/api/quizzes/${quiz.id}/check`, {
-          questionId: q.id,
-          optionIds: a.optionIds,
-        });
+        const res = await api.post<Checked>(
+          `/api/quizzes/${quiz.id}/check${quiz.preview ? "?preview=1" : ""}`,
+          { questionId: q.id, optionIds: a.optionIds },
+        );
         setChecked((p) => ({ ...p, [q.id]: res }));
       } catch (err) {
         toast.error(
@@ -667,7 +669,7 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
         })),
       };
       const res = await api.post<Result>(
-        `/api/quizzes/${quiz.id}/submit`,
+        `/api/quizzes/${quiz.id}/submit${quiz.preview ? "?preview=1" : ""}`,
         payload,
       );
       setResult(res);
@@ -948,6 +950,12 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
   // ── Taking screen ──────────────────────────────────────────────────────────
   return (
     <form onSubmit={submit} className="mx-auto max-w-2xl space-y-6 py-2">
+      {quiz.preview && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+          Preview — you&rsquo;re seeing this quiz exactly as a student does.
+          Nothing you answer here is recorded.
+        </div>
+      )}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <Link
@@ -1064,7 +1072,7 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
             : `${answeredCount}/${quiz.questions.length} answered`}
         </p>
         <div className="flex items-center gap-2">
-          {quiz.allowPause && (
+          {quiz.allowPause && !quiz.preview && (
             <Button
               type="button"
               variant="outline"

@@ -6,6 +6,7 @@ import { useRouter, usePathname } from "next/navigation";
 import {
   Plus,
   MoreHorizontal,
+  PlayCircle,
   Pencil,
   Trash2,
   Download,
@@ -485,6 +486,11 @@ export function QuizzesClient({
           <MoreHorizontal className="size-4" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          <DropdownMenuItem
+            onClick={() => router.push(`${basePath}/${z.id}/preview`)}
+          >
+            <PlayCircle className="size-4" /> Preview as student
+          </DropdownMenuItem>
           <DropdownMenuItem onClick={() => router.push(`${basePath}/${z.id}`)}>
             <Pencil className="size-4" /> Edit &amp; questions
           </DropdownMenuItem>

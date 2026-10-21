@@ -177,9 +177,13 @@ export async function listStudentQuizzes(
 }
 
 /** Quiz + questions for taking — WITHOUT correct-answer flags. */
-export async function getQuizForAttempt(userId: string, quizId: string) {
+export async function getQuizForAttempt(
+  userId: string,
+  quizId: string,
+  preview = false,
+) {
   const quiz = await prisma.quiz.findFirst({
-    where: { id: quizId, isPublished: true },
+    where: { id: quizId, ...(preview ? {} : { isPublished: true }) },
     include: {
       course: { select: { id: true, title: true } },
       category: { select: { name: true } },
@@ -197,14 +201,15 @@ export async function getQuizForAttempt(userId: string, quizId: string) {
     },
   });
   if (!quiz || !quiz.courseId) return null;
-  // A quiz still under wraps is not takeable by URL either.
-  if (quiz.releaseAt && quiz.releaseAt.getTime() > Date.now()) return null;
-
-  const enrolled = await prisma.enrollment.findUnique({
-    where: { userId_courseId: { userId, courseId: quiz.courseId } },
-    select: { id: true },
-  });
-  if (!enrolled) return null;
+  if (!preview) {
+    // A quiz still under wraps is not takeable by URL either.
+    if (quiz.releaseAt && quiz.releaseAt.getTime() > Date.now()) return null;
+    const enrolled = await prisma.enrollment.findUnique({
+      where: { userId_courseId: { userId, courseId: quiz.courseId } },
+      select: { id: true },
+    });
+    if (!enrolled) return null;
+  }
 
   const [attemptsUsed, bookmark, { settings }, paused] = await Promise.all([
     // A paper paused part-way is not an attempt spent — it is this one, still
@@ -240,6 +245,8 @@ export async function getQuizForAttempt(userId: string, quizId: string) {
     /** What was saved at the last pause, if anything. */
     paused,
     bookmarked: bookmark != null,
+    /** A staff preview — records nothing, and the runner says so. */
+    preview,
     /** Marks each question as it is answered, rather than only at the end. */
     showAnswerPerQuestion: quiz.showAnswerPerQuestion,
     categoryName: quiz.subCategory?.name ?? quiz.category?.name ?? null,
@@ -277,25 +284,27 @@ export async function checkQuizAnswer(
   userId: string,
   quizId: string,
   input: CheckAnswerInput,
+  preview = false,
 ): Promise<CheckedAnswer> {
   const quiz = await prisma.quiz.findFirst({
-    where: { id: quizId, isPublished: true },
+    where: { id: quizId, ...(preview ? {} : { isPublished: true }) },
     select: { courseId: true, showAnswerPerQuestion: true, releaseAt: true },
   });
   if (!quiz || !quiz.courseId) throw AppError.notFound("Quiz not found.");
   if (!quiz.showAnswerPerQuestion) {
     throw AppError.badRequest("This quiz shows its answers at the end.");
   }
-  if (quiz.releaseAt && quiz.releaseAt.getTime() > Date.now()) {
-    throw AppError.badRequest("This quiz hasn't opened yet.");
+  if (!preview) {
+    if (quiz.releaseAt && quiz.releaseAt.getTime() > Date.now()) {
+      throw AppError.badRequest("This quiz hasn't opened yet.");
+    }
+    const enrolled = await prisma.enrollment.findUnique({
+      where: { userId_courseId: { userId, courseId: quiz.courseId } },
+      select: { id: true },
+    });
+    if (!enrolled)
+      throw AppError.forbidden("You're not enrolled in this course.");
   }
-
-  const enrolled = await prisma.enrollment.findUnique({
-    where: { userId_courseId: { userId, courseId: quiz.courseId } },
-    select: { id: true },
-  });
-  if (!enrolled)
-    throw AppError.forbidden("You're not enrolled in this course.");
 
   const question = await prisma.question.findFirst({
     where: { id: input.questionId, quizId },
@@ -363,9 +372,11 @@ export async function submitQuizAttempt(
   userId: string,
   quizId: string,
   input: SubmitQuizInput,
+  /** A staff preview grades the paper but records nothing. */
+  preview = false,
 ): Promise<QuizResult> {
   const quiz = await prisma.quiz.findFirst({
-    where: { id: quizId, isPublished: true },
+    where: { id: quizId, ...(preview ? {} : { isPublished: true }) },
     include: {
       questions: {
         include: { options: { select: { id: true, isCorrect: true } } },
@@ -374,15 +385,17 @@ export async function submitQuizAttempt(
   });
   if (!quiz || !quiz.courseId) throw AppError.notFound("Quiz not found.");
 
-  const enrolled = await prisma.enrollment.findUnique({
-    where: { userId_courseId: { userId, courseId: quiz.courseId } },
-    select: { id: true },
-  });
-  if (!enrolled)
-    throw AppError.forbidden("You're not enrolled in this course.");
+  if (!preview) {
+    const enrolled = await prisma.enrollment.findUnique({
+      where: { userId_courseId: { userId, courseId: quiz.courseId } },
+      select: { id: true },
+    });
+    if (!enrolled)
+      throw AppError.forbidden("You're not enrolled in this course.");
 
-  if (quiz.releaseAt && quiz.releaseAt.getTime() > Date.now()) {
-    throw AppError.badRequest("This quiz hasn't opened yet.");
+    if (quiz.releaseAt && quiz.releaseAt.getTime() > Date.now()) {
+      throw AppError.badRequest("This quiz hasn't opened yet.");
+    }
   }
 
   // The quiz's own cap, else the platform default from Settings → Learning.
@@ -403,7 +416,7 @@ export async function submitQuizAttempt(
     }),
   ]);
   const attemptsUsed = finished;
-  if (!paused && cap > 0 && finished >= cap) {
+  if (!preview && !paused && cap > 0 && finished >= cap) {
     throw AppError.badRequest("You've used all your attempts for this quiz.");
   }
 
@@ -466,47 +479,49 @@ export async function submitQuizAttempt(
     pointsAwarded: r.points,
   }));
 
-  if (paused) {
-    // The half-finished answers are replaced wholesale by the submitted ones.
-    await prisma.quizResponse.deleteMany({ where: { attemptId: paused.id } });
-    await prisma.quizAttempt.update({
-      where: { id: paused.id },
-      data: {
-        status: "GRADED",
-        score,
-        maxScore,
-        timeSpentSeconds: spent,
-        submittedAt: now,
-        gradedAt: now,
-        responses: { create: rows },
-      },
-    });
-  } else {
-    await prisma.quizAttempt.create({
-      data: {
-        quizId,
-        studentId: userId,
-        attemptNo,
-        status: "GRADED",
-        score,
-        maxScore,
-        timeSpentSeconds: spent,
-        submittedAt: now,
-        gradedAt: now,
-        responses: { create: rows },
-      },
-      select: { id: true },
+  if (!preview) {
+    if (paused) {
+      // The half-finished answers are replaced wholesale by the submitted ones.
+      await prisma.quizResponse.deleteMany({ where: { attemptId: paused.id } });
+      await prisma.quizAttempt.update({
+        where: { id: paused.id },
+        data: {
+          status: "GRADED",
+          score,
+          maxScore,
+          timeSpentSeconds: spent,
+          submittedAt: now,
+          gradedAt: now,
+          responses: { create: rows },
+        },
+      });
+    } else {
+      await prisma.quizAttempt.create({
+        data: {
+          quizId,
+          studentId: userId,
+          attemptNo,
+          status: "GRADED",
+          score,
+          maxScore,
+          timeSpentSeconds: spent,
+          submittedAt: now,
+          gradedAt: now,
+          responses: { create: rows },
+        },
+        select: { id: true },
+      });
+    }
+
+    void logActivity({
+      userId,
+      action: ACTIVITY_ACTIONS.QUIZ_SUBMIT,
+      entityType: "Quiz",
+      entityId: quizId,
+      description: `Scored ${percent}% on “${quiz.title}”`,
+      metadata: { score, maxScore, percent, passed },
     });
   }
-
-  void logActivity({
-    userId,
-    action: ACTIVITY_ACTIONS.QUIZ_SUBMIT,
-    entityType: "Quiz",
-    entityId: quizId,
-    description: `Scored ${percent}% on “${quiz.title}”`,
-    metadata: { score, maxScore, percent, passed },
-  });
 
   return {
     score,
