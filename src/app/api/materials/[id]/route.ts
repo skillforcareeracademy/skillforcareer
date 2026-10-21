@@ -5,6 +5,7 @@ import { requireApiPermission, userOwnsCourse } from "@/lib/auth/api-guard";
 import { PERMISSIONS } from "@/config/roles";
 import { studyMaterialSchema } from "@/lib/validations/study-material";
 import {
+  assertCanEditMaterial,
   deleteMaterial,
   getMaterial,
   updateMaterial,
@@ -23,8 +24,13 @@ export const GET = withRoute(async (_req, { params }) => {
 export const PATCH = withRoute(async (req, { params }) => {
   const user = await requireApiPermission(PERMISSIONS.MANAGE_MATERIAL);
   const id = String((await params).id);
+  const { courseId: currentCourseId } = await assertCanEditMaterial(user, id);
   const input = studyMaterialSchema.parse(await req.json().catch(() => ({})));
-  if (input.courseId && !(await userOwnsCourse(user, input.courseId))) {
+  // Editing in place may keep a course the instructor doesn't lead (an admin's
+  // batch note); only *moving* it to a different course needs ownership.
+  const movingCourse =
+    Boolean(input.courseId) && input.courseId !== currentCourseId;
+  if (movingCourse && !(await userOwnsCourse(user, input.courseId!))) {
     throw AppError.forbidden("You can only file material under your own courses.");
   }
   await updateMaterial(id, input);
@@ -33,6 +39,8 @@ export const PATCH = withRoute(async (req, { params }) => {
 
 export const DELETE = withRoute(async (_req, { params }) => {
   const user = await requireApiPermission(PERMISSIONS.MANAGE_MATERIAL);
-  await deleteMaterial(String((await params).id), user.id);
+  const id = String((await params).id);
+  await assertCanEditMaterial(user, id);
+  await deleteMaterial(id, user.id);
   return ok({ message: "Material deleted." });
 });

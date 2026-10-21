@@ -151,6 +151,13 @@ export const settingsSchema = z.object({
   quizAttemptLimit: z.coerce.number().int().min(0).max(99),
   assignmentAttemptLimit: z.coerce.number().int().min(0).max(99),
 
+  // ── Instructor access to others' material ──────────────────────────────────
+  // "Instructor can see or edit admin uploaded all notes of the batch on which
+  // he is assigned … but admin can control" — two switches, kept apart on
+  // purpose so viewing can be allowed without editing.
+  instructorViewOthersMaterials: z.boolean(),
+  instructorEditOthersMaterials: z.boolean(),
+
   // ── Fees & EMI ───────────────────────────────────────────────────────────
   emiEnabled: z.boolean(),
   /// Whether the office may offer a plan with nothing added on top.
@@ -290,6 +297,9 @@ export const DEFAULT_SETTINGS: Settings = {
   lessonDownloadLimit: 0,
   quizAttemptLimit: 0,
   assignmentAttemptLimit: 0,
+
+  instructorViewOthersMaterials: true,
+  instructorEditOthersMaterials: true,
 
   emiEnabled: true,
   emiZeroCostEnabled: true,

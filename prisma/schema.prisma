@@ -694,7 +694,15 @@ model StudyMaterial {
   /// "Download off karne ka option" — reading stays possible, saving a copy
   /// does not.
   downloadsEnabled Boolean @default(true)
-  isPublished      Boolean @default(false)
+
+  /// Whether a learner may open the link in a new browser tab, and whether the
+  /// learner is shown the link's address at all. Off locks the reading to the
+  /// in-app viewer, so the source URL stays out of the learner's hands. Staff
+  /// always see both. Defaults keep the old behaviour — everything on show.
+  openInNewTabEnabled Boolean @default(true)
+  showLinkEnabled     Boolean @default(true)
+
+  isPublished Boolean @default(false)
 
   createdById String
   createdAt   DateTime @default(now())

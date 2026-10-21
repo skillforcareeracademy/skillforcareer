@@ -50,6 +50,9 @@ export const studyMaterialSchema = z.object({
    */
   body: z.string().max(2_000_000).optional().or(z.literal("")),
   downloadsEnabled: z.boolean().optional(),
+  /** Whether a learner may open the link in a new tab / see its address. */
+  openInNewTabEnabled: z.boolean().optional(),
+  showLinkEnabled: z.boolean().optional(),
   isPublished: z.boolean().optional(),
   /** Empty both = everyone on the course, as with quizzes. */
   batchIds: z.array(z.string().min(1)).max(200).optional(),

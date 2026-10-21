@@ -21,10 +21,14 @@ export function PdfViewer({
   url,
   name,
   maximized,
+  allowNewTab = true,
 }: {
   url: string;
   name?: string | null;
   maximized?: boolean;
+  /** When the in-app render fails, may we offer the file in a new tab? Off for
+   *  a learner whose material keeps the source link out of reach. */
+  allowNewTab?: boolean;
 }) {
   const holder = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
@@ -99,13 +103,17 @@ export function PdfViewer({
       {state === "error" && (
         <div className="bg-muted/50 text-muted-foreground flex h-[40vh] flex-col items-center justify-center gap-3 rounded-lg border p-6 text-center text-sm">
           <span>This document couldn&rsquo;t be shown in the app.</span>
-          <Button
-            variant="outline"
-            nativeButton={false}
-            render={<a href={url} target="_blank" rel="noopener noreferrer" />}
-          >
-            <ExternalLink className="size-4" /> Open it in a new tab
-          </Button>
+          {allowNewTab && (
+            <Button
+              variant="outline"
+              nativeButton={false}
+              render={
+                <a href={url} target="_blank" rel="noopener noreferrer" />
+              }
+            >
+              <ExternalLink className="size-4" /> Open it in a new tab
+            </Button>
+          )}
         </div>
       )}
 

@@ -1,7 +1,9 @@
 import { prisma } from "@/lib/prisma";
 import { moveToTrash } from "./trash-service";
+import { getSettings } from "./settings-service";
 import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
+import { ROLES } from "@/config/roles";
 import { toCsv, parseCsv } from "@/lib/csv";
 import { copyTitle, type ImportMode } from "@/lib/validations/import-mode";
 import {
@@ -64,6 +66,8 @@ export interface MaterialRow {
   }[];
   hasBody: boolean;
   downloadsEnabled: boolean;
+  openInNewTabEnabled: boolean;
+  showLinkEnabled: boolean;
   isPublished: boolean;
   batchIds: string[];
   batchNames: string[];
@@ -74,6 +78,9 @@ export interface MaterialRow {
   /** How many learners have opened it, and the time they have spent in total. */
   readers: number;
   readSeconds: number;
+  /** May the viewer change or remove it? Staff and the author always; other
+   *  instructors only when the academy lets them edit others' material. */
+  canEdit: boolean;
 }
 
 const SELECT = {
@@ -90,12 +97,15 @@ const SELECT = {
   mimeType: true,
   body: true,
   downloadsEnabled: true,
+  openInNewTabEnabled: true,
+  showLinkEnabled: true,
   isPublished: true,
   createdAt: true,
   updatedAt: true,
   course: { select: { title: true } },
   category: { select: { name: true } },
   subCategory: { select: { name: true } },
+  createdById: true,
   createdBy: { select: { name: true } },
   batches: { select: { batchId: true, batch: { select: { name: true } } } },
   courses: { select: { courseId: true, course: { select: { title: true } } } },
@@ -152,6 +162,8 @@ function toRow(
     })),
     hasBody: Boolean(m.body && m.body.trim()),
     downloadsEnabled: m.downloadsEnabled,
+    openInNewTabEnabled: m.openInNewTabEnabled,
+    showLinkEnabled: m.showLinkEnabled,
     isPublished: m.isPublished,
     batchIds: m.batches.map((b) => b.batchId),
     batchNames: m.batches.map((b) => b.batch.name),
@@ -161,6 +173,9 @@ function toRow(
     updatedAt: m.updatedAt.toISOString(),
     readers: r?.readers ?? 0,
     readSeconds: r?.seconds ?? 0,
+    // Staff and single-material reads: editable. A learner-scoped list over
+    // narrows this per row (see `listMaterials`).
+    canEdit: true,
   };
 }
 
@@ -181,17 +196,78 @@ async function readTotals(ids: string[]) {
   return map;
 }
 
-/** An instructor sees their own material and their own courses' and batches'. */
-function ownerScope(ownerId?: string): Prisma.StudyMaterialWhereInput {
+/**
+ * What an instructor may see. Their own material always; and — unless the
+ * academy has switched it off — everything that reaches a course or a batch
+ * they are assigned to, including notes an admin filed only against the course.
+ * Staff (no `ownerId`) see everything.
+ */
+async function ownerScope(
+  ownerId?: string,
+): Promise<Prisma.StudyMaterialWhereInput> {
   if (!ownerId) return {};
+  const { settings } = await getSettings();
+  // Switched off: an instructor is back to only what they uploaded.
+  if (!settings.instructorViewOthersMaterials) return { createdById: ownerId };
+
+  // Lead of the batch, or an assisting instructor on it.
+  const assigned: Prisma.BatchWhereInput = {
+    OR: [
+      { instructorId: ownerId },
+      { associates: { some: { userId: ownerId } } },
+    ],
+  };
   return {
     OR: [
       { createdById: ownerId },
+      // Courses they lead — primary course or one of the extra ones.
       { course: { instructorId: ownerId } },
-      { batches: { some: { batch: { instructorId: ownerId } } } },
-      { batches: { some: { batch: { associates: { some: { userId: ownerId } } } } } },
+      { courses: { some: { course: { instructorId: ownerId } } } },
+      // Notes handed straight to a batch they run.
+      { batches: { some: { batch: assigned } } },
+      // Notes filed only against a course one of their batches belongs to.
+      { course: { batches: { some: assigned } } },
+      { courses: { some: { course: { batches: { some: assigned } } } } },
     ],
   };
+}
+
+/**
+ * May this user change or remove this one piece? Staff always; an instructor
+ * their own always, and others' only when the academy allows it and the piece
+ * is already within their reach. The write routes call this before acting.
+ */
+export async function assertCanEditMaterial(
+  user: { id: string; roles: readonly string[] },
+  materialId: string,
+): Promise<{ courseId: string | null }> {
+  const m = await prisma.studyMaterial.findUnique({
+    where: { id: materialId },
+    select: { createdById: true, courseId: true },
+  });
+  if (!m) throw AppError.notFound("Material not found.");
+
+  const staff = user.roles.some(
+    (r) => r === ROLES.SUPER_ADMIN || r === ROLES.ADMIN,
+  );
+  if (staff || m.createdById === user.id) return { courseId: m.courseId };
+
+  const { settings } = await getSettings();
+  if (!settings.instructorEditOthersMaterials) {
+    throw AppError.forbidden("You can only change material you uploaded.");
+  }
+  // It still has to be one they can see — their own batches and courses.
+  const scope = await ownerScope(user.id);
+  const visible = await prisma.studyMaterial.findFirst({
+    where: { AND: [{ id: materialId }, scope] },
+    select: { id: true },
+  });
+  if (!visible) {
+    throw AppError.forbidden(
+      "You can only change material for your own batches.",
+    );
+  }
+  return { courseId: m.courseId };
 }
 
 export interface MaterialListQuery {
@@ -223,7 +299,7 @@ export async function listMaterials(
 
   const where: Prisma.StudyMaterialWhereInput = {
     AND: [
-      ownerScope(ownerId),
+      await ownerScope(ownerId),
       q.search ? { title: { contains: q.search } } : {},
       q.categoryId ? { categoryId: q.categoryId } : {},
       q.subCategoryId ? { subCategoryId: q.subCategoryId } : {},
@@ -265,7 +341,16 @@ export async function listMaterials(
   });
   const ids = rows.map((r) => r.id);
   const [reads, groups] = await Promise.all([readTotals(ids), groupPathsFor(ids)]);
-  const list = rows.map((m) => toRow(m, reads, groups));
+  // For an instructor, whether they may edit a row they didn't write turns on
+  // one academy switch — read once, applied to every row. Staff keep `true`.
+  const canEditOthers = ownerId
+    ? (await getSettings()).settings.instructorEditOthersMaterials
+    : true;
+  const list = rows.map((m) => {
+    const row = toRow(m, reads, groups);
+    if (ownerId) row.canEdit = m.createdById === ownerId || canEditOthers;
+    return row;
+  });
   // Sorting by how much it has been read has to happen after the totals are in.
   return q.sort === "reads" ? list.sort((a, b) => b.readSeconds - a.readSeconds) : list;
 }
@@ -303,7 +388,7 @@ export interface MaterialStats {
 }
 
 export async function materialStats(ownerId?: string): Promise<MaterialStats> {
-  const scope = ownerScope(ownerId);
+  const scope = await ownerScope(ownerId);
   const [total, published, withFile, readers] = await Promise.all([
     prisma.studyMaterial.count({ where: scope }),
     prisma.studyMaterial.count({ where: { AND: [scope, { isPublished: true }] } }),
@@ -393,6 +478,8 @@ export async function createMaterial(
       mimeType: blank(input.mimeType),
       body: blank(input.body),
       downloadsEnabled: input.downloadsEnabled ?? true,
+      openInNewTabEnabled: input.openInNewTabEnabled ?? true,
+      showLinkEnabled: input.showLinkEnabled ?? true,
       isPublished: input.isPublished ?? false,
       number: await nextNumber(),
       sequence: await nextSequence(categoryId, subCategoryId),
@@ -449,6 +536,8 @@ export async function duplicateMaterial(
       mimeType: source.mimeType,
       body: source.body,
       downloadsEnabled: source.downloadsEnabled,
+      openInNewTabEnabled: source.openInNewTabEnabled,
+      showLinkEnabled: source.showLinkEnabled,
       isPublished: false,
       number: await nextNumber(),
       sequence: await nextSequence(source.categoryId, source.subCategoryId),
@@ -515,6 +604,8 @@ export async function updateMaterial(id: string, input: StudyMaterialInput): Pro
       mimeType: blank(input.mimeType),
       body: blank(input.body),
       downloadsEnabled: input.downloadsEnabled ?? true,
+      openInNewTabEnabled: input.openInNewTabEnabled ?? true,
+      showLinkEnabled: input.showLinkEnabled ?? true,
       isPublished: input.isPublished ?? false,
       // Moved to another group, so it joins the end of that one.
       ...(moved ? { sequence: await nextSequence(categoryId, subCategoryId) } : {}),
@@ -577,8 +668,9 @@ export async function deleteMaterial(id: string, deletedById: string): Promise<v
 
 /** Drag-and-drop order, written in one statement. */
 export async function reorderMaterials(ids: string[], ownerId?: string): Promise<number> {
+  const scope = await ownerScope(ownerId);
   const rows = await prisma.studyMaterial.findMany({
-    where: { AND: [{ id: { in: ids } }, ownerScope(ownerId)] },
+    where: { AND: [{ id: { in: ids } }, scope] },
     select: { id: true },
   });
   const allowed = new Set(rows.map((r) => r.id));

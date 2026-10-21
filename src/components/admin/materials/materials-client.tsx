@@ -138,6 +138,8 @@ interface FormState {
   assets: Asset[];
   body: string;
   downloadsEnabled: boolean;
+  openInNewTabEnabled: boolean;
+  showLinkEnabled: boolean;
   isPublished: boolean;
   batchIds: string[];
 }
@@ -152,6 +154,8 @@ function blankForm(): FormState {
     assets: [],
     body: "",
     downloadsEnabled: true,
+    openInNewTabEnabled: true,
+    showLinkEnabled: true,
     isPublished: false,
     batchIds: [],
   };
@@ -447,6 +451,8 @@ export function MaterialsClient({
         })),
         body: form.body,
         downloadsEnabled: form.downloadsEnabled,
+        openInNewTabEnabled: form.openInNewTabEnabled,
+        showLinkEnabled: form.showLinkEnabled,
         isPublished: form.isPublished,
         batchIds: form.batchIds,
       };
@@ -522,40 +528,48 @@ export function MaterialsClient({
           <DropdownMenuItem onClick={() => void openView(m)}>
             <FileText className="size-4" /> View
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => void openEdit(m)}>
-            <Pencil className="size-4" /> Edit
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            disabled={duplicating === m.id}
-            onClick={() => void duplicate(m)}
-          >
-            {duplicating === m.id ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Copy className="size-4" />
-            )}
-            Duplicate
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => void togglePublished(m)}>
-            {m.isPublished ? (
-              <>
-                <EyeOff className="size-4" /> Hide
-              </>
-            ) : (
-              <>
-                <Eye className="size-4" /> Publish
-              </>
-            )}
-          </DropdownMenuItem>
+          {m.canEdit && (
+            <DropdownMenuItem onClick={() => void openEdit(m)}>
+              <Pencil className="size-4" /> Edit
+            </DropdownMenuItem>
+          )}
+          {m.canEdit && (
+            <DropdownMenuItem
+              disabled={duplicating === m.id}
+              onClick={() => void duplicate(m)}
+            >
+              {duplicating === m.id ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Copy className="size-4" />
+              )}
+              Duplicate
+            </DropdownMenuItem>
+          )}
+          {m.canEdit && (
+            <DropdownMenuItem onClick={() => void togglePublished(m)}>
+              {m.isPublished ? (
+                <>
+                  <EyeOff className="size-4" /> Hide
+                </>
+              ) : (
+                <>
+                  <Eye className="size-4" /> Publish
+                </>
+              )}
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem onClick={() => void openReaders(m)}>
             <Users className="size-4" /> Who has read it
           </DropdownMenuItem>
-          <DropdownMenuItem
-            className="text-destructive focus:text-destructive"
-            onClick={() => setDeleting(m)}
-          >
-            <Trash2 className="size-4" /> Delete
-          </DropdownMenuItem>
+          {m.canEdit && (
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive"
+              onClick={() => setDeleting(m)}
+            >
+              <Trash2 className="size-4" /> Delete
+            </DropdownMenuItem>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
     );
@@ -659,6 +673,8 @@ export function MaterialsClient({
       ],
       body: "",
       downloadsEnabled: m.downloadsEnabled,
+      openInNewTabEnabled: m.openInNewTabEnabled,
+      showLinkEnabled: m.showLinkEnabled,
       isPublished: m.isPublished,
       batchIds: m.batchIds,
     };
@@ -1201,16 +1217,18 @@ export function MaterialsClient({
             </div>
 
             <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  const m = viewing.m;
-                  setViewing(null);
-                  void openEdit(m);
-                }}
-              >
-                <Pencil className="size-4" /> Edit
-              </Button>
+              {viewing.m.canEdit && (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    const m = viewing.m;
+                    setViewing(null);
+                    void openEdit(m);
+                  }}
+                >
+                  <Pencil className="size-4" /> Edit
+                </Button>
+              )}
               <Button onClick={() => setViewing(null)}>Close</Button>
             </DialogFooter>
           </DialogContent>
@@ -1505,6 +1523,34 @@ export function MaterialsClient({
                     checked={form.downloadsEnabled}
                     onCheckedChange={(v) =>
                       setForm({ ...form, downloadsEnabled: Boolean(v) })
+                    }
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-3 rounded-xl border p-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">Open in a new tab</p>
+                    <p className="text-muted-foreground text-xs">
+                      Lets a learner open the link in a browser tab.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={form.openInNewTabEnabled}
+                    onCheckedChange={(v) =>
+                      setForm({ ...form, openInNewTabEnabled: Boolean(v) })
+                    }
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-3 rounded-xl border p-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">Show the link address</p>
+                    <p className="text-muted-foreground text-xs">
+                      Off keeps the source link out of a learner&rsquo;s reach.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={form.showLinkEnabled}
+                    onCheckedChange={(v) =>
+                      setForm({ ...form, showLinkEnabled: Boolean(v) })
                     }
                   />
                 </div>

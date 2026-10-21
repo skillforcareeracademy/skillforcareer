@@ -571,6 +571,31 @@ export function SettingsClient({
               </Field>
             </CardContent>
           </Card>
+
+          <Card className="mt-4">
+            <CardHeader>
+              <CardTitle>Instructor access to material</CardTitle>
+              <CardDescription>
+                An instructor always manages what they upload. These control
+                what they may do with notes uploaded by others — an admin, say —
+                for the batches and courses they are assigned to.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="divide-y">
+              <ToggleRow
+                label="Let instructors view others' material"
+                description="Assigned instructors can open notes they didn't upload for their batches and courses. Off limits them to their own."
+                checked={form.instructorViewOthersMaterials}
+                onChange={(v) => set("instructorViewOthersMaterials", v)}
+              />
+              <ToggleRow
+                label="Let instructors edit others' material"
+                description="Assigned instructors can change, publish or remove those notes — not only read them. Off leaves them view-only."
+                checked={form.instructorEditOthersMaterials}
+                onChange={(v) => set("instructorEditOthersMaterials", v)}
+              />
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* ── Fees & EMI ──────────────────────────────────────────────────── */}

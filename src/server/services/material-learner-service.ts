@@ -34,6 +34,9 @@ export interface LearnerMaterial {
   assets: { id: string; kind: string; url: string; name: string | null }[];
   hasBody: boolean;
   downloadsEnabled: boolean;
+  /** Whether this learner may open the link in a new tab, and see its address. */
+  openInNewTabEnabled: boolean;
+  showLinkEnabled: boolean;
   /** This learner's own reading. */
   readSeconds: number;
   opens: number;
@@ -88,6 +91,8 @@ export async function listMaterialsForLearner(userId: string): Promise<LearnerMa
       mimeType: true,
       body: true,
       downloadsEnabled: true,
+      openInNewTabEnabled: true,
+      showLinkEnabled: true,
       updatedAt: true,
       course: { select: { title: true } },
       category: { select: { name: true } },
@@ -157,6 +162,8 @@ export async function listMaterialsForLearner(userId: string): Promise<LearnerMa
     assets: m.assets,
     hasBody: Boolean(m.body && m.body.trim()),
     downloadsEnabled: m.downloadsEnabled,
+    openInNewTabEnabled: m.openInNewTabEnabled,
+    showLinkEnabled: m.showLinkEnabled,
     readSeconds: readBy.get(m.id)?.seconds ?? 0,
     opens: readBy.get(m.id)?.opens ?? 0,
     highlights: markBy.get(m.id) ?? 0,
@@ -197,6 +204,8 @@ export async function getMaterialForLearner(
       mimeType: true,
       body: true,
       downloadsEnabled: true,
+      openInNewTabEnabled: true,
+      showLinkEnabled: true,
       updatedAt: true,
       course: { select: { title: true } },
       category: { select: { name: true } },
@@ -257,6 +266,8 @@ export async function getMaterialForLearner(
     assets: m.assets,
     hasBody: Boolean(m.body && m.body.trim()),
     downloadsEnabled: m.downloadsEnabled,
+    openInNewTabEnabled: m.openInNewTabEnabled,
+    showLinkEnabled: m.showLinkEnabled,
     readSeconds: read?.seconds ?? 0,
     opens: read?.opens ?? 0,
     highlights: marks.length,

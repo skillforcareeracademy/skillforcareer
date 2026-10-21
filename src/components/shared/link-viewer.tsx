@@ -34,7 +34,15 @@ const ICON: Record<EmbedKind, typeof LinkIcon> = {
 };
 
 /** The embed itself — a player, a picture or a frame, by what the link is. */
-function EmbedBody({ embed, maximized }: { embed: Embed; maximized?: boolean }) {
+function EmbedBody({
+  embed,
+  maximized,
+  allowNewTab = true,
+}: {
+  embed: Embed;
+  maximized?: boolean;
+  allowNewTab?: boolean;
+}) {
   const frame = cn("w-full rounded-lg border bg-muted", maximized ? "h-[85vh]" : "h-[70vh]");
 
   if (embed.kind === "image") {
@@ -65,7 +73,9 @@ function EmbedBody({ embed, maximized }: { embed: Embed; maximized?: boolean }) 
   }
   if (embed.kind === "pdf") {
     // A PDF is drawn by pdf.js, not framed — an iframe shows nothing on an iPad.
-    return <PdfViewer url={embed.src} maximized={maximized} />;
+    return (
+      <PdfViewer url={embed.src} maximized={maximized} allowNewTab={allowNewTab} />
+    );
   }
   return (
     <iframe
@@ -94,6 +104,8 @@ export function LinkViewer({
   name,
   children,
   className,
+  allowNewTab = true,
+  showLink = true,
 }: {
   url: string;
   /** What to call it in the heading — falls back to the address. */
@@ -101,7 +113,16 @@ export function LinkViewer({
   /** The trigger. Defaults to the link's name as a button. */
   children?: ReactNode;
   className?: string;
+  /** May the reader open the link in a new tab? Staff: yes; learners: per the
+   *  material's setting. Off also hides it where the address would be shown. */
+  allowNewTab?: boolean;
+  /** May the reader see the link's address at all? Off keeps the source URL
+   *  out of reach — the reading stays inside the in-app viewer. */
+  showLink?: boolean;
 }) {
+  // The link can only be opened in a new tab when its address may be shown —
+  // the new tab is the address, laid bare. So the two controls compose.
+  const canOpenNewTab = allowNewTab && showLink;
   const [open, setOpen] = useState(false);
   const [maximized, setMaximized] = useState(false);
   // `resolveEmbed` only returns null for an empty string, which the callers
@@ -158,27 +179,35 @@ export function LinkViewer({
               </button>
             </DialogTitle>
             <DialogDescription className="truncate">
-              {embed.href}
+              {showLink ? embed.href : "Opened inside the app."}
             </DialogDescription>
           </DialogHeader>
 
-          <EmbedBody embed={embed} maximized={maximized} />
+          <EmbedBody
+            embed={embed}
+            maximized={maximized}
+            allowNewTab={canOpenNewTab}
+          />
 
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-muted-foreground text-xs">
-              {embed.trusted
-                ? "Opened inside the app."
-                : "Some sites don't allow being shown inside another page. If this stays blank, open it in a new tab."}
+              {!canOpenNewTab
+                ? "This reading stays inside the app."
+                : embed.trusted
+                  ? "Opened inside the app."
+                  : "Some sites don't allow being shown inside another page. If this stays blank, open it in a new tab."}
             </p>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                window.open(embed.href, "_blank", "noopener,noreferrer")
-              }
-            >
-              <ExternalLink className="size-4" /> Open in a new tab
-            </Button>
+            {canOpenNewTab && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  window.open(embed.href, "_blank", "noopener,noreferrer")
+                }
+              >
+                <ExternalLink className="size-4" /> Open in a new tab
+              </Button>
+            )}
           </div>
         </DialogContent>
       </Dialog>

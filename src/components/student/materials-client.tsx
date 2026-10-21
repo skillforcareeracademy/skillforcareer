@@ -618,6 +618,8 @@ export function StudentMaterialsClient({
                   url={detail.fileUrl}
                   name={detail.fileName || "Attached document"}
                   className="shrink-0"
+                  allowNewTab={detail.openInNewTabEnabled}
+                  showLink={detail.showLinkEnabled}
                 >
                   <span className="border-input hover:bg-accent inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-sm font-medium">
                     <Eye className="size-4" /> Open
@@ -662,6 +664,8 @@ export function StudentMaterialsClient({
                       url={a.url}
                       name={a.name}
                       className="min-w-0 flex-1 truncate text-sm"
+                      allowNewTab={detail.openInNewTabEnabled}
+                      showLink={detail.showLinkEnabled}
                     >
                       <span className="block truncate">{a.name || a.url}</span>
                     </LinkViewer>
@@ -669,7 +673,13 @@ export function StudentMaterialsClient({
                     {/* The same two buttons the main file has. Without them a
                         reading with four documents on it gave the learner one
                         they could take and three they could only look at. */}
-                    <LinkViewer url={a.url} name={a.name} className="shrink-0">
+                    <LinkViewer
+                      url={a.url}
+                      name={a.name}
+                      className="shrink-0"
+                      allowNewTab={detail.openInNewTabEnabled}
+                      showLink={detail.showLinkEnabled}
+                    >
                       <span className="border-input hover:bg-accent inline-flex h-7 items-center gap-1.5 rounded-md border px-2 text-xs font-medium">
                         <Eye className="size-3.5" /> Open
                       </span>
