@@ -1,4 +1,4 @@
-import { Apple, Play } from "lucide-react";
+import { Apple, Play, Smartphone } from "lucide-react";
 import type { HomeData } from "@/lib/validations/homepage";
 import { cn } from "@/lib/utils";
 
@@ -38,26 +38,32 @@ function StoreButton({
 /**
  * "Get the app" — a band that sends visitors to the mobile app on the stores.
  * Edited in Admin → Homepage: the headline, the line under it, the two store
- * links and an optional phone picture. A store button only shows when its link
- * is filled in, so the App Store button stays hidden until the iPhone app lands.
+ * links and the learner photo. A store button only shows when its link is
+ * filled in, so the App Store button stays hidden until the iPhone app lands;
+ * clearing the photo drops back to a centred, text-only band.
  */
 export function AppPromo({ data }: { data: HomeData<"appPromo"> }) {
   const hasAndroid = Boolean(data.androidUrl.trim());
   const hasIos = Boolean(data.iosUrl.trim());
   // Nothing to send anyone to — don't draw an empty band.
   if (!hasAndroid && !hasIos) return null;
+  const photo = data.image.trim();
 
   return (
-    <section className="container-page py-16 sm:py-24">
-      <div className="overflow-hidden rounded-3xl border bg-gradient-to-br from-rose-50 to-fuchsia-50 px-6 py-12 sm:px-12 dark:from-rose-950/30 dark:to-fuchsia-950/20">
+    <section className="container-page py-12 sm:py-16">
+      <div className="overflow-hidden rounded-3xl border bg-gradient-to-br from-rose-50 via-pink-50 to-fuchsia-50 px-6 py-10 sm:px-12 dark:from-rose-950/30 dark:via-pink-950/20 dark:to-fuchsia-950/20">
         <div
           className={cn(
             "grid items-center gap-10",
-            data.image && "lg:grid-cols-2",
+            photo && "lg:grid-cols-2 lg:gap-14",
           )}
         >
-          <div className={cn(!data.image && "mx-auto max-w-2xl text-center")}>
-            <h2 className="text-3xl font-bold sm:text-4xl">{data.title}</h2>
+          {/* Copy + store buttons */}
+          <div className={cn(!photo && "mx-auto max-w-2xl text-center")}>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/70 px-3 py-1 text-xs font-medium text-rose-700 ring-1 ring-rose-200 dark:bg-white/10 dark:text-rose-200 dark:ring-white/10">
+              <Smartphone className="size-3.5" aria-hidden /> Now on Android
+            </span>
+            <h2 className="mt-4 text-3xl font-bold sm:text-4xl">{data.title}</h2>
             {data.description && (
               <p className="text-muted-foreground mt-3 text-lg">
                 {data.description}
@@ -65,8 +71,8 @@ export function AppPromo({ data }: { data: HomeData<"appPromo"> }) {
             )}
             <div
               className={cn(
-                "mt-8 flex flex-wrap gap-3",
-                !data.image && "justify-center",
+                "mt-7 flex flex-wrap gap-3",
+                !photo && "justify-center",
               )}
             >
               {hasAndroid && (
@@ -76,16 +82,38 @@ export function AppPromo({ data }: { data: HomeData<"appPromo"> }) {
             </div>
           </div>
 
-          {data.image && (
+          {/* A learner holding up the app */}
+          {photo && (
             <div className="flex justify-center lg:justify-end">
-              {/* Plain <img>: the picture is whatever an admin uploaded, and
-                  next/image refuses hosts that aren't configured. */}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={data.image}
-                alt=""
-                className="max-h-96 w-auto rounded-2xl shadow-lg"
-              />
+              <div className="relative w-fit">
+                <div
+                  aria-hidden
+                  className="absolute -inset-5 rounded-[2.5rem] bg-gradient-to-br from-rose-400/25 to-fuchsia-500/25 blur-2xl"
+                />
+                {/* Plain <img>: an admin may swap in any host's photo, which
+                    next/image would refuse unless it were configured. */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={photo}
+                  alt="A learner using the Skill For Career app"
+                  className="relative w-56 rounded-3xl object-cover shadow-xl ring-1 ring-black/5 sm:w-72"
+                />
+                {/* Floating app card — makes it read as an advert for the app. */}
+                <div className="absolute -bottom-4 -left-4 flex items-center gap-2.5 rounded-2xl bg-white p-2.5 pr-4 shadow-lg ring-1 ring-black/5 dark:bg-neutral-900 dark:ring-white/10">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src="/images/brand/favicon.png"
+                    alt=""
+                    className="size-10 rounded-xl"
+                  />
+                  <div className="leading-tight">
+                    <p className="text-sm font-semibold">Skill For Career</p>
+                    <p className="text-muted-foreground text-xs">
+                      Learning app · Android
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
         </div>

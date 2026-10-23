@@ -1918,10 +1918,10 @@ const appPromoFields: Field[] = [
   },
   {
     name: "image",
-    label: "Phone picture (optional)",
+    label: "Promo photo",
     type: "image",
     wide: true,
-    hint: "A screenshot or mock-up shown beside the buttons.",
+    hint: "A learner shown beside the buttons — ideally holding a phone. Clear it to show the text on its own.",
   },
 ];
 
@@ -1932,7 +1932,7 @@ const appPromoDefaults: z.infer<typeof appPromoSchema> = {
   androidUrl:
     "https://play.google.com/store/apps/details?id=com.skillforcareer.learn",
   iosUrl: "",
-  image: "",
+  image: "/images/students/student-5.png",
 };
 
 export const HOME_SECTIONS = {
