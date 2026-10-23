@@ -26,7 +26,7 @@ export function FaqSection({
 
   return (
     <section className={className}>
-      <div className="container-page py-16 sm:py-24">
+      <div className="container-page py-10 sm:py-24">
         <div className="grid gap-10 lg:grid-cols-3 lg:gap-14">
           <div className="lg:sticky lg:top-24 lg:self-start">
             <h2 className="text-3xl sm:text-4xl">{data.title}</h2>

@@ -71,7 +71,7 @@ export function PartnersSection({ data }: { data: HomeData<"partners"> }) {
 
   return (
     <section id="partners" className="bg-muted/30 border-y">
-      <div className="container-page py-16 sm:py-20">
+      <div className="container-page py-10 sm:py-20">
         <div className="mx-auto mb-10 max-w-2xl text-center">
           <h2 className="text-3xl sm:text-4xl">{data.title}</h2>
           {data.description && (

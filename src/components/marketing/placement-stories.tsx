@@ -62,7 +62,7 @@ export function PlacementStories({
   if (data.items.length === 0) return null;
 
   return (
-    <section className="container-page py-16 sm:py-24">
+    <section className="container-page py-10 sm:py-24">
       <div className="mb-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="max-w-2xl">
           {data.badge && (

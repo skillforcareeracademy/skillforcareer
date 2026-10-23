@@ -5,7 +5,7 @@ import type { HomeData } from "@/lib/validations/homepage";
 
 export function CtaBand({ data }: { data: HomeData<"cta"> }) {
   return (
-    <section className="container-page py-16 sm:py-20">
+    <section className="container-page py-10 sm:py-20">
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-rose-600 via-pink-600 to-fuchsia-600 px-6 py-14 text-center sm:px-12 sm:py-20">
         <div
           aria-hidden

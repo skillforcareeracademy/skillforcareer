@@ -24,7 +24,7 @@ export async function ArticlesSection({
 
   return (
     <section id="articles" className="border-t">
-      <div className="container-page py-16 sm:py-20">
+      <div className="container-page py-10 sm:py-20">
         <div className="mb-10 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h2 className="text-3xl sm:text-4xl">{data.title}</h2>

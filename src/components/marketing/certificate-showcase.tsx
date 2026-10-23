@@ -21,7 +21,7 @@ export function CertificateShowcase({
 }) {
   return (
     <section className="bg-muted/30 border-y">
-      <div className="container-page grid items-center gap-10 py-16 sm:py-24 lg:grid-cols-2">
+      <div className="container-page grid items-center gap-10 py-10 sm:py-24 lg:grid-cols-2">
         <div className="max-w-lg">
           {data.badge && (
             <span className="text-primary inline-flex items-center gap-1.5 rounded-full bg-rose-500/10 px-3 py-1 text-sm font-medium">

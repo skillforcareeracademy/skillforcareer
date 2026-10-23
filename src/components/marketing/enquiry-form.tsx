@@ -65,7 +65,7 @@ export function EnquiryForm({ data }: { data: HomeData<"enquiry"> }) {
   }
 
   return (
-    <section id="enquiry" className="bg-muted/30 border-y py-14 sm:py-16">
+    <section id="enquiry" className="bg-muted/30 border-y py-10 sm:py-16">
       {/* The form column is sized to the card rather than a half-width track —
           a 50/50 split across the full 7xl container left a dead gap down the
           middle and made the card read much heavier than the short form it

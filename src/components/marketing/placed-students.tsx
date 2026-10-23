@@ -79,7 +79,7 @@ export function PlacedStudents({ data }: { data: HomeData<"placedStudents"> }) {
   const rowTwo = students.length > 1 ? students.slice(split) : students;
 
   return (
-    <section className="bg-[#f3f7fd] py-14 sm:py-16 dark:bg-neutral-900">
+    <section className="bg-[#f3f7fd] py-10 sm:py-16 dark:bg-neutral-900">
       <div className="container-page mb-10 text-center sm:mb-12">
         {data.eyebrow && (
           <p className="text-foreground text-lg sm:text-xl">{data.eyebrow}</p>

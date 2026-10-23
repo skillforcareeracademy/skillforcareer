@@ -51,7 +51,7 @@ export function LearnerVideos({ data }: { data: HomeData<"learnerVideos"> }) {
 
   return (
     <section className="bg-muted/30 border-y">
-      <div className="container-page py-16 sm:py-24">
+      <div className="container-page py-10 sm:py-24">
         <div className="mb-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div className="max-w-2xl">
             {data.badge && (

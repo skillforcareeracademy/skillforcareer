@@ -26,7 +26,7 @@ export function ProcessSection({
 
   return (
     <section className={className}>
-      <div className="container-page py-16 sm:py-24">
+      <div className="container-page py-10 sm:py-24">
         <div className="mx-auto mb-12 max-w-2xl text-center">
           <h2 className="text-3xl sm:text-4xl">{data.title}</h2>
           {data.description && (

@@ -57,7 +57,7 @@ export function Testimonials({ data }: { data: HomeData<"testimonials"> }) {
 
   return (
     <section className="bg-muted/30 border-y">
-      <div className="py-16 sm:py-24">
+      <div className="py-10 sm:py-24">
         <div className="container-page mb-12">
           <div className="mx-auto max-w-2xl text-center">
             <h2 className="text-3xl sm:text-4xl">{data.title}</h2>
