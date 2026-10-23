@@ -20,7 +20,7 @@ export interface HeaderLink {
 }
 
 const linkClass =
-  "text-foreground/70 hover:text-foreground hover:bg-muted inline-flex items-center gap-1 rounded-md px-3 py-2 text-sm font-medium transition-colors";
+  "text-foreground/70 hover:text-foreground hover:bg-muted inline-flex items-center gap-1 rounded-md px-3 py-2 text-sm font-medium whitespace-nowrap transition-colors";
 
 /**
  * The desktop navigation.
