@@ -1890,10 +1890,13 @@ const appPromoSchema = z.object({
   description: text(300),
   androidUrl: link(500),
   iosUrl: link(500),
-  image: link(500),
+  images: z
+    .array(z.object({ url: link() }))
+    .max(8)
+    .default([]),
 });
 
-const appPromoFields: Field[] = [
+const appPromoFields: AnyField[] = [
   { name: "title", label: "Heading", type: "text" },
   {
     name: "description",
@@ -1917,11 +1920,14 @@ const appPromoFields: Field[] = [
     hint: "Leave blank until the iPhone app is live — the button stays hidden.",
   },
   {
-    name: "image",
-    label: "Promo photo",
-    type: "image",
-    wide: true,
-    hint: "A learner shown beside the buttons — ideally holding a phone. Clear it to show the text on its own.",
+    name: "images",
+    label: "Learner photos",
+    type: "list",
+    itemLabel: "photo",
+    titleKey: "url",
+    max: 8,
+    hint: "Shown as a collage beside the buttons. Clear them all to show the text on its own.",
+    fields: [{ name: "url", label: "Photo", type: "image" }],
   },
 ];
 
@@ -1932,7 +1938,14 @@ const appPromoDefaults: z.infer<typeof appPromoSchema> = {
   androidUrl:
     "https://play.google.com/store/apps/details?id=com.skillforcareer.learn",
   iosUrl: "",
-  image: "/images/students/student-5.png",
+  images: [
+    { url: "/images/students/student-5.png" },
+    { url: "/images/students/student-14.png" },
+    { url: "/images/students/student-1.png" },
+    { url: "/images/students/student-6.png" },
+    { url: "/images/students/student-15.png" },
+    { url: "/images/students/student-19.png" },
+  ],
 };
 
 export const HOME_SECTIONS = {

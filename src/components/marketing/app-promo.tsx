@@ -38,16 +38,22 @@ function StoreButton({
 /**
  * "Get the app" — a band that sends visitors to the mobile app on the stores.
  * Edited in Admin → Homepage: the headline, the line under it, the two store
- * links and the learner photo. A store button only shows when its link is
- * filled in, so the App Store button stays hidden until the iPhone app lands;
- * clearing the photo drops back to a centred, text-only band.
+ * links and a set of learner photos shown as a collage. A store button only
+ * shows when its link is filled in, so the App Store button stays hidden until
+ * the iPhone app lands; clearing the photos drops back to a centred, text-only
+ * band.
  */
 export function AppPromo({ data }: { data: HomeData<"appPromo"> }) {
   const hasAndroid = Boolean(data.androidUrl.trim());
   const hasIos = Boolean(data.iosUrl.trim());
   // Nothing to send anyone to — don't draw an empty band.
   if (!hasAndroid && !hasIos) return null;
-  const photo = data.image.trim();
+
+  const photos = data.images
+    .map((image) => image.url.trim())
+    .filter(Boolean)
+    .slice(0, 6);
+  const hasPhotos = photos.length > 0;
 
   return (
     <section className="container-page py-12 sm:py-16">
@@ -55,11 +61,11 @@ export function AppPromo({ data }: { data: HomeData<"appPromo"> }) {
         <div
           className={cn(
             "grid items-center gap-10",
-            photo && "lg:grid-cols-2 lg:gap-14",
+            hasPhotos && "lg:grid-cols-2 lg:gap-14",
           )}
         >
           {/* Copy + store buttons */}
-          <div className={cn(!photo && "mx-auto max-w-2xl text-center")}>
+          <div className={cn(!hasPhotos && "mx-auto max-w-2xl text-center")}>
             <span className="inline-flex items-center gap-1.5 rounded-full bg-white/70 px-3 py-1 text-xs font-medium text-rose-700 ring-1 ring-rose-200 dark:bg-white/10 dark:text-rose-200 dark:ring-white/10">
               <Smartphone className="size-3.5" aria-hidden /> Now on Android
             </span>
@@ -72,7 +78,7 @@ export function AppPromo({ data }: { data: HomeData<"appPromo"> }) {
             <div
               className={cn(
                 "mt-7 flex flex-wrap gap-3",
-                !photo && "justify-center",
+                !hasPhotos && "justify-center",
               )}
             >
               {hasAndroid && (
@@ -82,36 +88,39 @@ export function AppPromo({ data }: { data: HomeData<"appPromo"> }) {
             </div>
           </div>
 
-          {/* A learner holding up the app */}
-          {photo && (
-            <div className="flex justify-center lg:justify-end">
-              <div className="relative w-fit">
-                <div
-                  aria-hidden
-                  className="absolute -inset-5 rounded-[2.5rem] bg-gradient-to-br from-rose-400/25 to-fuchsia-500/25 blur-2xl"
-                />
-                {/* Plain <img>: an admin may swap in any host's photo, which
-                    next/image would refuse unless it were configured. */}
+          {/* A wall of learners — the app's community, advertising it. */}
+          {hasPhotos && (
+            <div className="relative mx-auto w-full max-w-md lg:mr-0 lg:ml-auto">
+              <div
+                aria-hidden
+                className="absolute -inset-4 rounded-[2.5rem] bg-gradient-to-br from-rose-400/20 to-fuchsia-500/20 blur-2xl"
+              />
+              <div className="relative grid grid-cols-3 gap-2.5 sm:gap-3">
+                {photos.map((url, i) => (
+                  // Plain <img>: an admin may swap in any host's photo, which
+                  // next/image would refuse unless it were configured.
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    key={`${url}-${i}`}
+                    src={url}
+                    alt=""
+                    className="aspect-square w-full rounded-xl object-cover object-top shadow-sm ring-1 ring-black/5"
+                  />
+                ))}
+              </div>
+              {/* Floating app card — makes the wall read as an advert. */}
+              <div className="absolute -bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-2.5 rounded-2xl bg-white px-3 py-2 shadow-lg ring-1 ring-black/5 dark:bg-neutral-900 dark:ring-white/10">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={photo}
-                  alt="A learner using the Skill For Career app"
-                  className="relative w-56 rounded-3xl object-cover shadow-xl ring-1 ring-black/5 sm:w-72"
+                  src="/images/brand/favicon.png"
+                  alt=""
+                  className="size-9 rounded-lg"
                 />
-                {/* Floating app card — makes it read as an advert for the app. */}
-                <div className="absolute -bottom-4 -left-4 flex items-center gap-2.5 rounded-2xl bg-white p-2.5 pr-4 shadow-lg ring-1 ring-black/5 dark:bg-neutral-900 dark:ring-white/10">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src="/images/brand/favicon.png"
-                    alt=""
-                    className="size-10 rounded-xl"
-                  />
-                  <div className="leading-tight">
-                    <p className="text-sm font-semibold">Skill For Career</p>
-                    <p className="text-muted-foreground text-xs">
-                      Learning app · Android
-                    </p>
-                  </div>
+                <div className="leading-tight">
+                  <p className="text-sm font-semibold">Skill For Career</p>
+                  <p className="text-muted-foreground text-xs">
+                    Learning app · Android
+                  </p>
                 </div>
               </div>
             </div>
