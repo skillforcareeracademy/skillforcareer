@@ -79,7 +79,15 @@ interface ProfileFormValues {
   bio: string;
 }
 
-export function ProfileClient({ profile }: { profile: Profile }) {
+export function ProfileClient({
+  profile,
+  hideHeader = false,
+}: {
+  profile: Profile;
+  /** Dropped when the component sits inside the student profile's tabs, which
+   *  carry their own page header. */
+  hideHeader?: boolean;
+}) {
   const router = useRouter();
   const [avatarUrl, setAvatarUrl] = useState(profile.avatarUrl ?? "");
   const [phone, setPhone] = useState(profile.phone ?? "");
@@ -144,10 +152,12 @@ export function ProfileClient({ profile }: { profile: Profile }) {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Profile"
-        description="Manage your account details, avatar and password."
-      />
+      {!hideHeader && (
+        <PageHeader
+          title="Profile"
+          description="Manage your account details, avatar and password."
+        />
+      )}
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">

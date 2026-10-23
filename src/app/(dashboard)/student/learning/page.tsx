@@ -1,6 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { PlayCircle, CheckCircle2, GraduationCap } from "lucide-react";
+import {
+  PlayCircle,
+  CheckCircle2,
+  GraduationCap,
+  ClipboardCheck,
+  Award,
+} from "lucide-react";
 import { requireRole } from "@/lib/auth/require";
 import { ROLES } from "@/config/roles";
 import { getMyLearning } from "@/server/services/enrollment-service";
@@ -51,7 +57,7 @@ export default async function MyLearningPage() {
             const done = c.progressPercent >= 100;
             return (
               <Card key={c.enrollmentId} className="gap-0 overflow-hidden p-0">
-                <Link href={`/student/learning/${c.slug}`} className="group block">
+                <Link href="/student/report-card" className="group block">
                   <div className="ring-border relative aspect-video overflow-hidden bg-gradient-to-br from-rose-500/15 to-pink-600/15">
                     {c.thumbnailUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
@@ -84,7 +90,7 @@ export default async function MyLearningPage() {
                         </Badge>
                       )}
                     </div>
-                    <Link href={`/student/learning/${c.slug}`}>
+                    <Link href="/student/report-card">
                       <h3 className="line-clamp-2 font-semibold hover:underline">{c.title}</h3>
                     </Link>
                     <p className="text-muted-foreground text-xs">{c.categoryName}</p>
@@ -105,24 +111,24 @@ export default async function MyLearningPage() {
                     </div>
                   </div>
 
-                  {/* The card opens the course's own home; this stays the way
-                      straight back into the lesson they left off at. */}
+                  {/* The whole card opens the report card — the course hub the
+                      academy asked for — with its two shortcuts underneath. */}
                   <div className="grid grid-cols-2 gap-2">
                     <ButtonLink
-                      href={`/student/learning/${c.slug}`}
+                      href="/student/report-card"
                       variant="outline"
                       className="w-full"
                       size="sm"
                     >
-                      Course home
+                      <ClipboardCheck className="size-4" /> Report Card
                     </ButtonLink>
                     <ButtonLink
-                      href={`/student/learn/${c.slug}`}
-                      variant={done ? "outline" : "default"}
+                      href="/student/certificates"
+                      variant="default"
                       className="w-full"
                       size="sm"
                     >
-                      {done ? "Review" : c.progressPercent > 0 ? "Continue" : "Start"}
+                      <Award className="size-4" /> Certificate
                     </ButtonLink>
                   </div>
                 </div>

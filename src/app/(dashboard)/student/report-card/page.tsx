@@ -5,6 +5,7 @@ import { reportCardFor } from "@/server/services/performance-service";
 import { getSettings } from "@/server/services/settings-service";
 import { PageHeader } from "@/components/shared/page-header";
 import { ReportCardDocument } from "@/components/report-card/report-card-document";
+import { ReportCardHub } from "@/components/report-card/report-card-hub";
 import { PrintReportButton } from "@/components/report-card/print-report-button";
 import { ReportCardPrintStyles } from "@/components/report-card/print-styles";
 
@@ -33,6 +34,7 @@ export default async function StudentReportCardPage() {
         academyName={settings.siteName}
         generatedAt={new Date()}
       />
+      <ReportCardHub />
     </div>
   );
 }
