@@ -26,10 +26,10 @@ export async function Hero({ data }: { data: HomeData<"hero"> }) {
         <div className="absolute -top-24 right-0 size-[30rem] rounded-full bg-violet-500/15 blur-3xl" />
       </div>
 
-      <div className="container-page py-16 sm:py-24">
+      <div className="container-page py-10 sm:py-24">
         <div className="mx-auto max-w-3xl text-center">
           {(data.badgeText || data.avatars.length > 0) && (
-            <span className="border-border/70 bg-background/60 text-muted-foreground mb-6 inline-flex items-center gap-2 rounded-full border py-1 pr-3.5 pl-1.5 text-xs font-medium backdrop-blur">
+            <span className="border-border/70 bg-background/60 text-muted-foreground mb-5 inline-flex items-center gap-2 rounded-full border py-1 pr-3.5 pl-1.5 text-xs font-medium backdrop-blur sm:mb-6">
               {data.avatars.length > 0 && (
                 <span className="flex -space-x-2">
                   {data.avatars.map((avatar, i) => (
@@ -52,7 +52,7 @@ export async function Hero({ data }: { data: HomeData<"hero"> }) {
             </span>
           )}
 
-          <h1 className="text-4xl leading-[1.05] font-bold sm:text-6xl">
+          <h1 className="text-[2rem] leading-[1.08] font-bold sm:text-6xl sm:leading-[1.05]">
             {data.titleLead}{" "}
             <span className="bg-gradient-to-r from-rose-600 to-pink-600 bg-clip-text text-transparent">
               {data.titleHighlight}
@@ -61,7 +61,7 @@ export async function Hero({ data }: { data: HomeData<"hero"> }) {
           </h1>
 
           {data.subtitle && (
-            <p className="text-muted-foreground mx-auto mt-6 max-w-2xl text-lg text-pretty">
+            <p className="text-muted-foreground mx-auto mt-4 max-w-2xl text-base text-pretty sm:mt-6 sm:text-lg">
               {data.subtitle}
             </p>
           )}
@@ -70,7 +70,7 @@ export async function Hero({ data }: { data: HomeData<"hero"> }) {
           <CourseSearch
             variant="hero"
             placeholder={data.searchPlaceholder}
-            className="mx-auto mt-8 max-w-xl text-left"
+            className="mx-auto mt-6 max-w-xl text-left sm:mt-8"
           />
 
           {/* Most-enrolled courses, straight from the catalog */}
@@ -96,7 +96,7 @@ export async function Hero({ data }: { data: HomeData<"hero"> }) {
 
           {/* Trust line */}
           {data.trust.length > 0 && (
-            <div className="text-muted-foreground mt-10 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm">
+            <div className="text-muted-foreground mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm sm:mt-10">
               {data.trust.map((item, i) => {
                 const Icon = iconFor(item.icon);
                 return (

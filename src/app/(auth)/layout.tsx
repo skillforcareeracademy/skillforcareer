@@ -116,11 +116,72 @@ export default async function AuthLayout({ children }: { children: ReactNode }) 
 
       {/* ── Form panel ─────────────────────────────────────────────── */}
       <main className="relative flex flex-col">
-        <div className="flex items-center justify-between px-4 py-5 sm:px-6 lg:px-8">
-          <div className="lg:hidden">
-            <Logo />
+        {/* Mobile-only: a branded gradient header so signing in on a phone
+            feels like an app, not a bare form on white. Desktop keeps the
+            split-screen above and hides this. */}
+        <div className="relative overflow-hidden bg-gradient-to-br from-rose-600 via-fuchsia-700 to-violet-800 px-5 pt-6 pb-16 text-white lg:hidden">
+          <div aria-hidden className="pointer-events-none absolute inset-0">
+            <div className="absolute -top-20 -left-12 size-72 rounded-full bg-rose-400/25 blur-3xl" />
+            <div className="absolute -right-8 -bottom-10 size-80 rounded-full bg-indigo-500/25 blur-3xl" />
+            <div
+              className="absolute inset-0 opacity-[0.12]"
+              style={{
+                backgroundImage:
+                  "radial-gradient(circle, white 1px, transparent 1px)",
+                backgroundSize: "22px 22px",
+              }}
+            />
           </div>
-          <div className="ml-auto flex items-center gap-2">
+
+          <div className="relative flex items-center justify-between">
+            <Link href="/" className="inline-flex">
+              <span className="rounded-lg bg-white/90 px-2.5 py-1 ring-1 ring-white/40 backdrop-blur">
+                <Logo href="" className="h-7" />
+              </span>
+            </Link>
+            <ButtonLink
+              href="/"
+              variant="outline"
+              size="sm"
+              className="gap-1.5 border-white/30 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+            >
+              <ArrowLeft className="size-4" /> Home
+            </ButtonLink>
+          </div>
+
+          {(data.heading.trim() || data.subtitle.trim()) && (
+            <div className="relative mt-6 max-w-[19rem]">
+              {data.heading.trim() && (
+                <h1 className="text-2xl leading-tight font-bold tracking-tight text-balance">
+                  {data.heading}
+                </h1>
+              )}
+              {data.subtitle.trim() && (
+                <p className="mt-2 text-sm leading-relaxed text-white/85">
+                  {data.subtitle}
+                </p>
+              )}
+            </div>
+          )}
+
+          {features.length > 0 && (
+            <ul className="relative mt-5 flex flex-wrap gap-2">
+              {features.slice(0, 3).map((f, i) => (
+                <li
+                  key={`${f.text}-${i}`}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.12] px-3 py-1 text-xs ring-1 ring-white/15 backdrop-blur"
+                >
+                  <IconGlyph name={f.icon} className="size-3.5 text-white" />
+                  {f.text}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {/* Desktop-only control bar. */}
+        <div className="hidden items-center justify-end px-4 py-5 sm:px-6 lg:flex lg:px-8">
+          <div className="flex items-center gap-2">
             <ThemeToggle />
             <ButtonLink href="/" variant="outline" size="sm" className="gap-1.5">
               <ArrowLeft className="size-4" />
@@ -128,8 +189,13 @@ export default async function AuthLayout({ children }: { children: ReactNode }) 
             </ButtonLink>
           </div>
         </div>
-        <div className="flex flex-1 items-center justify-center px-4 py-8 sm:px-6">
-          <div className="w-full max-w-sm">{children}</div>
+
+        {/* The form itself — lifted to overlap the gradient on a phone,
+            centred in the panel on desktop. */}
+        <div className="flex flex-1 justify-center px-4 pb-10 sm:px-6 lg:items-center lg:py-8">
+          <div className="relative z-10 -mt-10 w-full max-w-sm lg:mt-0">
+            {children}
+          </div>
         </div>
       </main>
     </div>
