@@ -1883,6 +1883,58 @@ const coursePromosFields: AnyField[] = [
 
 const coursePromosDefaults: z.infer<typeof coursePromosSchema> = { items: [] };
 
+// ── Section: get the app ─────────────────────────────────────────────────────
+
+const appPromoSchema = z.object({
+  title: required(80, "Learn on the go"),
+  description: text(300),
+  androidUrl: link(500),
+  iosUrl: link(500),
+  image: link(500),
+});
+
+const appPromoFields: Field[] = [
+  { name: "title", label: "Heading", type: "text" },
+  {
+    name: "description",
+    label: "Text underneath",
+    type: "textarea",
+    wide: true,
+  },
+  {
+    name: "androidUrl",
+    label: "Google Play link",
+    type: "url",
+    wide: true,
+    placeholder: "https://play.google.com/store/apps/details?id=…",
+    hint: "Leave blank to hide the Google Play button.",
+  },
+  {
+    name: "iosUrl",
+    label: "App Store link",
+    type: "url",
+    wide: true,
+    hint: "Leave blank until the iPhone app is live — the button stays hidden.",
+  },
+  {
+    name: "image",
+    label: "Phone picture (optional)",
+    type: "image",
+    wide: true,
+    hint: "A screenshot or mock-up shown beside the buttons.",
+  },
+];
+
+const appPromoDefaults: z.infer<typeof appPromoSchema> = {
+  title: "Learn on the go",
+  description:
+    "Your lessons, live classes, quizzes and certificates — now on your phone. Get the Skill For Career app and pick up right where you left off.",
+  androidUrl:
+    "https://play.google.com/store/apps/details?id=com.skillforcareer.learn",
+  iosUrl: "",
+  image: "",
+};
+
 export const HOME_SECTIONS = {
   hero: {
     label: "Hero",
@@ -2056,6 +2108,15 @@ export const HOME_SECTIONS = {
     schema: authPanelSchema,
     fields: authPanelFields,
     defaults: authPanelDefaults,
+  },
+  appPromo: {
+    label: "Get the app",
+    description:
+      "A band pointing visitors to the mobile app on Google Play (and the App Store once it's live).",
+    icon: "Rocket",
+    schema: appPromoSchema,
+    fields: appPromoFields,
+    defaults: appPromoDefaults,
   },
 } as const;
 

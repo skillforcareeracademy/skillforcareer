@@ -14,6 +14,7 @@ import { FaqSection } from "@/components/marketing/faq-section";
 import { EnquiryForm } from "@/components/marketing/enquiry-form";
 import { ArticlesSection } from "@/components/marketing/articles-section";
 import { PartnersSection } from "@/components/marketing/partners-section";
+import { AppPromo } from "@/components/marketing/app-promo";
 import { isGlobalSection } from "@/lib/validations/homepage";
 import {
   getHomeSections,
@@ -57,6 +58,8 @@ function renderSection(section: HomeSection): ReactNode {
       return <ArticlesSection data={section.data} />;
     case "partners":
       return <PartnersSection data={section.data} />;
+    case "appPromo":
+      return <AppPromo data={section.data} />;
     case "enquiry":
       return <EnquiryForm data={section.data} />;
     // The closing banner is drawn by the marketing layout, on every page, and
