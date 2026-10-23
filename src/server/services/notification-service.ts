@@ -42,12 +42,13 @@ const FEED_LIMIT = 15;
 
 export async function getNotificationFeed(
   userId: string,
+  limit: number = FEED_LIMIT,
 ): Promise<NotificationFeed> {
   const [rows, unread] = await Promise.all([
     prisma.notification.findMany({
       where: { userId, channel: "IN_APP" },
       orderBy: { createdAt: "desc" },
-      take: FEED_LIMIT,
+      take: Math.min(Math.max(limit, 1), 200),
       select: {
         id: true,
         type: true,

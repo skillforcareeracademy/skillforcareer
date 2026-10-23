@@ -1,5 +1,6 @@
 import {
   LayoutDashboard,
+  Bell,
   Users,
   BookOpen,
   Building2,
@@ -123,6 +124,13 @@ export const NAV_SECTIONS: NavSection[] = [
         icon: IdCard,
         roles: [ROLES.STUDENT],
       },
+      // The full feed behind the header bell — "Broadcast ki jagha notification".
+      {
+        title: "Notifications",
+        href: "/notifications",
+        icon: Bell,
+        roles: [ROLES.STUDENT],
+      },
     ],
   },
   {
@@ -231,7 +239,9 @@ export const NAV_SECTIONS: NavSection[] = [
       { title: "Assistant", href: "/chatbot", icon: Bot, roles: ACADEMY },
       { title: "Coupons", href: "/coupons", icon: Ticket, roles: ACADEMY },
       { title: "Roles", href: "/permissions", icon: KeyRound, roles: [ROLES.SUPER_ADMIN] },
-      { title: "Recycle bin", href: "/recycle-bin", icon: Trash2, roles: ALL },
+      // Staff-only — learners never delete academy content, so they don't need
+      // its recovery bin ("remove recycle bin option from student panel").
+      { title: "Recycle bin", href: "/recycle-bin", icon: Trash2, roles: TEACHING },
       { title: "Settings", href: "/settings", icon: Settings, roles: ACADEMY },
     ],
   },
