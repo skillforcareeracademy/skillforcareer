@@ -1892,7 +1892,7 @@ const appPromoSchema = z.object({
   iosUrl: link(500),
   images: z
     .array(z.object({ url: link() }))
-    .max(8)
+    .max(24)
     .default([]),
 });
 
@@ -1925,8 +1925,8 @@ const appPromoFields: AnyField[] = [
     type: "list",
     itemLabel: "photo",
     titleKey: "url",
-    max: 8,
-    hint: "Shown as a collage beside the buttons. Clear them all to show the text on its own.",
+    max: 24,
+    hint: "A wall of small thumbnails beside the buttons that zoom on hover. Clear them all to show the text on its own.",
     fields: [{ name: "url", label: "Photo", type: "image" }],
   },
 ];
@@ -1938,6 +1938,9 @@ const appPromoDefaults: z.infer<typeof appPromoSchema> = {
   androidUrl:
     "https://play.google.com/store/apps/details?id=com.skillforcareer.learn",
   iosUrl: "",
+  // The site ships with ten real learner photos; the wall reuses them, laid
+  // out so the same face never lands next to itself in the five-wide grid. The
+  // academy can add more (or swap these out) in Admin → Homepage.
   images: [
     { url: "/images/students/student-5.png" },
     { url: "/images/students/student-14.png" },
@@ -1945,6 +1948,20 @@ const appPromoDefaults: z.infer<typeof appPromoSchema> = {
     { url: "/images/students/student-6.png" },
     { url: "/images/students/student-15.png" },
     { url: "/images/students/student-19.png" },
+    { url: "/images/students/student-20.png" },
+    { url: "/images/students/student-16.png" },
+    { url: "/images/students/student-11.png" },
+    { url: "/images/students/student-4.png" },
+    { url: "/images/students/student-16.png" },
+    { url: "/images/students/student-11.png" },
+    { url: "/images/students/student-4.png" },
+    { url: "/images/students/student-19.png" },
+    { url: "/images/students/student-20.png" },
+    { url: "/images/students/student-1.png" },
+    { url: "/images/students/student-6.png" },
+    { url: "/images/students/student-15.png" },
+    { url: "/images/students/student-5.png" },
+    { url: "/images/students/student-14.png" },
   ],
 };
 

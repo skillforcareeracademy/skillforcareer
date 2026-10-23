@@ -52,7 +52,7 @@ export function AppPromo({ data }: { data: HomeData<"appPromo"> }) {
   const photos = data.images
     .map((image) => image.url.trim())
     .filter(Boolean)
-    .slice(0, 6);
+    .slice(0, 24);
   const hasPhotos = photos.length > 0;
 
   return (
@@ -88,28 +88,30 @@ export function AppPromo({ data }: { data: HomeData<"appPromo"> }) {
             </div>
           </div>
 
-          {/* A wall of learners — the app's community, advertising it. */}
+          {/* A wall of learners — the app's community, advertising it. Each
+              thumbnail lifts and zooms over its neighbours on hover. */}
           {hasPhotos && (
             <div className="relative mx-auto w-full max-w-md lg:mr-0 lg:ml-auto">
               <div
                 aria-hidden
                 className="absolute -inset-4 rounded-[2.5rem] bg-gradient-to-br from-rose-400/20 to-fuchsia-500/20 blur-2xl"
               />
-              <div className="relative grid grid-cols-3 gap-2.5 sm:gap-3">
+              <div className="relative grid grid-cols-4 gap-1.5 sm:grid-cols-5 sm:gap-2">
                 {photos.map((url, i) => (
-                  // Plain <img>: an admin may swap in any host's photo, which
-                  // next/image would refuse unless it were configured.
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    key={`${url}-${i}`}
-                    src={url}
-                    alt=""
-                    className="aspect-square w-full rounded-xl object-cover object-top shadow-sm ring-1 ring-black/5"
-                  />
+                  <div key={`${url}-${i}`} className="relative aspect-square">
+                    {/* Plain <img>: an admin may swap in any host's photo, which
+                        next/image would refuse unless it were configured. */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={url}
+                      alt=""
+                      className="absolute inset-0 size-full rounded-lg object-cover object-top shadow-sm ring-1 ring-black/5 transition duration-200 ease-out hover:z-20 hover:scale-[1.6] hover:shadow-xl hover:ring-2 hover:ring-white dark:hover:ring-neutral-800"
+                    />
+                  </div>
                 ))}
               </div>
               {/* Floating app card — makes the wall read as an advert. */}
-              <div className="absolute -bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-2.5 rounded-2xl bg-white px-3 py-2 shadow-lg ring-1 ring-black/5 dark:bg-neutral-900 dark:ring-white/10">
+              <div className="absolute -bottom-4 -left-4 flex items-center gap-2.5 rounded-2xl bg-white px-3 py-2 shadow-lg ring-1 ring-black/5 dark:bg-neutral-900 dark:ring-white/10">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src="/images/brand/favicon.png"
