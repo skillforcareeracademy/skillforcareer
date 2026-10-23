@@ -43,10 +43,13 @@ export function CourseSearch({
   variant = "header",
   placeholder = "Search courses, skills…",
   className,
+  autoFocus = false,
 }: {
   variant?: "hero" | "header";
   placeholder?: string;
   className?: string;
+  /** Focus the box and open its panel on mount — for the header's search popover. */
+  autoFocus?: boolean;
 }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
@@ -89,6 +92,14 @@ export function CourseSearch({
       clearTimeout(timer);
     };
   }, [term]);
+
+  // In the header popover, open focused and ready to type.
+  useEffect(() => {
+    if (autoFocus) {
+      inputRef.current?.focus();
+      setOpen(true);
+    }
+  }, [autoFocus]);
 
   // Close when the click lands anywhere outside the box.
   useEffect(() => {

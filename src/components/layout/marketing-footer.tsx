@@ -93,15 +93,6 @@ export async function MarketingFooter() {
                 ))}
               </div>
             )}
-
-            {appAndroidUrl.trim() && (
-              <div className="mt-6">
-                <p className="text-muted-foreground mb-2 text-sm font-medium">
-                  Get the app
-                </p>
-                <PlayStoreBadge href={appAndroidUrl} />
-              </div>
-            )}
           </div>
 
           <FooterLinkColumns columns={linkColumns} />
@@ -161,6 +152,15 @@ export async function MarketingFooter() {
                     </a>
                   );
                 })}
+              </div>
+            )}
+
+            {appAndroidUrl.trim() && (
+              <div className="mt-6">
+                <p className="text-muted-foreground mb-2 text-sm font-medium">
+                  Get the app
+                </p>
+                <PlayStoreBadge href={appAndroidUrl} />
               </div>
             )}
           </div>

@@ -1,15 +1,14 @@
 import { ButtonLink } from "@/components/shared/button-link";
-import { CourseSearch } from "@/components/shared/course-search";
+import { HeaderSearch } from "./header-search";
 import { Logo } from "@/components/shared/logo";
 import { ThemeToggle } from "@/components/shared/theme-toggle";
 import { UserMenu } from "@/components/dashboard/user-menu";
 import { getSessionUser } from "@/lib/auth/api-guard";
 import { getHomeSection } from "@/server/services/homepage-service";
 import { getHeaderMenus } from "@/server/services/header-menu-service";
-import { cn } from "@/lib/utils";
 import { EnquiryDialog } from "@/components/marketing/enquiry-dialog";
 import { Button } from "@/components/ui/button";
-import { MessageSquareText, Smartphone } from "lucide-react";
+import { MessageSquareText, Download } from "lucide-react";
 import { HeaderNav, type HeaderLink } from "./header-nav";
 import { MobileNav } from "./mobile-nav";
 
@@ -59,14 +58,9 @@ export async function MarketingHeader() {
 
         <HeaderNav links={links} menus={menus} />
 
-        {/* Search */}
-        {showSearch && (
-          <CourseSearch className="ml-auto hidden max-w-xs flex-1 md:block" />
-        )}
-
-        {/* Without the search box there is nothing to push the actions right at
-            desktop widths, so the auto margin has to stay on at every size. */}
-        <div className={cn("ml-auto flex items-center gap-1.5", showSearch && "md:ml-0")}>
+        <div className="ml-auto flex items-center gap-1.5">
+          {/* Search as a button that opens a focused panel — see HeaderSearch. */}
+          {showSearch && <HeaderSearch className="hidden md:block" />}
           {showThemeToggle && <ThemeToggle />}
 
           {/* Install the Android app — icon-only on a phone, labelled on
@@ -86,7 +80,7 @@ export async function MarketingHeader() {
               }
               className="gap-1.5"
             >
-              <Smartphone className="size-4" />
+              <Download className="size-4" />
               <span className="hidden sm:inline">Install app</span>
             </Button>
           )}
