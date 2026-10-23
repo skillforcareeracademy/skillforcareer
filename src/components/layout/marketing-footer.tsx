@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Phone, Mail, MapPin, Clock } from "lucide-react";
 import { Logo } from "@/components/shared/logo";
 import { FooterLinkColumns, type FooterColumn } from "./footer-link-columns";
+import { PlayStoreBadge } from "@/components/shared/play-store-badge";
 import { socialFor } from "@/config/social";
 import { getHomeSection } from "@/server/services/homepage-service";
 import { getPageSection } from "@/server/services/page-service";
@@ -34,6 +35,7 @@ export async function MarketingFooter() {
   ]);
   const {
     about,
+    appAndroidUrl,
     showOffices,
     columns,
     contactTitle,
@@ -89,6 +91,15 @@ export async function MarketingFooter() {
                     </p>
                   </div>
                 ))}
+              </div>
+            )}
+
+            {appAndroidUrl.trim() && (
+              <div className="mt-6">
+                <p className="text-muted-foreground mb-2 text-sm font-medium">
+                  Get the app
+                </p>
+                <PlayStoreBadge href={appAndroidUrl} />
               </div>
             )}
           </div>

@@ -1325,6 +1325,8 @@ const headerSchema = z.object({
   ctaOpensEnquiry: z.boolean().default(true),
   /** The callback popup in the header. Blank label = no button. */
   enquiryLabel: text(30),
+  /** Play Store link for the header's "Install app" button; blank hides it. */
+  appAndroidUrl: link(300),
 });
 
 const headerFields: AnyField[] = [
@@ -1385,6 +1387,13 @@ const headerFields: AnyField[] = [
     type: "text",
     hint: "Opens the callback popup. Leave blank to drop the button. Shown to signed-out and signed-in visitors alike.",
   },
+  {
+    name: "appAndroidUrl",
+    label: "Install app button link",
+    type: "url",
+    wide: true,
+    hint: "Google Play link for the Android app. Leave blank to drop the Install app button.",
+  },
 ];
 
 const headerDefaults: z.infer<typeof headerSchema> = {
@@ -1403,12 +1412,16 @@ const headerDefaults: z.infer<typeof headerSchema> = {
   ctaHref: "/register",
   ctaOpensEnquiry: true,
   enquiryLabel: "",
+  appAndroidUrl:
+    "https://play.google.com/store/apps/details?id=com.skillforcareer.learn",
 };
 
 // ── Section: footer (site-wide) ──────────────────────────────────────────────
 
 const footerSchema = z.object({
   about: text(600),
+  /** Play Store link for the footer's Google Play button; blank hides it. */
+  appAndroidUrl: link(300),
   /**
    * Whether the footer repeats the academy's addresses. The addresses
    * themselves live in Admin → Pages → Contact → "Centres & addresses", because
@@ -1449,6 +1462,13 @@ const footerFields: AnyField[] = [
     type: "textarea",
     wide: true,
     hint: "The logo itself is set in Settings → Branding.",
+  },
+  {
+    name: "appAndroidUrl",
+    label: "Google Play button link",
+    type: "url",
+    wide: true,
+    hint: "Shown as a Get-it-on-Google-Play button under the logo. Leave blank to drop it.",
   },
   {
     name: "showOffices",
@@ -1532,6 +1552,8 @@ const footerFields: AnyField[] = [
 
 const footerDefaults: z.infer<typeof footerSchema> = {
   about: siteConfig.description,
+  appAndroidUrl:
+    "https://play.google.com/store/apps/details?id=com.skillforcareer.learn",
   showOffices: true,
   columns: [
     {

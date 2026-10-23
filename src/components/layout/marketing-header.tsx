@@ -9,7 +9,7 @@ import { getHeaderMenus } from "@/server/services/header-menu-service";
 import { cn } from "@/lib/utils";
 import { EnquiryDialog } from "@/components/marketing/enquiry-dialog";
 import { Button } from "@/components/ui/button";
-import { MessageSquareText } from "lucide-react";
+import { MessageSquareText, Smartphone } from "lucide-react";
 import { HeaderNav, type HeaderLink } from "./header-nav";
 import { MobileNav } from "./mobile-nav";
 
@@ -40,6 +40,7 @@ export async function MarketingHeader() {
     ctaHref,
     ctaOpensEnquiry,
     enquiryLabel,
+    appAndroidUrl,
   } = section.data;
 
   // A half-filled row in the editor shouldn't render as a link to nowhere.
@@ -67,6 +68,28 @@ export async function MarketingHeader() {
             desktop widths, so the auto margin has to stay on at every size. */}
         <div className={cn("ml-auto flex items-center gap-1.5", showSearch && "md:ml-0")}>
           {showThemeToggle && <ThemeToggle />}
+
+          {/* Install the Android app — icon-only on a phone, labelled on
+              desktop. Opens the Play listing in a new tab. */}
+          {appAndroidUrl.trim() && (
+            <Button
+              variant="outline"
+              size="sm"
+              nativeButton={false}
+              render={
+                <a
+                  href={appAndroidUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Install the Android app"
+                />
+              }
+              className="gap-1.5"
+            >
+              <Smartphone className="size-4" />
+              <span className="hidden sm:inline">Install app</span>
+            </Button>
+          )}
 
           {/* The callback popup. Sits outside the signed-in branch on purpose —
               an existing learner enquiring about a *second* programme is the
