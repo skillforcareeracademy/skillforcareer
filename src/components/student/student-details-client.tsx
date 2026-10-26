@@ -1,12 +1,17 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  Briefcase,
   CheckCircle2,
   FileText,
+  GraduationCap,
+  IdCard,
   Loader2,
   Lock,
+  MapPin,
   Paperclip,
   Upload,
   X,
@@ -42,6 +47,8 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 /**
  * The learner's onboarding form, and the office's copy of it.
@@ -228,15 +235,20 @@ export function StudentDetailsClient({
   view,
   staff = false,
   userId,
+  layout = "flat",
 }: {
   view: StudentDetailView;
   staff?: boolean;
   userId?: string;
+  /** "tabs" lays the four sections out as tabs; "flat" stacks them. */
+  layout?: "flat" | "tabs";
 }) {
   const router = useRouter();
   const [values, setValues] = useState<Values>(() => initialValues(view));
   const [state, setState] = useState(view);
   const [saving, setSaving] = useState<"draft" | "submit" | null>(null);
+  // A learner confirms the policy before the formal submit; the office doesn't.
+  const [agreed, setAgreed] = useState(false);
 
   const endpoint = staff ? `/api/admin/students/${userId}/details` : "/api/student/details";
   // A learner can't change what admissions has verified; the office can.
@@ -295,6 +307,169 @@ export function StudentDetailsClient({
     </Select>
   );
 
+  // ── The four sections, defined once so either layout can arrange them. ──────
+  const contactSection = (
+    <Card>
+      <CardHeader>
+        <CardTitle>Where you are, and how to reach you</CardTitle>
+        <CardDescription>
+          Class links and certificates go to your email; the office calls the numbers here.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-4 sm:grid-cols-2">
+        <Field label="WhatsApp number">{text("whatsapp", "10-digit number")}</Field>
+        <Field label="Another number">{text("alternatePhone")}</Field>
+        <div className="sm:col-span-2">
+          <Field label="Address">
+            <Textarea
+              rows={3}
+              value={String(values.addressLine ?? "")}
+              placeholder="House, street, area"
+              onChange={(e) => set("addressLine")(e.target.value)}
+            />
+          </Field>
+        </div>
+        <Field label="City">{text("city")}</Field>
+        <Field label="State">{text("state")}</Field>
+        <Field label="PIN code">{text("pincode")}</Field>
+        <Field label="Country">{text("country")}</Field>
+      </CardContent>
+    </Card>
+  );
+
+  const identitySection = (
+    <Card>
+      <CardHeader>
+        <CardTitle>Identity and documents</CardTitle>
+        <CardDescription>
+          A photo of each is fine, as long as the details are readable.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-4 sm:grid-cols-2">
+        <Field label="Gender">{choice("gender", GENDERS, "Choose")}</Field>
+        <Field label="Father's name" locked={locked("fatherName")}>
+          {text("fatherName")}
+        </Field>
+        <Field label="Parent or guardian's number">{text("guardianPhone")}</Field>
+        <Field label="Aadhaar number" locked={locked("aadhaarNumber")}>
+          {text("aadhaarNumber", "12 digits")}
+        </Field>
+        <DocField
+          label="Aadhaar copy"
+          url={String(values.aadhaarUrl ?? "")}
+          name={String(values.aadhaarUrl ?? "") ? "Aadhaar on file" : ""}
+          disabled={locked("aadhaarUrl")}
+          accept="image/*,application/pdf"
+          onChange={(url) => set("aadhaarUrl")(url)}
+        />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Other photo ID" locked={locked("idProofType")}>
+            {choice("idProofType", ID_PROOF_TYPES, "Choose")}
+          </Field>
+          <Field label="Its number" locked={locked("idProofNumber")}>
+            {text("idProofNumber")}
+          </Field>
+        </div>
+        <DocField
+          label="Photo ID copy"
+          url={String(values.idProofUrl ?? "")}
+          name={String(values.idProofUrl ?? "") ? "ID on file" : ""}
+          disabled={locked("idProofUrl")}
+          accept="image/*,application/pdf"
+          onChange={(url) => set("idProofUrl")(url)}
+        />
+      </CardContent>
+    </Card>
+  );
+
+  const educationSection = (
+    <Card>
+      <CardHeader>
+        <CardTitle>What you&apos;ve studied</CardTitle>
+        <CardDescription>Your most recent qualification is enough.</CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-4 sm:grid-cols-2">
+        <Field label="Highest qualification" locked={locked("highestQualification")}>
+          {text("highestQualification", "B.Sc, B.Pharm, BAMS…")}
+        </Field>
+        <Field label="Stream or specialisation">{text("specialization")}</Field>
+        <Field label="College or school" locked={locked("collegeName")}>
+          {text("collegeName")}
+        </Field>
+        <Field label="Year of passing" locked={locked("passingYear")}>
+          {text("passingYear", "2024")}
+        </Field>
+        <Field label="Marks or CGPA" locked={locked("marksPercent")}>
+          {text("marksPercent", "72% or 7.2")}
+        </Field>
+        <DocField
+          label="Your CV"
+          url={String(values.cvUrl ?? "")}
+          name={String(values.cvName ?? "")}
+          accept=".pdf,.doc,.docx,application/pdf"
+          onChange={(url, fileName) => {
+            set("cvUrl")(url);
+            set("cvName")(fileName);
+          }}
+        />
+      </CardContent>
+    </Card>
+  );
+
+  const workSection = (
+    <Card>
+      <CardHeader>
+        <CardTitle>Work, and what you want next</CardTitle>
+        <CardDescription>
+          The placement team reads this before it puts your name forward.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-4 sm:grid-cols-2">
+        <Field label="Where you are now">{choice("jobStatus", JOB_STATUSES, "Choose")}</Field>
+        <Field label="Years of experience">{text("experienceYears", "0, 1.5, 3…")}</Field>
+        <Field label="Current company">{text("currentCompany")}</Field>
+        <Field label="Current role">{text("currentRole")}</Field>
+        <Field label="Current package (₹ per year)">{text("currentPackage")}</Field>
+        <Field label="Expected package (₹ per year)">{text("expectedPackage")}</Field>
+        <Field label="Preferred locations" hint="Separate them with commas.">
+          {text("preferredLocations", "Dehradun, Delhi, Remote")}
+        </Field>
+        <Field label="Preferred way of working">
+          {choice("preferredMode", WORK_MODES, "Choose")}
+        </Field>
+        <div className="flex items-center justify-between gap-3 rounded-xl border p-3">
+          <div className="min-w-0">
+            <p className="text-sm font-medium">Willing to relocate</p>
+            <p className="text-muted-foreground text-xs">For the right role.</p>
+          </div>
+          <Switch
+            checked={Boolean(values.willingToRelocate)}
+            onCheckedChange={(v) => set("willingToRelocate")(Boolean(v))}
+          />
+        </div>
+        <div className="flex items-center justify-between gap-3 rounded-xl border p-3">
+          <div className="min-w-0">
+            <p className="text-sm font-medium">Open to placement</p>
+            <p className="text-muted-foreground text-xs">
+              Put my name forward for openings.
+            </p>
+          </div>
+          <Switch
+            checked={Boolean(values.openToPlacement)}
+            onCheckedChange={(v) => set("openToPlacement")(Boolean(v))}
+          />
+        </div>
+      </CardContent>
+    </Card>
+  );
+
+  const TABS = [
+    { value: "contact", label: "Contact", icon: MapPin, node: contactSection },
+    { value: "identity", label: "Identity", icon: IdCard, node: identitySection },
+    { value: "education", label: "Education", icon: GraduationCap, node: educationSection },
+    { value: "work", label: "Work", icon: Briefcase, node: workSection },
+  ];
+
   return (
     <div className="space-y-6">
       {/* How far through they are — the same figure the office sees. */}
@@ -342,179 +517,93 @@ export function StudentDetailsClient({
         </div>
       )}
 
-      {/* ── Reaching you ──────────────────────────────────────────────────── */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Where you are, and how to reach you</CardTitle>
-          <CardDescription>
-            Class links and certificates go to your email; the office calls the numbers here.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-2">
-          <Field label="WhatsApp number">{text("whatsapp", "10-digit number")}</Field>
-          <Field label="Another number">{text("alternatePhone")}</Field>
-          <div className="sm:col-span-2">
-            <Field label="Address">
-              <Textarea
-                rows={3}
-                value={String(values.addressLine ?? "")}
-                placeholder="House, street, area"
-                onChange={(e) => set("addressLine")(e.target.value)}
-              />
-            </Field>
-          </div>
-          <Field label="City">{text("city")}</Field>
-          <Field label="State">{text("state")}</Field>
-          <Field label="PIN code">{text("pincode")}</Field>
-          <Field label="Country">{text("country")}</Field>
-        </CardContent>
-      </Card>
+      {layout === "tabs" ? (
+        <Tabs defaultValue="contact">
+          <TabsList>
+            {TABS.map((t) => {
+              const Icon = t.icon;
+              return (
+                <TabsTrigger key={t.value} value={t.value} className="gap-1.5">
+                  <Icon className="size-4" /> {t.label}
+                </TabsTrigger>
+              );
+            })}
+          </TabsList>
+          {TABS.map((t) => (
+            <TabsContent key={t.value} value={t.value} className="mt-4">
+              {t.node}
+            </TabsContent>
+          ))}
+        </Tabs>
+      ) : (
+        <>
+          {contactSection}
+          {identitySection}
+          {educationSection}
+          {workSection}
+        </>
+      )}
 
-      {/* ── Identity ──────────────────────────────────────────────────────── */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Identity and documents</CardTitle>
-          <CardDescription>
-            A photo of each is fine, as long as the details are readable.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-2">
-          <Field label="Gender">{choice("gender", GENDERS, "Choose")}</Field>
-          <Field label="Father's name" locked={locked("fatherName")}>
-            {text("fatherName")}
-          </Field>
-          <Field label="Parent or guardian's number">{text("guardianPhone")}</Field>
-          <Field label="Aadhaar number" locked={locked("aadhaarNumber")}>
-            {text("aadhaarNumber", "12 digits")}
-          </Field>
-          <DocField
-            label="Aadhaar copy"
-            url={String(values.aadhaarUrl ?? "")}
-            name={String(values.aadhaarUrl ?? "") ? "Aadhaar on file" : ""}
-            disabled={locked("aadhaarUrl")}
-            accept="image/*,application/pdf"
-            onChange={(url) => set("aadhaarUrl")(url)}
-          />
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Other photo ID" locked={locked("idProofType")}>
-              {choice("idProofType", ID_PROOF_TYPES, "Choose")}
-            </Field>
-            <Field label="Its number" locked={locked("idProofNumber")}>
-              {text("idProofNumber")}
-            </Field>
-          </div>
-          <DocField
-            label="Photo ID copy"
-            url={String(values.idProofUrl ?? "")}
-            name={String(values.idProofUrl ?? "") ? "ID on file" : ""}
-            disabled={locked("idProofUrl")}
-            accept="image/*,application/pdf"
-            onChange={(url) => set("idProofUrl")(url)}
-          />
-        </CardContent>
-      </Card>
-
-      {/* ── Education ─────────────────────────────────────────────────────── */}
-      <Card>
-        <CardHeader>
-          <CardTitle>What you&apos;ve studied</CardTitle>
-          <CardDescription>Your most recent qualification is enough.</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-2">
-          <Field label="Highest qualification" locked={locked("highestQualification")}>
-            {text("highestQualification", "B.Sc, B.Pharm, BAMS…")}
-          </Field>
-          <Field label="Stream or specialisation">{text("specialization")}</Field>
-          <Field label="College or school" locked={locked("collegeName")}>
-            {text("collegeName")}
-          </Field>
-          <Field label="Year of passing" locked={locked("passingYear")}>
-            {text("passingYear", "2024")}
-          </Field>
-          <Field label="Marks or CGPA" locked={locked("marksPercent")}>
-            {text("marksPercent", "72% or 7.2")}
-          </Field>
-          <DocField
-            label="Your CV"
-            url={String(values.cvUrl ?? "")}
-            name={String(values.cvName ?? "")}
-            accept=".pdf,.doc,.docx,application/pdf"
-            onChange={(url, fileName) => {
-              set("cvUrl")(url);
-              set("cvName")(fileName);
-            }}
-          />
-        </CardContent>
-      </Card>
-
-      {/* ── Work and placement ────────────────────────────────────────────── */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Work, and what you want next</CardTitle>
-          <CardDescription>
-            The placement team reads this before it puts your name forward.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-2">
-          <Field label="Where you are now">{choice("jobStatus", JOB_STATUSES, "Choose")}</Field>
-          <Field label="Years of experience">{text("experienceYears", "0, 1.5, 3…")}</Field>
-          <Field label="Current company">{text("currentCompany")}</Field>
-          <Field label="Current role">{text("currentRole")}</Field>
-          <Field label="Current package (₹ per year)">{text("currentPackage")}</Field>
-          <Field label="Expected package (₹ per year)">{text("expectedPackage")}</Field>
-          <Field label="Preferred locations" hint="Separate them with commas.">
-            {text("preferredLocations", "Dehradun, Delhi, Remote")}
-          </Field>
-          <Field label="Preferred way of working">
-            {choice("preferredMode", WORK_MODES, "Choose")}
-          </Field>
-          <div className="flex items-center justify-between gap-3 rounded-xl border p-3">
-            <div className="min-w-0">
-              <p className="text-sm font-medium">Willing to relocate</p>
-              <p className="text-muted-foreground text-xs">For the right role.</p>
-            </div>
-            <Switch
-              checked={Boolean(values.willingToRelocate)}
-              onCheckedChange={(v) => set("willingToRelocate")(Boolean(v))}
-            />
-          </div>
-          <div className="flex items-center justify-between gap-3 rounded-xl border p-3">
-            <div className="min-w-0">
-              <p className="text-sm font-medium">Open to placement</p>
-              <p className="text-muted-foreground text-xs">
-                Put my name forward for openings.
-              </p>
-            </div>
-            <Switch
-              checked={Boolean(values.openToPlacement)}
-              onCheckedChange={(v) => set("openToPlacement")(Boolean(v))}
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="flex flex-wrap items-center gap-3">
-        <Button variant="outline" disabled={saving !== null} onClick={() => void save(false)}>
-          {saving === "draft" && <Loader2 className="size-4 animate-spin" />}
-          {staff ? "Save changes" : "Save for later"}
-        </Button>
+      {/* Consent, then the actions. The learner agrees to the policy before the
+          formal submit; "Save for later" keeps a draft and needs no agreement. */}
+      <div className="space-y-4">
         {!staff && !state.submitted && (
-          <Button disabled={saving !== null} onClick={() => void save(true)}>
-            {saving === "submit" ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Paperclip className="size-4" />
-            )}
-            Submit my details
+          <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border p-3.5">
+            <Checkbox
+              checked={agreed}
+              onCheckedChange={(v) => setAgreed(Boolean(v))}
+              className="mt-0.5"
+            />
+            <span className="text-muted-foreground text-sm">
+              I confirm the details above are correct, and I agree to the{" "}
+              <Link
+                href="/privacy"
+                target="_blank"
+                rel="noreferrer"
+                className="text-primary font-medium underline underline-offset-4"
+              >
+                Privacy Policy
+              </Link>{" "}
+              and{" "}
+              <Link
+                href="/terms"
+                target="_blank"
+                rel="noreferrer"
+                className="text-primary font-medium underline underline-offset-4"
+              >
+                Terms of Service
+              </Link>
+              .
+            </span>
+          </label>
+        )}
+
+        <div className="flex flex-wrap items-center gap-3">
+          <Button variant="outline" disabled={saving !== null} onClick={() => void save(false)}>
+            {saving === "draft" && <Loader2 className="size-4 animate-spin" />}
+            {staff ? "Save changes" : "Save for later"}
           </Button>
-        )}
-        {!staff && (
-          <p className="text-muted-foreground text-xs">
-            {state.submitted
-              ? "Submitted. Anything not locked can still be updated."
-              : "Saving keeps a draft; submitting sends it to the office."}
-          </p>
-        )}
+          {!staff && !state.submitted && (
+            <Button
+              disabled={saving !== null || !agreed}
+              onClick={() => void save(true)}
+            >
+              {saving === "submit" ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Paperclip className="size-4" />
+              )}
+              Submit my details
+            </Button>
+          )}
+          {!staff && (
+            <p className="text-muted-foreground text-xs">
+              {state.submitted
+                ? "Submitted. Anything not locked can still be updated."
+                : "Saving keeps a draft; submitting sends it to the office."}
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -22,7 +22,7 @@ export default async function StudentDetailsPage() {
         title="My details"
         description="What the academy needs on file — address, documents, schooling and your CV."
       />
-      <StudentDetailsClient view={view} />
+      <StudentDetailsClient view={view} layout="tabs" />
     </div>
   );
 }

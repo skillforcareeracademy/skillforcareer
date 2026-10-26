@@ -38,7 +38,7 @@ export function onboardingFormMail(d: {
   const href = `${brand.appUrl}/student/profile/details`;
   const opening =
     d.reason === "payment"
-      ? "Your fee is recorded — thank you. One short form is left before the academy can finish your admission file."
+      ? "Your fee is recorded — thank you. Completing your student profile is now required to finish your admission, so please fill in the details below."
       : "Your account is ready. One short form is left before the academy can finish your admission file.";
 
   return {

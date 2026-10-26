@@ -9,6 +9,7 @@ import {
   rewardReferralFor,
 } from "@/server/services/referral-service";
 import { getRazorpayAccount } from "@/server/services/payment-account-service";
+import { sendOnboardingFormEmail } from "@/server/services/user-service";
 import { getSettings } from "@/server/services/settings-service";
 import {
   ACTIVITY_ACTIONS,
@@ -1082,7 +1083,7 @@ export async function fulfillPaidCheckout(
       netAmount: true,
       metadata: true,
       course: { select: { slug: true, title: true } },
-      user: { select: { name: true } },
+      user: { select: { name: true, email: true } },
     },
   });
   if (!payment) throw AppError.notFound("Payment not found.");
@@ -1219,7 +1220,41 @@ export async function fulfillPaidCheckout(
     }),
   ]);
 
+  // "Jab koi student payment complete kare, details update karna mandatory hai"
+  // — once they've paid, nudge them to finish the admission profile. Skipped if
+  // they've already submitted it, and only for a real learner email.
+  if (payment.user?.email) {
+    void nudgeProfileAfterPayment(
+      payment.userId,
+      payment.user.name ?? "",
+      payment.user.email,
+    );
+  }
+
   return { slug: payment.course?.slug ?? null, alreadyPaid: false };
+}
+
+/**
+ * After a successful payment, email the learner to complete the (mandatory)
+ * student profile — unless they've already submitted it. Best-effort: a mail
+ * failure must never undo a paid enrolment, so it runs in the background and
+ * swallows its own errors (sendOnboardingFormEmail logs them).
+ */
+async function nudgeProfileAfterPayment(
+  userId: string,
+  name: string,
+  email: string,
+): Promise<void> {
+  try {
+    const detail = await prisma.studentDetail.findUnique({
+      where: { userId },
+      select: { submittedAt: true },
+    });
+    if (detail?.submittedAt) return;
+    await sendOnboardingFormEmail({ name, email, reason: "payment" });
+  } catch {
+    // sendOnboardingFormEmail already logs; nothing else to do here.
+  }
 }
 
 /** Client-side checkout callback — verified, then fulfilled. */
