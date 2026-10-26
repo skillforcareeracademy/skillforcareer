@@ -12,13 +12,33 @@ export function AvatarUpload({
   value,
   onChange,
   fallback,
+  onRemove,
 }: {
   value: string;
   onChange: (url: string) => void;
   fallback: string;
+  /**
+   * If given, the Remove button calls this instead of only clearing the field —
+   * so removal persists immediately rather than waiting for a separate Save.
+   */
+  onRemove?: () => void | Promise<void>;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [removing, setRemoving] = useState(false);
+
+  async function handleRemove() {
+    if (!onRemove) {
+      onChange("");
+      return;
+    }
+    setRemoving(true);
+    try {
+      await onRemove();
+    } finally {
+      setRemoving(false);
+    }
+  }
 
   async function handleFile(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -98,10 +118,14 @@ export function AvatarUpload({
               variant="ghost"
               size="sm"
               className="text-muted-foreground"
-              onClick={() => onChange("")}
-              disabled={uploading}
+              onClick={() => void handleRemove()}
+              disabled={uploading || removing}
             >
-              <Trash2 className="size-4" />
+              {removing ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Trash2 className="size-4" />
+              )}
               Remove
             </Button>
           )}

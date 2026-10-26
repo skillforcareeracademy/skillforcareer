@@ -136,6 +136,30 @@ export function ProfileClient({
     }
   }
 
+  // Remove persists straight away rather than waiting for a separate Save, so
+  // "remove the photo" actually removes it. On failure the photo is put back.
+  async function removeAvatar() {
+    const prev = avatarUrl;
+    setAvatarUrl("");
+    try {
+      await api.patch("/api/profile", {
+        name: profileForm.getValues("name"),
+        phone,
+        dateOfBirth,
+        headline: profileForm.getValues("headline"),
+        bio: profileForm.getValues("bio"),
+        avatarUrl: "",
+        timezone,
+        locale,
+      });
+      toast.success("Photo removed.");
+      router.refresh(); // header avatar clears too
+    } catch (e) {
+      setAvatarUrl(prev);
+      toast.error(e instanceof ApiError ? e.message : "Couldn't remove the photo.");
+    }
+  }
+
   const passwordForm = useForm<ChangePasswordInput>({
     resolver: zodResolver(changePasswordSchema),
   });
@@ -173,6 +197,7 @@ export function ProfileClient({
                   value={avatarUrl}
                   onChange={setAvatarUrl}
                   fallback={initials}
+                  onRemove={removeAvatar}
                 />
 
                 <div className="grid gap-4 sm:grid-cols-2">
