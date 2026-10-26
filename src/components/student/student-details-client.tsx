@@ -38,17 +38,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+// (The four former dropdowns are now ChoiceChips; Select is no longer used.)
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PhoneInput } from "@/components/shared/phone-input";
+import { cn } from "@/lib/utils";
 
 /**
  * The learner's onboarding form, and the office's copy of it.
@@ -260,6 +256,48 @@ function CompletionRing({ value }: { value: number }) {
   );
 }
 
+/**
+ * A row of selectable pills — one tap, every option visible, nicer on a phone
+ * than a dropdown. Clicking the active pill again clears it. When `disabled`
+ * (a field locked after submit) the pills are shown but can't be changed.
+ */
+function ChoiceChips({
+  value,
+  options,
+  onChange,
+  disabled,
+}: {
+  value: string;
+  options: readonly { value: string; label: string }[];
+  onChange: (value: string) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {options.map((o) => {
+        const active = value === o.value;
+        return (
+          <button
+            key={o.value}
+            type="button"
+            disabled={disabled}
+            aria-pressed={active}
+            onClick={() => onChange(active ? "" : o.value)}
+            className={cn(
+              "rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60",
+              active
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-input text-foreground hover:bg-accent",
+            )}
+          >
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export function StudentDetailsClient({
   view,
   staff = false,
@@ -313,27 +351,24 @@ export function StudentDetailsClient({
     />
   );
 
-  const choice = (
+  const phone = (key: string, placeholder?: string) => (
+    <PhoneInput
+      value={String(values[key] ?? "")}
+      onChange={(v) => set(key)(v)}
+      placeholder={placeholder}
+    />
+  );
+
+  const chips = (
     key: string,
     options: readonly { value: string; label: string }[],
-    placeholder: string,
   ) => (
-    <Select
+    <ChoiceChips
       value={String(values[key] ?? "")}
-      onValueChange={(v) => set(key)(String(v ?? ""))}
+      options={options}
       disabled={locked(key)}
-    >
-      <SelectTrigger>
-        <SelectValue placeholder={placeholder} />
-      </SelectTrigger>
-      <SelectContent>
-        {options.map((o) => (
-          <SelectItem key={o.value} value={o.value}>
-            {o.label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+      onChange={(v) => set(key)(v)}
+    />
   );
 
   // ── The four sections, defined once so either layout can arrange them. ──────
@@ -348,8 +383,8 @@ export function StudentDetailsClient({
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4 sm:grid-cols-2">
-        <Field label="WhatsApp number">{text("whatsapp", "10-digit number")}</Field>
-        <Field label="Another number">{text("alternatePhone")}</Field>
+        <Field label="WhatsApp number">{phone("whatsapp")}</Field>
+        <Field label="Another number">{phone("alternatePhone")}</Field>
         <div className="sm:col-span-2">
           <Field label="Address">
             <Textarea
@@ -379,11 +414,13 @@ export function StudentDetailsClient({
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4 sm:grid-cols-2">
-        <Field label="Gender">{choice("gender", GENDERS, "Choose")}</Field>
+        <div className="sm:col-span-2">
+          <Field label="Gender">{chips("gender", GENDERS)}</Field>
+        </div>
         <Field label="Father's name" locked={locked("fatherName")}>
           {text("fatherName")}
         </Field>
-        <Field label="Parent or guardian's number">{text("guardianPhone")}</Field>
+        <Field label="Parent or guardian's number">{phone("guardianPhone")}</Field>
         <Field label="Aadhaar number" locked={locked("aadhaarNumber")}>
           {text("aadhaarNumber", "12 digits")}
         </Field>
@@ -395,13 +432,15 @@ export function StudentDetailsClient({
           accept="image/*,application/pdf"
           onChange={(url) => set("aadhaarUrl")(url)}
         />
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-4 sm:col-span-2">
           <Field label="Other photo ID" locked={locked("idProofType")}>
-            {choice("idProofType", ID_PROOF_TYPES, "Choose")}
+            {chips("idProofType", ID_PROOF_TYPES)}
           </Field>
-          <Field label="Its number" locked={locked("idProofNumber")}>
-            {text("idProofNumber")}
-          </Field>
+          <div className="sm:max-w-xs">
+            <Field label="Its number" locked={locked("idProofNumber")}>
+              {text("idProofNumber")}
+            </Field>
+          </div>
         </div>
         <DocField
           label="Photo ID copy"
@@ -462,7 +501,9 @@ export function StudentDetailsClient({
         </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4 sm:grid-cols-2">
-        <Field label="Where you are now">{choice("jobStatus", JOB_STATUSES, "Choose")}</Field>
+        <div className="sm:col-span-2">
+          <Field label="Where you are now">{chips("jobStatus", JOB_STATUSES)}</Field>
+        </div>
         <Field label="Years of experience">{text("experienceYears", "0, 1.5, 3…")}</Field>
         <Field label="Current company">{text("currentCompany")}</Field>
         <Field label="Current role">{text("currentRole")}</Field>
@@ -471,9 +512,11 @@ export function StudentDetailsClient({
         <Field label="Preferred locations" hint="Separate them with commas.">
           {text("preferredLocations", "Dehradun, Delhi, Remote")}
         </Field>
-        <Field label="Preferred way of working">
-          {choice("preferredMode", WORK_MODES, "Choose")}
-        </Field>
+        <div className="sm:col-span-2">
+          <Field label="Preferred way of working">
+            {chips("preferredMode", WORK_MODES)}
+          </Field>
+        </div>
         <div className="flex items-center justify-between gap-3 rounded-xl border p-3">
           <div className="min-w-0">
             <p className="text-sm font-medium">Willing to relocate</p>
@@ -534,7 +577,7 @@ export function StudentDetailsClient({
           <p className="mt-1 text-sm text-white/85">
             {state.missing.length === 0
               ? "Everything the academy needs is on file."
-              : "A few details are still needed — fill in the tabs below."}
+              : `${state.missing.length} detail${state.missing.length === 1 ? "" : "s"} still needed — fill in the tabs below.`}
           </p>
           {state.missing.length > 0 && (
             <div className="mt-2.5 flex flex-wrap gap-1.5">
