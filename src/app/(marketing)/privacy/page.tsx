@@ -1,7 +1,13 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { LegalPage, type LegalSection } from "@/components/marketing/legal-page";
+import {
+  LegalDocument,
+  LegalPage,
+  type LegalSection,
+} from "@/components/marketing/legal-page";
 import { siteConfig } from "@/config/site";
+import { getLegalPage, withHeadingAnchors } from "@/server/services/legal-service";
+
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Privacy policy",
@@ -10,9 +16,9 @@ export const metadata: Metadata = {
 };
 
 const { contact } = siteConfig;
-const UPDATED = "17 October 2026";
+export const UPDATED = "17 October 2026";
 
-const SECTIONS: LegalSection[] = [
+export const SECTIONS: LegalSection[] = [
   {
     id: "who-we-are",
     heading: "Who we are",
@@ -224,7 +230,7 @@ const SECTIONS: LegalSection[] = [
       <p>
         We use a small number of cookies, almost all of them strictly necessary to sign you
         in and keep you signed in. The full list is in our{" "}
-        <Link href="/cookies">cookie policy</Link>.
+        <a href="/cookies">cookie policy</a>.
       </p>
     ),
   },
@@ -334,13 +340,27 @@ const SECTIONS: LegalSection[] = [
   },
 ];
 
-export default function PrivacyPolicyPage() {
+export const TITLE = "Privacy policy";
+export const INTRO =
+  "What we collect, why we collect it, who we share it with, and the control you have over it.";
+
+export default async function PrivacyPolicyPage() {
+  // Admin-edited content wins; the in-code copy below is the fallback until the
+  // page has been saved in Admin → Legal pages.
+  const row = await getLegalPage("privacy");
+  if (row) {
+    const { html, rail } = withHeadingAnchors(row.body);
+    return (
+      <LegalDocument
+        title={row.title}
+        intro={row.intro}
+        updated={row.updatedLabel}
+        html={html}
+        rail={rail}
+      />
+    );
+  }
   return (
-    <LegalPage
-      title="Privacy policy"
-      intro="What we collect, why we collect it, who we share it with, and the control you have over it."
-      updated={UPDATED}
-      sections={SECTIONS}
-    />
+    <LegalPage title={TITLE} intro={INTRO} updated={UPDATED} sections={SECTIONS} />
   );
 }

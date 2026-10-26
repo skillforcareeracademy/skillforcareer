@@ -2883,6 +2883,25 @@ model Setting {
   updatedAt   DateTime @updatedAt
 }
 
+/// A secondary legal/policy page (privacy, terms, cookies) as editable content.
+///
+/// The client asked that "jitni bhi policy ke pages hain, admin panel se content
+/// update kar sakein". The whole document is one rich-HTML `body`, edited in the
+/// same TipTap editor the blog uses, plus the header fields. `key` is the route
+/// slug. A page with no row here falls back to the copy that shipped in code, so
+/// the site still renders before anyone has touched it, and nothing is lost if a
+/// row is removed.
+model LegalPage {
+  key          String   @id
+  title        String
+  intro        String   @db.Text
+  updatedLabel String
+  body         String   @db.Text
+  updatedById  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
 /// One editable band of the public homepage (hero, stats, testimonials, …).
 ///
 /// The section's content lives in `data` as JSON rather than in columns or a

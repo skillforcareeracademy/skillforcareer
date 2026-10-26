@@ -12,27 +12,33 @@ export interface LegalSection {
   body: ReactNode;
 }
 
+/** A jump-rail entry — an anchor id and the heading it points to. */
+export interface RailItem {
+  id: string;
+  label: string;
+}
+
 /**
  * Shared chrome for the policy pages (privacy, terms, cookies).
  *
- * The three documents differ only in their sections, so the header, the
- * jump-to-section rail and the body typography live here — otherwise the rules
- * for spacing and list styling drift apart across pages nobody reads twice.
- *
- * Body content is plain HTML; the child selectors below style it, since this
- * project has no typography plugin.
+ * The documents differ only in their body, so the header, the jump-to-section
+ * rail and the contact card live here — whether the body is built from in-code
+ * sections (the shipped fallback) or from admin-edited HTML.
  */
-export function LegalPage({
+function LegalShell({
   title,
   intro,
   updated,
-  sections,
+  rail,
+  children,
 }: {
   title: string;
   intro: string;
   updated: string;
-  sections: LegalSection[];
+  rail: RailItem[];
+  children: ReactNode;
 }) {
+  const hasRail = rail.length > 0;
   return (
     <>
       <section className="relative overflow-hidden border-b">
@@ -49,66 +55,54 @@ export function LegalPage({
             <h1 className="mt-5 text-4xl leading-tight font-bold sm:text-5xl">
               {title}
             </h1>
-            <p className="text-muted-foreground mt-4 text-lg text-pretty">
-              {intro}
-            </p>
-            <p className="text-muted-foreground mt-4 text-sm">
-              Last updated: {updated}
-            </p>
+            {intro && (
+              <p className="text-muted-foreground mt-4 text-lg text-pretty">
+                {intro}
+              </p>
+            )}
+            {updated && (
+              <p className="text-muted-foreground mt-4 text-sm">
+                Last updated: {updated}
+              </p>
+            )}
           </div>
         </div>
       </section>
 
       <div className="container-page py-12 sm:py-16">
-        <div className="grid gap-10 lg:grid-cols-[15rem_minmax(0,1fr)] lg:gap-14">
-          {/* Jump-to rail — a plain list on mobile, sticky beside the text on
-              desktop, so a long policy stays navigable either way. */}
-          <nav
-            aria-label="On this page"
-            className="lg:sticky lg:top-24 lg:self-start"
-          >
-            <p className="text-muted-foreground mb-3 text-xs font-semibold tracking-wide uppercase">
-              On this page
-            </p>
-            <ol className="space-y-1 text-sm">
-              {sections.map((section, i) => (
-                <li key={section.id}>
-                  <a
-                    href={`#${section.id}`}
-                    className="text-muted-foreground hover:text-primary flex gap-2 rounded-md py-1 transition-colors"
-                  >
-                    <span className="tabular-nums opacity-60">{i + 1}.</span>
-                    {section.heading}
-                  </a>
-                </li>
-              ))}
-            </ol>
-          </nav>
+        <div
+          className={
+            hasRail
+              ? "grid gap-10 lg:grid-cols-[15rem_minmax(0,1fr)] lg:gap-14"
+              : "mx-auto max-w-2xl"
+          }
+        >
+          {hasRail && (
+            <nav
+              aria-label="On this page"
+              className="lg:sticky lg:top-24 lg:self-start"
+            >
+              <p className="text-muted-foreground mb-3 text-xs font-semibold tracking-wide uppercase">
+                On this page
+              </p>
+              <ol className="space-y-1 text-sm">
+                {rail.map((item, i) => (
+                  <li key={item.id}>
+                    <a
+                      href={`#${item.id}`}
+                      className="text-muted-foreground hover:text-primary flex gap-2 rounded-md py-1 transition-colors"
+                    >
+                      <span className="tabular-nums opacity-60">{i + 1}.</span>
+                      {item.label}
+                    </a>
+                  </li>
+                ))}
+              </ol>
+            </nav>
+          )}
 
           <div className="min-w-0">
-            <article
-              className={[
-                "max-w-2xl",
-                "[&_h2]:text-xl [&_h2]:font-semibold [&_h2]:sm:text-2xl",
-                "[&_p]:text-muted-foreground [&_p]:mt-3 [&_p]:text-[0.95rem] [&_p]:leading-relaxed",
-                "[&_ul]:mt-3 [&_ul]:space-y-2 [&_ul]:pl-1",
-                "[&_li]:text-muted-foreground [&_li]:relative [&_li]:pl-5 [&_li]:text-[0.95rem] [&_li]:leading-relaxed",
-                "[&_li]:before:bg-primary/50 [&_li]:before:absolute [&_li]:before:top-[0.6rem] [&_li]:before:left-0 [&_li]:before:size-1.5 [&_li]:before:rounded-full",
-                "[&_strong]:text-foreground [&_strong]:font-semibold",
-                "[&_a]:text-primary [&_a]:font-medium [&_a]:underline [&_a]:underline-offset-4",
-              ].join(" ")}
-            >
-              {sections.map((section) => (
-                <section
-                  key={section.id}
-                  id={section.id}
-                  className="scroll-mt-24 border-t py-8 first:border-t-0 first:pt-0"
-                >
-                  <h2>{section.heading}</h2>
-                  {section.body}
-                </section>
-              ))}
-            </article>
+            {children}
 
             <Card className="mt-10 max-w-2xl gap-0 p-6">
               <h2 className="font-semibold">Questions about this policy?</h2>
@@ -135,5 +129,74 @@ export function LegalPage({
         </div>
       </div>
     </>
+  );
+}
+
+/** The in-code fallback: a list of sections with React-node bodies. */
+export function LegalPage({
+  title,
+  intro,
+  updated,
+  sections,
+}: {
+  title: string;
+  intro: string;
+  updated: string;
+  sections: LegalSection[];
+}) {
+  const rail = sections.map((s) => ({ id: s.id, label: s.heading }));
+  return (
+    <LegalShell title={title} intro={intro} updated={updated} rail={rail}>
+      <article
+        className={[
+          "max-w-2xl",
+          "[&_h2]:text-xl [&_h2]:font-semibold [&_h2]:sm:text-2xl",
+          "[&_p]:text-muted-foreground [&_p]:mt-3 [&_p]:text-[0.95rem] [&_p]:leading-relaxed",
+          "[&_ul]:mt-3 [&_ul]:space-y-2 [&_ul]:pl-1",
+          "[&_li]:text-muted-foreground [&_li]:relative [&_li]:pl-5 [&_li]:text-[0.95rem] [&_li]:leading-relaxed",
+          "[&_li]:before:bg-primary/50 [&_li]:before:absolute [&_li]:before:top-[0.6rem] [&_li]:before:left-0 [&_li]:before:size-1.5 [&_li]:before:rounded-full",
+          "[&_strong]:text-foreground [&_strong]:font-semibold",
+          "[&_a]:text-primary [&_a]:font-medium [&_a]:underline [&_a]:underline-offset-4",
+        ].join(" ")}
+      >
+        {sections.map((section) => (
+          <section
+            key={section.id}
+            id={section.id}
+            className="scroll-mt-24 border-t py-8 first:border-t-0 first:pt-0"
+          >
+            <h2>{section.heading}</h2>
+            {section.body}
+          </section>
+        ))}
+      </article>
+    </LegalShell>
+  );
+}
+
+/**
+ * The admin-edited version: one block of HTML (from the rich-text editor), with
+ * the jump-rail already derived from its headings on the server.
+ */
+export function LegalDocument({
+  title,
+  intro,
+  updated,
+  html,
+  rail,
+}: {
+  title: string;
+  intro: string;
+  updated: string;
+  html: string;
+  rail: RailItem[];
+}) {
+  return (
+    <LegalShell title={title} intro={intro} updated={updated} rail={rail}>
+      <article
+        className="prose-blog prose-blog-sm max-w-2xl"
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+    </LegalShell>
   );
 }

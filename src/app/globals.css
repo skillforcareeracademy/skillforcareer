@@ -314,3 +314,31 @@
 .prose-blog hr {
   border-color: var(--border);
 }
+
+/* So an anchor jump from the "On this page" rail doesn't hide the heading
+   under the sticky site header. */
+.prose-blog :is(h1, h2, h3, h4) {
+  scroll-margin-top: 6rem;
+}
+
+/* Simple tables (the cookie list) stay readable and scroll inside themselves
+   on a narrow screen rather than widening the page. */
+.prose-blog table {
+  display: block;
+  width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 0.95em;
+}
+
+.prose-blog :is(th, td) {
+  border: 1px solid var(--border);
+  padding: 0.55em 0.75em;
+  text-align: left;
+  vertical-align: top;
+}
+
+.prose-blog th {
+  font-weight: 600;
+  background: var(--muted);
+}

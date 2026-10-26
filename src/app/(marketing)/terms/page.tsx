@@ -1,7 +1,13 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { LegalPage, type LegalSection } from "@/components/marketing/legal-page";
+import {
+  LegalDocument,
+  LegalPage,
+  type LegalSection,
+} from "@/components/marketing/legal-page";
 import { siteConfig } from "@/config/site";
+import { getLegalPage, withHeadingAnchors } from "@/server/services/legal-service";
+
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Terms of use",
@@ -10,9 +16,9 @@ export const metadata: Metadata = {
 };
 
 const { contact } = siteConfig;
-const UPDATED = "21 July 2026";
+export const UPDATED = "21 July 2026";
 
-const SECTIONS: LegalSection[] = [
+export const SECTIONS: LegalSection[] = [
   {
     id: "agreement",
     heading: "This agreement",
@@ -214,7 +220,7 @@ const SECTIONS: LegalSection[] = [
         We may suspend or close an account that breaches these terms, that is used
         fraudulently, or where required by law. You can ask us to close your account at any
         time; fees already paid remain subject to the refund policy, and see our{" "}
-        <Link href="/privacy">privacy policy</Link> for what happens to your data.
+        <a href="/privacy">privacy policy</a> for what happens to your data.
       </p>
     ),
   },
@@ -260,13 +266,24 @@ const SECTIONS: LegalSection[] = [
   },
 ];
 
-export default function TermsPage() {
+export const TITLE = "Terms of use";
+export const INTRO = `The rules for using ${siteConfig.name} — enrolment, fees, class conduct, certificates and what you can expect from us.`;
+
+export default async function TermsPage() {
+  const row = await getLegalPage("terms");
+  if (row) {
+    const { html, rail } = withHeadingAnchors(row.body);
+    return (
+      <LegalDocument
+        title={row.title}
+        intro={row.intro}
+        updated={row.updatedLabel}
+        html={html}
+        rail={rail}
+      />
+    );
+  }
   return (
-    <LegalPage
-      title="Terms of use"
-      intro={`The rules for using ${siteConfig.name} — enrolment, fees, class conduct, certificates and what you can expect from us.`}
-      updated={UPDATED}
-      sections={SECTIONS}
-    />
+    <LegalPage title={TITLE} intro={INTRO} updated={UPDATED} sections={SECTIONS} />
   );
 }

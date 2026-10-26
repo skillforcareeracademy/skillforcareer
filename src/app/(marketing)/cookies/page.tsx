@@ -1,7 +1,13 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { LegalPage, type LegalSection } from "@/components/marketing/legal-page";
+import {
+  LegalDocument,
+  LegalPage,
+  type LegalSection,
+} from "@/components/marketing/legal-page";
 import { siteConfig } from "@/config/site";
+import { getLegalPage, withHeadingAnchors } from "@/server/services/legal-service";
+
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Cookie policy",
@@ -10,7 +16,7 @@ export const metadata: Metadata = {
 };
 
 const { contact } = siteConfig;
-const UPDATED = "21 July 2026";
+export const UPDATED = "21 July 2026";
 
 const COOKIES = [
   {
@@ -35,7 +41,7 @@ const COOKIES = [
   },
 ];
 
-const SECTIONS: LegalSection[] = [
+export const SECTIONS: LegalSection[] = [
   {
     id: "what-are-cookies",
     heading: "What cookies are",
@@ -172,20 +178,32 @@ const SECTIONS: LegalSection[] = [
       <p>
         If we add a cookie, this table changes with it and the date at the top of the page is
         updated. For how we handle personal data more broadly, see our{" "}
-        <Link href="/privacy">privacy policy</Link>, or write to{" "}
+        <a href="/privacy">privacy policy</a>, or write to{" "}
         <a href={`mailto:${contact.email}`}>{contact.email}</a>.
       </p>
     ),
   },
 ];
 
-export default function CookiePolicyPage() {
+export const TITLE = "Cookie policy";
+export const INTRO =
+  "The handful of cookies we set, what each one is for, and how to control them.";
+
+export default async function CookiePolicyPage() {
+  const row = await getLegalPage("cookies");
+  if (row) {
+    const { html, rail } = withHeadingAnchors(row.body);
+    return (
+      <LegalDocument
+        title={row.title}
+        intro={row.intro}
+        updated={row.updatedLabel}
+        html={html}
+        rail={rail}
+      />
+    );
+  }
   return (
-    <LegalPage
-      title="Cookie policy"
-      intro="The handful of cookies we set, what each one is for, and how to control them."
-      updated={UPDATED}
-      sections={SECTIONS}
-    />
+    <LegalPage title={TITLE} intro={INTRO} updated={UPDATED} sections={SECTIONS} />
   );
 }

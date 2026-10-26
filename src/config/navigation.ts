@@ -25,6 +25,7 @@ import {
   KeyRound,
   School,
   FileText,
+  ScrollText,
   Newspaper,
   Image as ImageIcon,
   CalendarCheck,
@@ -215,6 +216,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { title: "Homepage", href: "/homepage", icon: LayoutTemplate, roles: ACADEMY },
       { title: "Pages", href: "/pages", icon: FileText, roles: ACADEMY },
+      { title: "Legal pages", href: "/legal", icon: ScrollText, roles: ACADEMY },
       { title: "Blog", href: "/blog", icon: Newspaper, roles: ACADEMY },
       { title: "Media", href: "/media", icon: ImageIcon, roles: ACADEMY },
       {
