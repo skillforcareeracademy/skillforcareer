@@ -47,23 +47,35 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return json.data as T;
 }
 
+/**
+ * Serialise a request body. A string is sent verbatim — callers that POST a
+ * raw payload (e.g. a CSV import with `Content-Type: text/csv`) must not have
+ * it JSON-encoded, or the server reads quoted, `\n`-escaped text it can't parse.
+ * Everything else is JSON.
+ */
+function toBody(body: unknown): BodyInit | undefined {
+  if (body === undefined) return undefined;
+  if (typeof body === "string") return body;
+  return JSON.stringify(body);
+}
+
 export const api = {
   get: <T>(path: string) => request<T>(path, { method: "GET" }),
   post: <T>(path: string, body?: unknown, headers?: Record<string, string>) =>
     request<T>(path, {
       method: "POST",
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: toBody(body),
     }),
   patch: <T>(path: string, body?: unknown) =>
     request<T>(path, {
       method: "PATCH",
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: toBody(body),
     }),
   /** A body is optional — a bulk delete needs to say which rows. */
   del: <T>(path: string, body?: unknown) =>
     request<T>(path, {
       method: "DELETE",
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: toBody(body),
     }),
 };
