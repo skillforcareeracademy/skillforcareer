@@ -15,6 +15,10 @@ import {
   type RecordingState,
 } from "@/server/services/recording-service";
 import {
+  requestStatesForUser,
+  type RequestState,
+} from "@/server/services/recording-request-service";
+import {
   academyDayEnd,
   academyDayStart,
   istDateKey,
@@ -206,6 +210,10 @@ export interface StudentMeeting {
    * GET /api/recordings/:id/stream and this is the grant that opens it.
    */
   recording: RecordingState;
+  /** A standing request for this recording, when the learner has made one. */
+  recordingRequest: RequestState | null;
+  /** Whether to offer a "Request recording" button (past class, can't watch). */
+  canRequestRecording: boolean;
 }
 
 /** Bucket a meeting into a lifecycle phase (computed server-side, off `now`). */
@@ -259,35 +267,56 @@ export async function listStudentMeetings(userId: string): Promise<StudentMeetin
   // which is what lets an empty audience mean "everyone who could attend".
   const recordings = await learnerRecordingStates(userId, rows, batchIds);
 
+  // Any standing request this learner has, so a past card can show "requested"
+  // or "pay to unlock" instead of only "no recording".
+  const requestStates = await requestStatesForUser(
+    userId,
+    rows.map((m) => m.id),
+  );
+
   // Days the academy is closed. A class still on the books for one of them
   // hands out no link — the same rule the reminder emails follow.
   const closed = await closedDates(rows.map((m) => istDateKey(m.scheduledStart)));
 
   const now = new Date();
-  return rows.map((m) => ({
-    id: m.id,
-    title: m.title,
-    description: m.description,
-    status: m.status,
-    phase: meetingPhase(m.status, m.scheduledStart, m.scheduledEnd, now),
-    roomCode: m.roomCode,
-    courseTitle: m.course?.title ?? null,
-    batchName: m.batch?.name ?? null,
-    hostName: m.host.name,
-    hostAvatar: m.host.avatarUrl,
-    scheduledStart: m.scheduledStart.toISOString(),
-    scheduledEnd: m.scheduledEnd ? m.scheduledEnd.toISOString() : null,
-    isRecordingEnabled: m.isRecordingEnabled,
-    // The host (an instructor who is also learning) always has their own link.
-    joinLinkOpen:
-      m.hostId === userId ||
-      (m.status !== "CANCELLED" &&
-        !closed.has(istDateKey(m.scheduledStart)) &&
-        (m.status === "LIVE" || isJoinLinkOpen(m.scheduledStart, now))),
-    joinLinkOpensAt: joinLinkOpensAt(m.scheduledStart).toISOString(),
-    cancelReason: m.cancelReason,
-    recording: recordings.get(m.id)!,
-  }));
+  return rows.map((m) => {
+    const phase = meetingPhase(m.status, m.scheduledStart, m.scheduledEnd, now);
+    const rec = recordings.get(m.id)!;
+    const request = requestStates.get(m.id) ?? null;
+    const canWatch = rec.available && rec.canWatch;
+    // Offer a request on a finished class the learner can't watch, unless a
+    // live request already stands (a declined one may be raised again).
+    const canRequestRecording =
+      phase === "past" &&
+      !canWatch &&
+      (!request || request.status === "DECLINED");
+    return {
+      id: m.id,
+      title: m.title,
+      description: m.description,
+      status: m.status,
+      phase,
+      roomCode: m.roomCode,
+      courseTitle: m.course?.title ?? null,
+      batchName: m.batch?.name ?? null,
+      hostName: m.host.name,
+      hostAvatar: m.host.avatarUrl,
+      scheduledStart: m.scheduledStart.toISOString(),
+      scheduledEnd: m.scheduledEnd ? m.scheduledEnd.toISOString() : null,
+      isRecordingEnabled: m.isRecordingEnabled,
+      // The host (an instructor who is also learning) always has their own link.
+      joinLinkOpen:
+        m.hostId === userId ||
+        (m.status !== "CANCELLED" &&
+          !closed.has(istDateKey(m.scheduledStart)) &&
+          (m.status === "LIVE" || isJoinLinkOpen(m.scheduledStart, now))),
+      joinLinkOpensAt: joinLinkOpensAt(m.scheduledStart).toISOString(),
+      cancelReason: m.cancelReason,
+      recording: rec,
+      recordingRequest: request,
+      canRequestRecording,
+    };
+  });
 }
 
 export interface MeetingStats {

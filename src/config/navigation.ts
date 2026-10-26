@@ -25,6 +25,7 @@ import {
   KeyRound,
   School,
   FileText,
+  Film,
   ScrollText,
   Newspaper,
   Image as ImageIcon,
@@ -219,6 +220,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { title: "Legal pages", href: "/legal", icon: ScrollText, roles: ACADEMY },
       { title: "Blog", href: "/blog", icon: Newspaper, roles: ACADEMY },
       { title: "Media", href: "/media", icon: ImageIcon, roles: ACADEMY },
+      { title: "Recordings", href: "/recordings", icon: Film, roles: ACADEMY },
       {
         title: "Companies",
         href: "/companies",

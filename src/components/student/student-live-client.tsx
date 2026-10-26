@@ -34,6 +34,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { RecordingPlayer } from "@/components/student/recording-player";
+import {
+  RecordingUnlockButton,
+  RequestRecordingButton,
+} from "@/components/student/recording-request-buttons";
 import { formatIstSlot } from "@/lib/ist";
 
 function initials(name: string): string {
@@ -412,11 +416,29 @@ function PastCard({ m }: { m: StudentMeeting }) {
             </div>
           )}
 
-          <div className="mt-4">
+          <div className="mt-4 space-y-2">
             {canPlay ? (
               <Button size="sm" variant="outline" className="w-full" onClick={() => setOpen(true)}>
                 <PlayCircle className="size-4" /> Watch recording
               </Button>
+            ) : m.recordingRequest?.status === "AWAITING_PAYMENT" ? (
+              <RecordingUnlockButton
+                requestId={m.recordingRequest.requestId}
+                price={m.recordingRequest.price}
+              />
+            ) : m.recordingRequest?.status === "PENDING" ? (
+              <p className="text-muted-foreground bg-muted/50 rounded-lg py-2 text-center text-xs">
+                Requested — waiting for the academy to share it.
+              </p>
+            ) : m.canRequestRecording ? (
+              <>
+                {m.recordingRequest?.status === "DECLINED" && (
+                  <p className="text-muted-foreground text-center text-xs">
+                    Your earlier request wasn&apos;t approved.
+                  </p>
+                )}
+                <RequestRecordingButton meetingId={m.id} />
+              </>
             ) : rec.message ? (
               <p className="text-muted-foreground text-center text-xs">{rec.message}</p>
             ) : (

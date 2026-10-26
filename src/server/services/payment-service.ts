@@ -25,6 +25,10 @@ import {
   watermarkPurchaseContext,
   waiveRecordingWatermark,
 } from "@/server/services/recording-service";
+import {
+  recordingAccessContext,
+  fulfillRecordingAccess,
+} from "@/server/services/recording-request-service";
 import type { PublicUser } from "@/server/services/auth-service";
 import {
   joinPlan,
@@ -93,6 +97,13 @@ const num = (d: Prisma.Decimal) => d.toNumber();
 export const RECORDING_WATERMARK_PAYMENT = "RECORDING_WATERMARK";
 
 /**
+ * A learner unlocking a recording a super admin shared with them for a price —
+ * "ush student ko purchase kare recording dekhne ke liye". The `requestId` in
+ * the metadata is the `RecordingRequest` that fulfilment turns into access.
+ */
+export const RECORDING_ACCESS_PAYMENT = "RECORDING_ACCESS";
+
+/**
  * A learner settling fees they already owe, from their own panel — "yaha pr
  * student panel me humesha pay now ka option aana chahiye. Pay in full, pay
  * next emi in advance or pay custom amount." The money lands as its own
@@ -106,6 +117,8 @@ interface PurchaseMetadata {
   meetingTitle?: string;
   /** For a fee settlement: the plan the money is being paid against. */
   targetPaymentId?: string;
+  /** For a recording-access purchase: the request being fulfilled. */
+  requestId?: string;
 }
 
 function readPurchaseMetadata(
@@ -122,6 +135,11 @@ export function paymentPurpose(
 ): string | null {
   const meta = readPurchaseMetadata(metadata);
   if (meta?.kind === FEE_SETTLEMENT_PAYMENT) return "Fee payment";
+  if (meta?.kind === RECORDING_ACCESS_PAYMENT) {
+    return meta.meetingTitle
+      ? `Recording access · ${meta.meetingTitle}`
+      : "Recording access";
+  }
   if (meta?.kind !== RECORDING_WATERMARK_PAYMENT) return null;
   return meta.meetingTitle
     ? `Watermark removal · ${meta.meetingTitle}`
@@ -1057,6 +1075,75 @@ export async function createWatermarkOrder(
 }
 
 /**
+ * A checkout for the recording a super admin priced and shared — the learner
+ * pays to unlock it. Mirrors the watermark order; fulfilment grants access.
+ */
+export async function createRecordingAccessOrder(
+  user: PublicUser,
+  requestId: string,
+): Promise<CheckoutSession> {
+  const { title, price, meetingId } = await recordingAccessContext(
+    user.id,
+    requestId,
+  );
+  if (!razorpayConfigured()) {
+    throw AppError.badRequest(
+      "Online payments aren't set up yet. Please contact support to unlock the recording.",
+    );
+  }
+
+  const net = Math.max(1, Math.round(price * 100) / 100);
+  const amountPaise = Math.round(net * 100);
+  const [razorAccount, invoiceNumber] = await Promise.all([
+    getRazorpayAccount(),
+    uniqueInvoice(new Date().getFullYear()),
+  ]);
+
+  const order = await createRazorpayOrder({
+    amountPaise,
+    currency: "INR",
+    receipt: invoiceNumber,
+    notes: { kind: RECORDING_ACCESS_PAYMENT, requestId, meetingId, userId: user.id },
+  });
+
+  const payment = await prisma.payment.create({
+    data: {
+      userId: user.id,
+      accountId: razorAccount?.id ?? null,
+      invoiceNumber,
+      amount: new Prisma.Decimal(net),
+      discountAmount: new Prisma.Decimal(0),
+      taxAmount: new Prisma.Decimal(0),
+      netAmount: new Prisma.Decimal(net),
+      currency: "INR",
+      status: "PENDING",
+      provider: "RAZORPAY",
+      type: "ONE_TIME",
+      method: "ONLINE",
+      providerOrderId: order.id,
+      metadata: {
+        kind: RECORDING_ACCESS_PAYMENT,
+        meetingId,
+        meetingTitle: title,
+        requestId,
+      },
+    },
+    select: { id: true },
+  });
+
+  return {
+    paymentId: payment.id,
+    orderId: order.id,
+    amount: amountPaise,
+    currency: "INR",
+    keyId: razorpayKeyId(),
+    courseTitle: `Recording — ${title}`,
+    prefill: { name: user.name, email: user.email },
+    referralDiscount: 0,
+  };
+}
+
+/**
  * Mark a checkout payment PAID and enrol the learner — idempotently. The status
  * flip is an atomic conditional update; only the caller that actually flips it
  * (count === 1) runs the enrolment + counter + coupon + notifications, so the
@@ -1121,6 +1208,11 @@ export async function fulfillPaidCheckout(
       payment.userId,
       payment.id,
     );
+  }
+  // A recording a super admin priced and shared — the payment turns the request
+  // into access. Runs here so the webhook grants it even if the payer's tab shut.
+  if (purchase?.kind === RECORDING_ACCESS_PAYMENT && purchase.requestId) {
+    await fulfillRecordingAccess(purchase.requestId, payment.id);
   }
   // Fees the learner settled themselves, credited against the plan they owe
   // it on. Runs here rather than in the route so the webhook — the only path

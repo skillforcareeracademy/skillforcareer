@@ -87,3 +87,18 @@ export const RECORDING_BLOCKS = [
 ] as const;
 
 export type RecordingBlock = (typeof RECORDING_BLOCKS)[number];
+
+/**
+ * A staff decision on a learner's recording request: approve it (free when the
+ * price is 0, otherwise the learner pays to unlock) or decline it.
+ */
+export const recordingRequestActionSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("approve"),
+    price: z.coerce.number().min(0).max(1_000_000).default(0),
+    accessDays: z.coerce.number().int().min(1).max(3650).default(30),
+  }),
+  z.object({ action: z.literal("decline") }),
+]);
+
+export type RecordingRequestAction = z.infer<typeof recordingRequestActionSchema>;

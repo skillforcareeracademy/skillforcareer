@@ -533,6 +533,7 @@ model User {
   recordingAccess      RecordingAccess[]      @relation("RecordingAccessUser")
   recordingViews       RecordingView[]        @relation("RecordingViewUser")
   recordingDevices     RecordingDevice[]      @relation("RecordingDeviceUser")
+  recordingRequests    RecordingRequest[]     @relation("RecordingRequestUser")
   extraRoles           UserRole[]             @relation("UserExtraRoles")
   extraPermissions     UserPermission[]
   batchesAssisted      BatchInstructor[]      @relation("BatchAssociate")
@@ -2496,9 +2497,10 @@ model Meeting {
   attendance   Attendance[]
   chatMessages LiveChatMessage[]
 
-  recordingAccess  RecordingAccess[]
-  recordingViews   RecordingView[]
-  recordingDevices RecordingDevice[]
+  recordingAccess   RecordingAccess[]
+  recordingViews    RecordingView[]
+  recordingDevices  RecordingDevice[]
+  recordingRequests RecordingRequest[]
   boardSlides BoardSlide[]
 
   @@index([courseId])
@@ -2653,6 +2655,63 @@ model RecordingDevice {
 
   @@unique([meetingId, userId, deviceId])
   @@index([userId])
+}
+
+/// A learner asking for a recording they can't currently watch — it expired,
+/// their window ran out, or it was never opened to them. "Student ne recording
+/// bola please share karo; super admin share kar sakta hai, par purchase karke
+/// dekhega — super admin decide karta hai purchase lagana hai ya nahi."
+///
+/// Staff approve a request either free (access granted at once) or for a price
+/// (`AWAITING_PAYMENT` until the learner pays, then granted). The grant itself
+/// is an ordinary `RecordingAccess` row with its own window, so playback stays
+/// governed by the one place that governs everyone. No unique index on
+/// (meeting,user): a declined request can be re-raised, and the service dedupes
+/// an active one — matching `RecordingAccess`, which avoids a `db push`
+/// data-loss prompt.
+model RecordingRequest {
+  id        String                 @id @default(cuid())
+  meetingId String
+  userId    String
+  status    RecordingRequestStatus @default(PENDING)
+
+  /// The learner's optional note with the request.
+  note String? @db.Text
+
+  /// Set by staff on a paid approval — what the learner pays to unlock. Null on
+  /// a free grant.
+  price Decimal? @db.Decimal(10, 2)
+
+  /// Days of access the grant gives, counted from when it is granted. Null uses
+  /// the service default.
+  accessDays Int?
+
+  /// Filled once granted (free approval, or a paid approval after payment).
+  grantedAt DateTime?
+  /// The `RecordingAccess` row the grant created, so undoing can remove it.
+  accessId  String?
+  /// The payment that unlocked a paid request.
+  paymentId String?
+
+  handledById String?
+  handledAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user    User    @relation("RecordingRequestUser", fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([meetingId])
+  @@index([userId])
+  @@index([status])
+}
+
+enum RecordingRequestStatus {
+  PENDING
+  DECLINED
+  AWAITING_PAYMENT
+  GRANTED
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
