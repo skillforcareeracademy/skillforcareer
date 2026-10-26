@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { requireRole } from "@/lib/auth/require";
 import { ROLES } from "@/config/roles";
 import { getStudentDetail } from "@/server/services/student-detail-service";
-import { PageHeader } from "@/components/shared/page-header";
 import { StudentDetailsClient } from "@/components/student/student-details-client";
 
 export const metadata: Metadata = { title: "My details" };
@@ -16,12 +15,10 @@ export default async function StudentDetailsPage() {
   const user = await requireRole([ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.STUDENT]);
   const view = await getStudentDetail(user.id);
 
+  // The client renders its own gradient header (the completion ring + status),
+  // so no PageHeader here. Centred to a comfortable reading width.
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="My details"
-        description="What the academy needs on file — address, documents, schooling and your CV."
-      />
+    <div className="mx-auto max-w-3xl">
       <StudentDetailsClient view={view} layout="tabs" />
     </div>
   );

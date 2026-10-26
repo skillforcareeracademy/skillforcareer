@@ -231,6 +231,35 @@ function DocField({
   );
 }
 
+/** A compact circular progress ring — white, for the gradient hero. */
+function CompletionRing({ value }: { value: number }) {
+  const pct = Math.min(100, Math.max(0, value));
+  const r = 26;
+  const c = 2 * Math.PI * r;
+  const offset = c * (1 - pct / 100);
+  return (
+    <div className="relative size-16 shrink-0">
+      <svg viewBox="0 0 64 64" className="size-16 -rotate-90">
+        <circle cx="32" cy="32" r={r} fill="none" strokeWidth="6" className="stroke-white/25" />
+        <circle
+          cx="32"
+          cy="32"
+          r={r}
+          fill="none"
+          strokeWidth="6"
+          strokeLinecap="round"
+          className="stroke-white transition-[stroke-dashoffset] duration-500"
+          strokeDasharray={c}
+          strokeDashoffset={offset}
+        />
+      </svg>
+      <span className="absolute inset-0 grid place-content-center text-sm font-semibold tabular-nums">
+        {pct}%
+      </span>
+    </div>
+  );
+}
+
 export function StudentDetailsClient({
   view,
   staff = false,
@@ -311,7 +340,9 @@ export function StudentDetailsClient({
   const contactSection = (
     <Card>
       <CardHeader>
-        <CardTitle>Where you are, and how to reach you</CardTitle>
+        <CardTitle className="flex items-center gap-2">
+          <MapPin className="text-primary size-4.5" /> Where you are, and how to reach you
+        </CardTitle>
         <CardDescription>
           Class links and certificates go to your email; the office calls the numbers here.
         </CardDescription>
@@ -340,7 +371,9 @@ export function StudentDetailsClient({
   const identitySection = (
     <Card>
       <CardHeader>
-        <CardTitle>Identity and documents</CardTitle>
+        <CardTitle className="flex items-center gap-2">
+          <IdCard className="text-primary size-4.5" /> Identity and documents
+        </CardTitle>
         <CardDescription>
           A photo of each is fine, as long as the details are readable.
         </CardDescription>
@@ -385,7 +418,9 @@ export function StudentDetailsClient({
   const educationSection = (
     <Card>
       <CardHeader>
-        <CardTitle>What you&apos;ve studied</CardTitle>
+        <CardTitle className="flex items-center gap-2">
+          <GraduationCap className="text-primary size-4.5" /> What you&apos;ve studied
+        </CardTitle>
         <CardDescription>Your most recent qualification is enough.</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4 sm:grid-cols-2">
@@ -419,7 +454,9 @@ export function StudentDetailsClient({
   const workSection = (
     <Card>
       <CardHeader>
-        <CardTitle>Work, and what you want next</CardTitle>
+        <CardTitle className="flex items-center gap-2">
+          <Briefcase className="text-primary size-4.5" /> Work, and what you want next
+        </CardTitle>
         <CardDescription>
           The placement team reads this before it puts your name forward.
         </CardDescription>
@@ -470,10 +507,59 @@ export function StudentDetailsClient({
     { value: "work", label: "Work", icon: Briefcase, node: workSection },
   ];
 
+  // A richer header for the standalone page — a progress ring, status, and the
+  // still-missing items as chips, on the brand gradient.
+  const heroHeader = (
+    <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-rose-600 via-fuchsia-700 to-violet-800 p-5 text-white sm:p-6">
+      <div aria-hidden className="pointer-events-none absolute inset-0">
+        <div className="absolute -top-16 -right-10 size-56 rounded-full bg-white/10 blur-3xl" />
+        <div className="absolute -bottom-20 -left-10 size-56 rounded-full bg-black/10 blur-3xl" />
+      </div>
+      <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center">
+        <CompletionRing value={state.completion} />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-lg font-semibold sm:text-xl">Your admission profile</h2>
+            {state.completion === 100 && (
+              <Badge className="gap-1 border-0 bg-white/20 text-[10px] text-white">
+                <CheckCircle2 className="size-3" /> Complete
+              </Badge>
+            )}
+            {state.submitted && (
+              <Badge className="border-0 bg-white/20 text-[10px] text-white">
+                Submitted
+              </Badge>
+            )}
+          </div>
+          <p className="mt-1 text-sm text-white/85">
+            {state.missing.length === 0
+              ? "Everything the academy needs is on file."
+              : "A few details are still needed — fill in the tabs below."}
+          </p>
+          {state.missing.length > 0 && (
+            <div className="mt-2.5 flex flex-wrap gap-1.5">
+              {state.missing.slice(0, 8).map((m) => (
+                <span
+                  key={m}
+                  className="rounded-full bg-white/15 px-2.5 py-0.5 text-xs text-white/90"
+                >
+                  {m}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className="space-y-6">
-      {/* How far through they are — the same figure the office sees. */}
-      <Card>
+      {layout === "tabs" ? (
+        heroHeader
+      ) : (
+        /* How far through they are — the same figure the office sees. */
+        <Card>
         <CardHeader className="pb-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -505,7 +591,8 @@ export function StudentDetailsClient({
         <CardContent>
           <Progress value={state.completion} />
         </CardContent>
-      </Card>
+        </Card>
+      )}
 
       {state.submitted && !staff && (
         <div className="bg-muted/50 text-muted-foreground flex items-start gap-2 rounded-xl border p-3 text-sm">
@@ -546,7 +633,13 @@ export function StudentDetailsClient({
 
       {/* Consent, then the actions. The learner agrees to the policy before the
           formal submit; "Save for later" keeps a draft and needs no agreement. */}
-      <div className="space-y-4">
+      <div
+        className={
+          layout === "tabs"
+            ? "bg-card space-y-4 rounded-2xl border p-4 sm:p-5"
+            : "space-y-4"
+        }
+      >
         {!staff && !state.submitted && (
           <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border p-3.5">
             <Checkbox
