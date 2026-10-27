@@ -235,15 +235,19 @@ export function useLiveRoom({ signalUrl, token, joined, selfName, isHost }: Live
 
   // Host-controlled permissions: who may share, and whether chat is open.
   const [chatLocked, setChatLockedState] = useState(false);
-  const [mayShare, setMayShare] = useState(false);
-  const [shareAllowedIds, setShareAllowedIds] = useState<string[]>([]);
+  // Sharing is on for everyone by default; the host can stop a student or the
+  // whole room. `mayShare` is whether *this* person may share right now;
+  // `shareBlockedIds` are the students the host has stopped.
+  const [mayShare, setMayShare] = useState(true);
+  const [shareBlockedIds, setShareBlockedIds] = useState<string[]>([]);
   const [requireApproval, setRequireApprovalState] = useState(true);
   // The shared whiteboard. `boardStrokes` is every finished stroke the room has
   // broadcast; `boardOpen` is whether the host has the board up for everyone.
   const [boardOpen, setBoardOpen] = useState(false);
   const [boardStrokes, setBoardStrokes] = useState<Stroke[]>([]);
   // Read inside the share/chat callbacks without re-creating them each change.
-  const canShareRef = useRef(isHost);
+  // Defaults to true: sharing is on for everyone until the host stops it.
+  const canShareRef = useRef(true);
   const chatLockedRef = useRef(false);
 
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -1064,14 +1068,14 @@ export function useLiveRoom({ signalUrl, token, joined, selfName, isHost }: Live
         "controls",
         (c: {
           chatLocked?: boolean;
-          shareAllowedIds?: string[];
+          shareBlockedIds?: string[];
           requireApproval?: boolean;
         }) => {
           if (!mine()) return;
           chatLockedRef.current = Boolean(c?.chatLocked);
           setChatLockedState(Boolean(c?.chatLocked));
-          setShareAllowedIds(
-            Array.isArray(c?.shareAllowedIds) ? c.shareAllowedIds : [],
+          setShareBlockedIds(
+            Array.isArray(c?.shareBlockedIds) ? c.shareBlockedIds : [],
           );
           setRequireApprovalState(c?.requireApproval !== false);
         },
@@ -1182,7 +1186,7 @@ export function useLiveRoom({ signalUrl, token, joined, selfName, isHost }: Live
         return "Choose a picture to present.";
       }
       if (!canShareRef.current) {
-        return "The instructor hasn't allowed you to share yet — ask them to turn sharing on for you.";
+        return "The instructor has turned off sharing for you — ask them to turn it back on.";
       }
       const url = URL.createObjectURL(file);
       try {
@@ -1233,7 +1237,7 @@ export function useLiveRoom({ signalUrl, token, joined, selfName, isHost }: Live
 
   const startSharing = useCallback(async () => {
     if (!canShareRef.current) {
-      return "The instructor hasn't allowed you to share yet — ask them to turn sharing on for you.";
+      return "The instructor has turned off sharing for you — ask them to turn it back on.";
     }
     if (!navigator.mediaDevices?.getDisplayMedia) {
       return "This device can't share its screen — no tablet or phone can. Use “Present a picture” to show a page instead.";
@@ -1581,7 +1585,7 @@ export function useLiveRoom({ signalUrl, token, joined, selfName, isHost }: Live
       // host controls
       canShare: isHost || mayShare,
       chatLocked,
-      shareAllowedIds,
+      shareBlockedIds,
       allowShare,
       allowAllShare,
       lockChat,
@@ -1640,7 +1644,7 @@ export function useLiveRoom({ signalUrl, token, joined, selfName, isHost }: Live
       isHost,
       mayShare,
       chatLocked,
-      shareAllowedIds,
+      shareBlockedIds,
       allowShare,
       allowAllShare,
       lockChat,

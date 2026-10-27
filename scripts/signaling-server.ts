@@ -220,14 +220,18 @@ function lobbyFor(roomCode: string): Lobby {
 }
 
 /**
- * What the host has turned on or off for the room — "allow the instructor to
- * allow students to share their screen or image … instructor can restrict
- * student chat". A student can share only after the host allows them by id,
- * and when chat is locked only the host may send.
+ * What the host has turned on or off for the room.
+ *
+ * Screen/image sharing is **on for everyone by default** — a student can share
+ * as soon as they join — and the instructor may stop a particular student, or
+ * the whole room, when they need the floor. (`shareBlocked` holds the students
+ * the instructor has stopped; empty means everyone may share.) Chat, by
+ * contrast, is on until the instructor locks it.
  */
 interface RoomControl {
   chatLocked: boolean;
-  shareAllowed: Set<string>;
+  /** Students the instructor has stopped from sharing. Empty = all may share. */
+  shareBlocked: Set<string>;
   /** When false, anyone with the link joins straight in — no waiting room. */
   requireApproval: boolean;
   /** The shared whiteboard: whether it's open, and the strokes drawn so far
@@ -242,7 +246,7 @@ function controlFor(roomCode: string): RoomControl {
   if (!c) {
     c = {
       chatLocked: false,
-      shareAllowed: new Set(),
+      shareBlocked: new Set(),
       requireApproval: true,
       boardOpen: false,
       boardStrokes: [],
@@ -255,9 +259,14 @@ function controlFor(roomCode: string): RoomControl {
 function controlPayload(c: RoomControl) {
   return {
     chatLocked: c.chatLocked,
-    shareAllowedIds: [...c.shareAllowed],
+    shareBlockedIds: [...c.shareBlocked],
     requireApproval: c.requireApproval,
   };
+}
+
+/** Whether a (non-host) student may share right now. Default: yes. */
+function mayShareNow(c: RoomControl, userId: string): boolean {
+  return !c.shareBlocked.has(userId);
 }
 
 /** Everyone in the room who may answer the door. */
@@ -432,7 +441,7 @@ function enterRoom(socket: Socket, roomCode: string, user: RoomUser) {
     const control = controlFor(roomCode);
     socket.emit("controls", controlPayload(control));
     socket.emit("may-share", {
-      allowed: user.isHost || control.shareAllowed.has(user.id),
+      allowed: user.isHost || mayShareNow(control, user.id),
     });
     // The current whiteboard, so someone joining mid-lesson sees it all.
     socket.emit("board-state", {
@@ -539,30 +548,36 @@ function enterRoom(socket: Socket, roomCode: string, user: RoomUser) {
     socket.to(roomCode).emit("board-toggle", { open: c.boardOpen });
   });
 
-  // The host allows (or stops) one student sharing their screen or image.
+  // The host stops (or re-allows) one student sharing their screen or image.
+  // `allowed === false` stops them; `true` lets them share again.
   socket.on("set-share", ({ userId, allowed }: { userId?: string; allowed?: boolean }) => {
     if (!user.isHost || !userId) return;
     const c = controlFor(roomCode);
-    if (allowed) c.shareAllowed.add(String(userId));
-    else c.shareAllowed.delete(String(userId));
+    const uid = String(userId);
+    if (allowed) c.shareBlocked.delete(uid);
+    else c.shareBlocked.add(uid);
     io.in(roomCode).emit("controls", controlPayload(c));
     // Tell that student's sockets directly so their share button updates even
     // if they are not looking at the list.
     const members = rooms.get(roomCode);
-    for (const sid of members?.get(String(userId))?.sockets ?? []) {
-      io.to(sid).emit("may-share", { allowed: Boolean(allowed) });
+    for (const sid of members?.get(uid)?.sockets ?? []) {
+      io.to(sid).emit("may-share", { allowed: mayShareNow(c, uid) });
     }
   });
 
-  // The host allows (or stops) everyone at once — "option of all accept". A
-  // host is always allowed, so broadcasting the flag to the room is safe: the
-  // client folds in its own host status.
+  // The host stops (or re-allows) everyone at once. "Stop all" blocks every
+  // student currently in the room; "allow all" clears the block list so the
+  // room is back to its default (everyone may share). A host is always allowed,
+  // so the client folds in its own host status.
   socket.on("set-share-all", ({ allowed }: { allowed?: boolean }) => {
     if (!user.isHost) return;
     const c = controlFor(roomCode);
-    c.shareAllowed.clear();
     if (allowed) {
-      for (const uid of rooms.get(roomCode)?.keys() ?? []) c.shareAllowed.add(uid);
+      c.shareBlocked.clear();
+    } else {
+      for (const uid of rooms.get(roomCode)?.keys() ?? []) {
+        if (uid !== user.id) c.shareBlocked.add(uid);
+      }
     }
     io.in(roomCode).emit("controls", controlPayload(c));
     io.in(roomCode).emit("may-share", { allowed: Boolean(allowed) });

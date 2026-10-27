@@ -128,6 +128,71 @@ function gridColumns(count: number): string {
   return "grid-cols-2 sm:grid-cols-3 xl:grid-cols-4";
 }
 
+/** Fit a video frame into w×h, letterboxed and centred — never cropped, so a
+ *  shared screen or a document keeps every edge. */
+function paintVideoContain(
+  ctx: CanvasRenderingContext2D,
+  video: HTMLVideoElement,
+  w: number,
+  h: number,
+) {
+  const vw = video.videoWidth;
+  const vh = video.videoHeight;
+  if (!vw || !vh) return;
+  const scale = Math.min(w / vw, h / vh);
+  const dw = vw * scale;
+  const dh = vh * scale;
+  ctx.drawImage(video, (w - dw) / 2, (h - dh) / 2, dw, dh);
+}
+
+/** Paint the whiteboard strokes onto the recording canvas, the same way the
+ *  live board draws them (coordinates are 0..1 of the shorter side). */
+function paintBoard(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  strokes: Stroke[],
+) {
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, w, h);
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  const unit = Math.min(w, h);
+  for (const s of strokes) {
+    if (!s || !Array.isArray(s.points) || s.points.length < 2) continue;
+    ctx.beginPath();
+    ctx.lineWidth = Math.max(1, s.width * unit);
+    ctx.strokeStyle = s.tool === "eraser" ? "#ffffff" : s.color;
+    ctx.globalAlpha = s.tool === "highlighter" ? 0.35 : 1;
+    ctx.moveTo(s.points[0] * w, s.points[1] * h);
+    for (let i = 2; i < s.points.length; i += 2) {
+      ctx.lineTo(s.points[i] * w, s.points[i + 1] * h);
+    }
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
+/** A plain card for when the camera is off and nothing is being shared, so the
+ *  recording says why it has no picture instead of being a black void. */
+function paintCameraOffCard(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  title: string,
+) {
+  ctx.fillStyle = "#0a0a0a";
+  ctx.fillRect(0, 0, w, h);
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#f43f5e";
+  ctx.font = "600 44px system-ui, -apple-system, sans-serif";
+  ctx.fillText("Skill For Career", w / 2, h / 2 - 16);
+  ctx.fillStyle = "rgba(255,255,255,0.6)";
+  ctx.font = "400 26px system-ui, -apple-system, sans-serif";
+  ctx.fillText(title || "Live class", w / 2, h / 2 + 30);
+  ctx.textAlign = "start";
+}
+
 export function LiveRoom({
   meeting,
   me,
@@ -152,6 +217,8 @@ export function LiveRoom({
   const selfVideoRef = useRef<HTMLVideoElement>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  /** The draw loop that paints the lesson onto the recording canvas. */
+  const recCanvasTimerRef = useRef<number | null>(null);
 
   // A cancelled class has its own screen; anything else opens straight into the
   // room when the link said so.
@@ -273,6 +340,10 @@ export function LiveRoom({
   }, [joined, meeting.provider, meeting.roomCode]);
 
   function stopRecording() {
+    if (recCanvasTimerRef.current !== null) {
+      window.clearInterval(recCanvasTimerRef.current);
+      recCanvasTimerRef.current = null;
+    }
     if (recorderRef.current && recorderRef.current.state !== "inactive") {
       recorderRef.current.stop();
     }
@@ -286,11 +357,44 @@ export function LiveRoom({
       toast.error("No media available to record.");
       return;
     }
-    const videoTrack = sharing
-      ? screenStream?.getVideoTracks()[0]
-      : base.getVideoTracks()[0];
+
+    // Compose the lesson onto a canvas rather than recording one raw track. A
+    // camera that was never switched on would otherwise leave the recording
+    // with no video at all — audio only, a blank screen on playback, which is
+    // exactly what was going wrong. The canvas always has a picture: the board
+    // when it is open, the screen or image when sharing, the camera otherwise,
+    // and an honest "camera is off" card when there is genuinely nothing.
+    const canvas = document.createElement("canvas");
+    canvas.width = 1280;
+    canvas.height = 720;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      toast.error("This browser can't record the class.");
+      return;
+    }
+    const paint = () => {
+      ctx.fillStyle = "#0a0a0a";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      if (room.boardOpen) {
+        paintBoard(ctx, canvas.width, canvas.height, room.boardStrokes);
+      } else {
+        const v = selfVideoRef.current;
+        if ((sharing || camOn) && v && v.videoWidth > 0 && v.readyState >= 2) {
+          paintVideoContain(ctx, v, canvas.width, canvas.height);
+        } else {
+          paintCameraOffCard(ctx, canvas.width, canvas.height, meeting.title);
+        }
+      }
+    };
+    paint();
+    recCanvasTimerRef.current = window.setInterval(paint, Math.round(1000 / 15));
+
+    const canvasStream = canvas.captureStream(15);
     const audioTrack = base.getAudioTracks()[0];
-    const tracks = [videoTrack, audioTrack].filter(Boolean) as MediaStreamTrack[];
+    const tracks = [
+      canvasStream.getVideoTracks()[0],
+      audioTrack,
+    ].filter(Boolean) as MediaStreamTrack[];
     const recStream = new MediaStream(tracks);
     const mime = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
       ? "video/webm;codecs=vp9,opus"
@@ -301,6 +405,13 @@ export function LiveRoom({
       if (e.data.size > 0) chunksRef.current.push(e.data);
     };
     rec.onstop = async () => {
+      if (recCanvasTimerRef.current !== null) {
+        window.clearInterval(recCanvasTimerRef.current);
+        recCanvasTimerRef.current = null;
+      }
+      // Stop the canvas capture only — never the shared mic track, which the
+      // live call is still using.
+      canvasStream.getVideoTracks().forEach((t) => t.stop());
       const blob = new Blob(chunksRef.current, { type: "video/webm" });
       if (blob.size === 0) return;
       try {
@@ -349,7 +460,9 @@ export function LiveRoom({
         toast.error("Couldn't upload recording.");
       }
     };
-    rec.start();
+    // A timeslice so a long class is flushed in chunks as it records, instead
+    // of being held whole in memory until the end.
+    rec.start(2000);
     recorderRef.current = rec;
     setRecording(true);
     toast.success("Recording started.");
@@ -410,7 +523,7 @@ export function LiveRoom({
   async function onToggleShare() {
     // A student may share only once the instructor has allowed them.
     if (!sharing && !room.canShare) {
-      toast.info("The instructor hasn't allowed you to share yet.");
+      toast.info("The instructor has turned off sharing for you right now.");
       return;
     }
     // Nothing on iPadOS can capture a screen from a web page, in any browser.
@@ -934,9 +1047,9 @@ export function LiveRoom({
 
             {panel === "people" ? (
               <div className="flex-1 space-y-1 overflow-y-auto p-2">
-                {/* Host controls — "allow the instructor to allow students to
-                    share … instructor can restrict student chat", with an all
-                    at once ("option of all accept"). */}
+                {/* Host controls — sharing is on for everyone by default; the
+                    instructor can stop the whole room or a single student, and
+                    can restrict chat. */}
                 {isHost && (
                   <div className="mb-2 space-y-2 rounded-lg border border-white/10 bg-white/[0.03] p-2">
                     <p className="text-xs font-medium text-white/60">Class controls</p>
@@ -944,13 +1057,13 @@ export function LiveRoom({
                       <button
                         type="button"
                         onClick={() =>
-                          room.allowAllShare(room.shareAllowedIds.length === 0)
+                          room.allowAllShare(room.shareBlockedIds.length > 0)
                         }
                         className="flex-1 rounded-md bg-white/10 px-2 py-1.5 text-xs hover:bg-white/20"
                       >
-                        {room.shareAllowedIds.length > 0
-                          ? "Stop all sharing"
-                          : "Allow all to share"}
+                        {room.shareBlockedIds.length > 0
+                          ? "Allow all to share"
+                          : "Stop all sharing"}
                       </button>
                       <button
                         type="button"
@@ -985,7 +1098,7 @@ export function LiveRoom({
                   muted={!micOn}
                 />
                 {peers.map((peer) => {
-                  const peerMayShare = room.shareAllowedIds.includes(peer.user.id);
+                  const peerBlocked = room.shareBlockedIds.includes(peer.user.id);
                   return (
                     <PersonRow
                       key={peer.socketId}
@@ -1006,16 +1119,16 @@ export function LiveRoom({
                           <button
                             type="button"
                             onClick={() =>
-                              room.allowShare(peer.user.id, !peerMayShare)
+                              room.allowShare(peer.user.id, peerBlocked)
                             }
                             className={cn(
                               "shrink-0 rounded-md px-2 py-1 text-xs transition-colors",
-                              peerMayShare
+                              !peerBlocked
                                 ? "bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30"
                                 : "bg-white/10 text-white/70 hover:bg-white/20",
                             )}
                           >
-                            {peerMayShare ? "Sharing on" : "Allow share"}
+                            {!peerBlocked ? "Sharing on" : "Allow share"}
                           </button>
                         ) : undefined
                       }
@@ -1110,7 +1223,7 @@ export function LiveRoom({
           onClick={() => {
             if (sharing && !room.canShareScreen) void onToggleShare();
             else if (!room.canShare)
-              toast.info("The instructor hasn't allowed you to share yet.");
+              toast.info("The instructor has turned off sharing for you right now.");
             else pictureRef.current?.click();
           }}
           label={
