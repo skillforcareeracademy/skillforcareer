@@ -39,6 +39,7 @@ import { LearnersTab } from "./learners-tab";
 import { AttendanceTab } from "./attendance-tab";
 import { BatchClassesPanel } from "@/components/batches/batch-classes-panel";
 import { NotesTab } from "./notes-tab";
+import { BatchRecordingsTab } from "./batch-recordings-tab";
 import { AssessmentsTab } from "./assessments-tab";
 import { SimilarTab } from "./similar-tab";
 import {
@@ -228,6 +229,7 @@ export function BatchProfileView({
           <TabsTrigger value="classes">
             Classes ({profile.classes.length})
           </TabsTrigger>
+          <TabsTrigger value="recordings">Recordings</TabsTrigger>
           <TabsTrigger value="notes">
             Notes ({profile.notes.length})
           </TabsTrigger>
@@ -257,6 +259,10 @@ export function BatchProfileView({
           {/* The batch's timetable: completed / pending counts, and for its
               teachers reschedule, cancel, end, add a class or rebuild. */}
           <BatchClassesPanel batchId={profile.id} canManage={access.canTeach} />
+        </TabsContent>
+
+        <TabsContent value="recordings" className="mt-4">
+          <BatchRecordingsTab batchId={profile.id} />
         </TabsContent>
 
         <TabsContent value="notes" className="mt-4">

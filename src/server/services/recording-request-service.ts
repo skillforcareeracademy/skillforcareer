@@ -188,27 +188,12 @@ export interface AdminRecordingRow {
   pendingRequests: number;
 }
 
-/**
- * Every recording, for the super-admin page — nothing here ever expires or
- * hides, which is the whole point: staff keep all recordings forever.
- */
-export async function listAllRecordingsForAdmin(
-  search?: string,
+/** Shared: recordings matching a where clause, newest first, with request counts. */
+async function recordingRows(
+  where: Prisma.MeetingWhereInput,
 ): Promise<AdminRecordingRow[]> {
-  const q = search?.trim();
   const meetings = await prisma.meeting.findMany({
-    where: {
-      recordingUrl: { not: null },
-      ...(q
-        ? {
-            OR: [
-              { title: { contains: q } },
-              { course: { title: { contains: q } } },
-              { batch: { name: { contains: q } } },
-            ],
-          }
-        : {}),
-    },
+    where: { recordingUrl: { not: null }, ...where },
     orderBy: { scheduledStart: "desc" },
     take: 500,
     select: {
@@ -241,6 +226,104 @@ export async function listAllRecordingsForAdmin(
     hasFile: Boolean(m.recordingUrl),
     pendingRequests: pendingByMeeting.get(m.id) ?? 0,
   }));
+}
+
+/**
+ * Every recording, for the super-admin page — nothing here ever expires or
+ * hides, which is the whole point: staff keep all recordings forever.
+ */
+export async function listAllRecordingsForAdmin(
+  search?: string,
+): Promise<AdminRecordingRow[]> {
+  const q = search?.trim();
+  return recordingRows(
+    q
+      ? {
+          OR: [
+            { title: { contains: q } },
+            { course: { title: { contains: q } } },
+            { batch: { name: { contains: q } } },
+          ],
+        }
+      : {},
+  );
+}
+
+/** One batch's recordings, for the Recordings tab on its profile. */
+export async function listRecordingsForBatch(
+  batchId: string,
+): Promise<AdminRecordingRow[]> {
+  return recordingRows({ batchId });
+}
+
+/**
+ * Give another batch access to a recording — "in recordings ko dusre batch ko
+ * assign bhi kar sakta hu". A batch `RecordingAccess` row opens it to everyone
+ * on that batch; the recording is published if it wasn't.
+ *
+ * Adding the first access row would otherwise *gate* the recording — hiding it
+ * from the batch it belongs to — so when this is the first row we also add one
+ * for the meeting's own batch, keeping its learners' access intact.
+ */
+export async function assignRecordingToBatch(
+  meetingId: string,
+  batchId: string,
+): Promise<void> {
+  const meeting = await prisma.meeting.findUnique({
+    where: { id: meetingId },
+    select: {
+      batchId: true,
+      recordingUrl: true,
+      recordingPublished: true,
+      recordingPublishedAt: true,
+    },
+  });
+  if (!meeting) throw AppError.notFound("Recording not found.");
+  if (!meeting.recordingUrl) {
+    throw AppError.badRequest("This class has no recording to assign yet.");
+  }
+
+  const rowCount = await prisma.recordingAccess.count({ where: { meetingId } });
+  if (rowCount === 0 && meeting.batchId && meeting.batchId !== batchId) {
+    await prisma.recordingAccess.create({
+      data: { meetingId, batchId: meeting.batchId },
+    });
+  }
+
+  const exists = await prisma.recordingAccess.findFirst({
+    where: { meetingId, batchId },
+    select: { id: true },
+  });
+  if (!exists) {
+    await prisma.recordingAccess.create({ data: { meetingId, batchId } });
+  }
+
+  if (!meeting.recordingPublished) {
+    await prisma.meeting.update({
+      where: { id: meetingId },
+      data: {
+        recordingPublished: true,
+        recordingPublishedAt: meeting.recordingPublishedAt ?? new Date(),
+      },
+    });
+  }
+}
+
+/** Recordings to put in a ZIP — title + the file to pull. */
+export async function recordingsForZip(
+  where: Prisma.MeetingWhereInput,
+): Promise<{ title: string; recordingUrl: string }[]> {
+  const rows = await prisma.meeting.findMany({
+    where: { recordingUrl: { not: null }, ...where },
+    orderBy: { scheduledStart: "desc" },
+    take: 500,
+    select: { title: true, recordingUrl: true },
+  });
+  return rows
+    .filter((r): r is { title: string; recordingUrl: string } =>
+      Boolean(r.recordingUrl),
+    )
+    .map((r) => ({ title: r.title, recordingUrl: r.recordingUrl }));
 }
 
 export interface AdminRequestRow {

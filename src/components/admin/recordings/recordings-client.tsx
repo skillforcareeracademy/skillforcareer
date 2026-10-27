@@ -7,6 +7,7 @@ import {
   CalendarClock,
   CheckCircle2,
   Clock,
+  Download,
   Film,
   Loader2,
   PlayCircle,
@@ -30,11 +31,51 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { RecordingPlayer } from "@/components/student/recording-player";
 import type {
   AdminRecordingRow,
   AdminRequestRow,
 } from "@/server/services/recording-request-service";
+
+const ALL = "__all";
+
+interface BatchOption {
+  id: string;
+  name: string;
+  courseTitle: string;
+}
+
+type SortKey = "date-desc" | "date-asc" | "title" | "course" | "batch";
+
+const SORT_LABEL: Record<SortKey, string> = {
+  "date-desc": "Newest first",
+  "date-asc": "Oldest first",
+  title: "Title A–Z",
+  course: "By course",
+  batch: "By batch",
+};
+
+const SORTERS: Record<
+  SortKey,
+  (a: AdminRecordingRow, b: AdminRecordingRow) => number
+> = {
+  "date-desc": (a, b) => b.scheduledStart.localeCompare(a.scheduledStart),
+  "date-asc": (a, b) => a.scheduledStart.localeCompare(b.scheduledStart),
+  title: (a, b) => a.title.localeCompare(b.title),
+  course: (a, b) =>
+    (a.courseTitle ?? "").localeCompare(b.courseTitle ?? "") ||
+    b.scheduledStart.localeCompare(a.scheduledStart),
+  batch: (a, b) =>
+    (a.batchName ?? "").localeCompare(b.batchName ?? "") ||
+    b.scheduledStart.localeCompare(a.scheduledStart),
+};
 
 function initials(name: string): string {
   return name
@@ -188,27 +229,65 @@ function RequestCard({ r }: { r: AdminRequestRow }) {
 export function RecordingsClient({
   recordings,
   requests,
+  batches,
 }: {
   recordings: AdminRecordingRow[];
   requests: AdminRequestRow[];
+  batches: BatchOption[];
 }) {
+  const router = useRouter();
   const [q, setQ] = useState("");
+  const [courseFilter, setCourseFilter] = useState(ALL);
+  const [batchFilter, setBatchFilter] = useState(ALL);
+  const [sort, setSort] = useState<SortKey>("date-desc");
   const [playing, setPlaying] = useState<AdminRecordingRow | null>(null);
+  const [assignTo, setAssignTo] = useState("");
+  const [assigning, setAssigning] = useState(false);
+
+  async function assign() {
+    if (!playing || !assignTo) return;
+    setAssigning(true);
+    try {
+      await api.post(`/api/recordings/${playing.id}/assign`, { batchId: assignTo });
+      toast.success("Recording assigned to the batch.");
+      setAssignTo("");
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : "Couldn't assign that.");
+    } finally {
+      setAssigning(false);
+    }
+  }
 
   const pending = requests.filter(
     (r) => r.status === "PENDING" || r.status === "AWAITING_PAYMENT",
   );
 
+  // Filter choices come from the recordings themselves — no extra query.
+  const courses = useMemo(
+    () => [...new Set(recordings.map((r) => r.courseTitle).filter(Boolean))].sort() as string[],
+    [recordings],
+  );
+  const batchNames = useMemo(
+    () => [...new Set(recordings.map((r) => r.batchName).filter(Boolean))].sort() as string[],
+    [recordings],
+  );
+
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    if (!needle) return recordings;
-    return recordings.filter(
-      (r) =>
+    const out = recordings.filter((r) => {
+      if (needle && !(
         r.title.toLowerCase().includes(needle) ||
         (r.courseTitle ?? "").toLowerCase().includes(needle) ||
-        (r.batchName ?? "").toLowerCase().includes(needle),
-    );
-  }, [q, recordings]);
+        (r.batchName ?? "").toLowerCase().includes(needle)
+      )) return false;
+      if (courseFilter !== ALL && r.courseTitle !== courseFilter) return false;
+      if (batchFilter !== ALL && r.batchName !== batchFilter) return false;
+      return true;
+    });
+    const by = SORTERS[sort];
+    return [...out].sort(by);
+  }, [q, courseFilter, batchFilter, sort, recordings]);
 
   return (
     <div className="space-y-6">
@@ -232,19 +311,80 @@ export function RecordingsClient({
       )}
 
       <section className="space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="flex items-center gap-2 text-sm font-semibold">
-            <Film className="text-muted-foreground size-4" /> All recordings
-            <Badge variant="secondary">{recordings.length}</Badge>
-          </h2>
-          <div className="relative w-full sm:w-64">
-            <Search className="text-muted-foreground absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
-            <Input
-              placeholder="Search recordings…"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              className="pl-8"
-            />
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="flex items-center gap-2 text-sm font-semibold">
+              <Film className="text-muted-foreground size-4" /> All recordings
+              <Badge variant="secondary">{recordings.length}</Badge>
+            </h2>
+            {recordings.length > 0 && (
+              <a
+                href="/api/recordings/zip"
+                download
+                className="hover:bg-accent inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors"
+              >
+                <Download className="size-4" /> Download all (zip)
+              </a>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {courses.length > 0 && (
+              <Select value={courseFilter} onValueChange={(v) => setCourseFilter(v ?? ALL)}>
+                <SelectTrigger className="w-44">
+                  <SelectValue>
+                    {(v) => (!v || v === ALL ? "Every course" : (v as string))}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>Every course</SelectItem>
+                  {courses.map((c) => (
+                    <SelectItem key={c} value={c}>
+                      {c}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            {batchNames.length > 0 && (
+              <Select value={batchFilter} onValueChange={(v) => setBatchFilter(v ?? ALL)}>
+                <SelectTrigger className="w-40">
+                  <SelectValue>
+                    {(v) => (!v || v === ALL ? "Every batch" : (v as string))}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL}>Every batch</SelectItem>
+                  {batchNames.map((b) => (
+                    <SelectItem key={b} value={b}>
+                      {b}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            <Select value={sort} onValueChange={(v) => v && setSort(v as SortKey)}>
+              <SelectTrigger className="w-40">
+                <SelectValue>
+                  {(v) => SORT_LABEL[(v as SortKey) || "date-desc"]}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {(Object.keys(SORT_LABEL) as SortKey[]).map((k) => (
+                  <SelectItem key={k} value={k}>
+                    {SORT_LABEL[k]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="relative min-w-48 flex-1">
+              <Search className="text-muted-foreground absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
+              <Input
+                placeholder="Search recordings…"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                className="pl-8"
+              />
+            </div>
           </div>
         </div>
 
@@ -306,7 +446,15 @@ export function RecordingsClient({
         )}
       </section>
 
-      <Dialog open={playing !== null} onOpenChange={(o) => !o && setPlaying(null)}>
+      <Dialog
+        open={playing !== null}
+        onOpenChange={(o) => {
+          if (!o) {
+            setPlaying(null);
+            setAssignTo("");
+          }
+        }}
+      >
         <DialogContent className="gap-3 p-4 sm:max-w-3xl sm:p-5">
           <DialogHeader className="text-left">
             <DialogTitle className="leading-snug">{playing?.title}</DialogTitle>
@@ -318,6 +466,32 @@ export function RecordingsClient({
           </DialogHeader>
           {playing && (
             <RecordingPlayer key={playing.id} meetingId={playing.id} watermarkPrice={null} />
+          )}
+          {playing && batches.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 border-t pt-3">
+              <span className="text-muted-foreground text-xs">
+                Assign to another batch:
+              </span>
+              <Select value={assignTo} onValueChange={(v) => setAssignTo(v ?? "")}>
+                <SelectTrigger className="h-8 w-56">
+                  <SelectValue>
+                    {(v) =>
+                      (v && batches.find((b) => b.id === v)?.name) || "Choose a batch"
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {batches.map((b) => (
+                    <SelectItem key={b.id} value={b.id}>
+                      {b.name} · {b.courseTitle}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button size="sm" onClick={assign} disabled={!assignTo || assigning}>
+                {assigning ? <Loader2 className="size-4 animate-spin" /> : "Assign"}
+              </Button>
+            </div>
           )}
         </DialogContent>
       </Dialog>

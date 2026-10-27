@@ -5,6 +5,7 @@ import {
   listAllRecordingsForAdmin,
   listRecordingRequests,
 } from "@/server/services/recording-request-service";
+import { listBatchesForSelect } from "@/server/services/live-service";
 import { RecordingsClient } from "@/components/admin/recordings/recordings-client";
 
 export const metadata: Metadata = { title: "Recordings" };
@@ -16,9 +17,16 @@ export const dynamic = "force-dynamic";
  */
 export default async function AdminRecordingsPage() {
   await requireRole([ROLES.SUPER_ADMIN, ROLES.ADMIN]);
-  const [recordings, requests] = await Promise.all([
+  const [recordings, requests, batches] = await Promise.all([
     listAllRecordingsForAdmin(),
     listRecordingRequests(),
+    listBatchesForSelect(),
   ]);
-  return <RecordingsClient recordings={recordings} requests={requests} />;
+  return (
+    <RecordingsClient
+      recordings={recordings}
+      requests={requests}
+      batches={batches.map((b) => ({ id: b.id, name: b.name, courseTitle: b.courseTitle }))}
+    />
+  );
 }
