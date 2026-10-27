@@ -659,7 +659,8 @@ export function StudentDetailsClient({
         <div className="bg-muted/50 flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3 text-sm">
           <p className="text-muted-foreground flex items-center gap-2">
             <Lock className="size-4 shrink-0" />
-            This profile is submitted. Unlock it to let the learner edit it again.
+            Submitted — the uploaded ID documents are locked. Unlock to let the
+            learner replace them.
           </p>
           <Button variant="outline" size="sm" onClick={unlock} disabled={unlocking}>
             {unlocking ? <Loader2 className="size-4 animate-spin" /> : <Unlock className="size-4" />}
@@ -672,8 +673,9 @@ export function StudentDetailsClient({
         <div className="bg-muted/50 text-muted-foreground flex items-start gap-2 rounded-xl border p-3 text-sm">
           <Lock className="mt-0.5 size-4 shrink-0" />
           <p>
-            Your documents and schooling are locked now that they&apos;ve been checked. Write
-            to the office if any of it needs correcting — they can change it for you.
+            Your uploaded ID documents are locked until the office approves them.
+            Everything else you can still change anytime — ask the office if an ID
+            needs replacing.
           </p>
         </div>
       )}

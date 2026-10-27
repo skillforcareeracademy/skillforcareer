@@ -127,15 +127,11 @@ export const COMPLETION_FIELDS = [
 ] as const;
 
 /** Fields the learner can no longer change once the form is in. */
-export const LOCKED_AFTER_SUBMIT = [
-  "aadhaarNumber",
-  "aadhaarUrl",
-  "idProofType",
-  "idProofNumber",
-  "idProofUrl",
-  "fatherName",
-  "highestQualification",
-  "collegeName",
-  "passingYear",
-  "marksPercent",
-] as const;
+/**
+ * What a learner can no longer change once submitted — "only email and ID
+ * uploaded cannot be changed, until approved by the admin; all other fields can
+ * change anytime". Email is the account login and is never editable here, so
+ * the only fields that lock are the two uploaded ID documents. The office
+ * re-opens them (the Unlock action) to let a learner replace one.
+ */
+export const LOCKED_AFTER_SUBMIT = ["aadhaarUrl", "idProofUrl"] as const;
