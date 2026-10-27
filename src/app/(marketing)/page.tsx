@@ -1,4 +1,5 @@
 import { Fragment, type ReactNode } from "react";
+import { isMobileApp } from "@/lib/app-detect";
 import { Hero } from "@/components/marketing/hero";
 import { StatsBand } from "@/components/marketing/stats-band";
 import { CategoriesSection } from "@/components/marketing/categories-section";
@@ -72,12 +73,14 @@ function renderSection(section: HomeSection): ReactNode {
 }
 
 export default async function HomePage() {
-  const sections = await getHomeSections();
+  const [sections, inApp] = await Promise.all([getHomeSections(), isMobileApp()]);
 
   return (
     <>
       {sections
         .filter((section) => section.enabled && !isGlobalSection(section.key))
+        // The "get the app" band is pointless inside the app itself.
+        .filter((section) => !(inApp && section.key === "appPromo"))
         .map((section) => (
           <Fragment key={section.key}>{renderSection(section)}</Fragment>
         ))}

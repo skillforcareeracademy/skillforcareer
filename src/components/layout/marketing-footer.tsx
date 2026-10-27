@@ -6,6 +6,7 @@ import { PlayStoreBadge } from "@/components/shared/play-store-badge";
 import { socialFor } from "@/config/social";
 import { getHomeSection } from "@/server/services/homepage-service";
 import { getPageSection } from "@/server/services/page-service";
+import { isMobileApp } from "@/lib/app-detect";
 import { cn } from "@/lib/utils";
 
 /**
@@ -29,9 +30,10 @@ const GRID_COLS: Record<number, string> = {
 export async function MarketingFooter() {
   // The addresses are shared with About us and Contact — one list, edited under
   // Pages → Contact, so changing it there changes it everywhere it shows.
-  const [section, centres] = await Promise.all([
+  const [section, centres, inApp] = await Promise.all([
     getHomeSection("footer"),
     getPageSection("contact.offices"),
+    isMobileApp(),
   ]);
   const {
     about,
@@ -155,7 +157,7 @@ export async function MarketingFooter() {
               </div>
             )}
 
-            {appAndroidUrl.trim() && (
+            {!inApp && appAndroidUrl.trim() && (
               <div className="mt-6">
                 <p className="text-muted-foreground mb-2 text-sm font-medium">
                   Get the app

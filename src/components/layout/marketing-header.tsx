@@ -5,6 +5,7 @@ import { ThemeToggle } from "@/components/shared/theme-toggle";
 import { UserMenu } from "@/components/dashboard/user-menu";
 import { getSessionUser } from "@/lib/auth/api-guard";
 import { getHomeSection } from "@/server/services/homepage-service";
+import { isMobileApp } from "@/lib/app-detect";
 import { getHeaderMenus } from "@/server/services/header-menu-service";
 import { EnquiryDialog } from "@/components/marketing/enquiry-dialog";
 import { Button } from "@/components/ui/button";
@@ -24,10 +25,11 @@ export async function MarketingHeader() {
   // All three are per-request cached, so this costs nothing the page wasn't
   // already paying — the layout and footer share the same homepage read, and the
   // dropdown lists are memoised across requests.
-  const [user, section, menus] = await Promise.all([
+  const [user, section, menus, inApp] = await Promise.all([
     getSessionUser(),
     getHomeSection("header"),
     getHeaderMenus(),
+    isMobileApp(),
   ]);
   const {
     navLinks,
@@ -64,8 +66,8 @@ export async function MarketingHeader() {
           {showThemeToggle && <ThemeToggle />}
 
           {/* Install the Android app — icon-only on a phone, labelled on
-              desktop. Opens the Play listing in a new tab. */}
-          {appAndroidUrl.trim() && (
+              desktop. Hidden inside the app itself, where it makes no sense. */}
+          {!inApp && appAndroidUrl.trim() && (
             <Button
               variant="outline"
               size="sm"

@@ -726,11 +726,14 @@ export function StudentDetailsClient({
         <div className="flex flex-wrap items-center gap-3">
           <Button variant="outline" disabled={saving !== null} onClick={() => void save(false)}>
             {saving === "draft" && <Loader2 className="size-4 animate-spin" />}
-            {staff ? "Save changes" : "Save for later"}
+            Save
           </Button>
-          {!staff && !state.submitted && (
+          {/* Submit stays on screen even after the first submit, so the learner
+              can always re-confirm their details. The consent tick only gates
+              the very first submission. */}
+          {!staff && (
             <Button
-              disabled={saving !== null || !agreed}
+              disabled={saving !== null || (!state.submitted && !agreed)}
               onClick={() => void save(true)}
             >
               {saving === "submit" ? (
@@ -738,14 +741,14 @@ export function StudentDetailsClient({
               ) : (
                 <Paperclip className="size-4" />
               )}
-              Submit my details
+              Submit
             </Button>
           )}
           {!staff && (
             <p className="text-muted-foreground text-xs">
               {state.submitted
-                ? "Submitted. Anything not locked can still be updated."
-                : "Saving keeps a draft; submitting sends it to the office."}
+                ? "Save keeps your edits. Only the uploaded ID documents are locked."
+                : "Save keeps a draft; Submit sends it to the office."}
             </p>
           )}
         </div>
