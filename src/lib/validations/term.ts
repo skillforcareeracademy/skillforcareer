@@ -74,6 +74,21 @@ export const termListSchema = z.object({
 export type TermListQuery = z.infer<typeof termListSchema>;
 
 /**
+ * A bulk cleanup action: delete a chosen set, empty the whole dictionary, or
+ * remove duplicate words left behind by a "copy" import.
+ */
+export const bulkTermActionSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("delete"),
+    ids: z.array(z.string().min(1)).min(1).max(5000),
+  }),
+  z.object({ action: z.literal("delete-all") }),
+  z.object({ action: z.literal("dedupe") }),
+]);
+
+export type BulkTermAction = z.infer<typeof bulkTermActionSchema>;
+
+/**
  * What counts as the same word when looking one up from the reading.
  *
  * A learner clicks "Cardiology." and means "cardiology"; the stored entry may

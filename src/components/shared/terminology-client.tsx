@@ -6,7 +6,9 @@ import {
   BookOpen,
   Bookmark,
   BookmarkCheck,
+  CopyX,
   Download,
+  Eraser,
   Loader2,
   Pencil,
   Plus,
@@ -24,6 +26,7 @@ import type { ImportMode } from "@/lib/validations/import-mode";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -121,6 +124,12 @@ export function TerminologyClient({ canManage }: { canManage: boolean }) {
   const [importing, setImporting] = useState(false);
   /** What the last sheet did, shown until it is dismissed. */
   const [outcome, setOutcome] = useState<ImportOutcome | null>(null);
+  /** Words ticked for a bulk delete. */
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  /** A pending bulk action, awaiting confirmation. */
+  const [cleanup, setCleanup] = useState<
+    null | "delete-selected" | "delete-all" | "dedupe"
+  >(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -219,6 +228,38 @@ export function TerminologyClient({ canManage }: { canManage: boolean }) {
     }
   }
 
+  function toggleSelect(id: string) {
+    setSelected((s) => {
+      const next = new Set(s);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function runCleanup() {
+    if (!cleanup) return;
+    try {
+      const body =
+        cleanup === "delete-selected"
+          ? { action: "delete", ids: [...selected] }
+          : cleanup === "delete-all"
+            ? { action: "delete-all" }
+            : { action: "dedupe" };
+      const res = await api.post<{ removed: number; message: string }>(
+        "/api/terms/bulk",
+        body,
+      );
+      toast.success(res.message);
+      setSelected(new Set());
+      void load();
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : "Couldn't do that.");
+    } finally {
+      setCleanup(null);
+    }
+  }
+
   function edit(term: Term) {
     setEditing(term.id);
     setForm({
@@ -296,6 +337,27 @@ export function TerminologyClient({ canManage }: { canManage: boolean }) {
                 title="Import terminology"
                 description="Rows are matched on the word and its kind. Choose what should happen when a word is already here."
               />
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button variant="outline">
+                      <Eraser className="size-4" /> Clean up
+                    </Button>
+                  }
+                />
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => setCleanup("dedupe")}>
+                    <CopyX className="size-4" /> Remove duplicates
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => setCleanup("delete-all")}
+                    className="text-destructive"
+                  >
+                    <Trash2 className="size-4" /> Delete all words
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <Button onClick={() => { setEditing(null); setForm({ ...blank }); }}>
                 <Plus className="size-4" /> Add a word
               </Button>
@@ -360,13 +422,41 @@ export function TerminologyClient({ canManage }: { canManage: boolean }) {
         </Card>
       ) : (
         <>
-          <p className="text-muted-foreground text-xs">
-            {total} word{total === 1 ? "" : "s"}
-          </p>
+          <div className="flex min-h-7 flex-wrap items-center justify-between gap-3">
+            <p className="text-muted-foreground text-xs">
+              {total} word{total === 1 ? "" : "s"}
+            </p>
+            {canManage && selected.size > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium">{selected.size} selected</span>
+                <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
+                  Clear
+                </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => setCleanup("delete-selected")}
+                >
+                  <Trash2 className="size-4" /> Delete selected
+                </Button>
+              </div>
+            )}
+          </div>
           <div className="grid gap-3 md:grid-cols-2">
             {rows.map((t) => (
-              <Card key={t.id} className="p-4">
+              <Card
+                key={t.id}
+                className={`p-4 ${selected.has(t.id) ? "ring-primary ring-2" : ""}`}
+              >
                 <div className="flex items-start justify-between gap-2">
+                  {canManage && (
+                    <Checkbox
+                      checked={selected.has(t.id)}
+                      onCheckedChange={() => toggleSelect(t.id)}
+                      aria-label={`Select ${t.word}`}
+                      className="mt-1 shrink-0"
+                    />
+                  )}
                   <div className="min-w-0 flex-1">
                     <p className="flex flex-wrap items-center gap-2">
                       <span className="font-semibold">{t.word}</span>
@@ -551,6 +641,40 @@ export function TerminologyClient({ canManage }: { canManage: boolean }) {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={() => removing && void remove(removing)}>
               Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={cleanup !== null} onOpenChange={(o) => !o && setCleanup(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {cleanup === "delete-all"
+                ? "Delete every word?"
+                : cleanup === "dedupe"
+                  ? "Remove duplicate words?"
+                  : `Delete ${selected.size} word${selected.size === 1 ? "" : "s"}?`}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {cleanup === "delete-all"
+                ? "This empties the whole dictionary. It can't be undone."
+                : cleanup === "dedupe"
+                  ? "Words that share a spelling and kind are merged to one — the copies an import left behind are removed. This can't be undone."
+                  : "The selected words go from the dictionary and from anyone's saved words. This can't be undone."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => void runCleanup()}
+              className={
+                cleanup === "dedupe"
+                  ? ""
+                  : "bg-destructive text-white hover:bg-destructive/90"
+              }
+            >
+              {cleanup === "dedupe" ? "Remove duplicates" : "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

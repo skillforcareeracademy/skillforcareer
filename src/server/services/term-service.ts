@@ -433,3 +433,57 @@ export async function importTerms(
   }
   return result;
 }
+
+// ── Bulk cleanup ──────────────────────────────────────────────────────────────
+
+/** Delete a chosen set of words. */
+export async function bulkDeleteTerms(ids: string[]): Promise<number> {
+  if (ids.length === 0) return 0;
+  let removed = 0;
+  for (const batch of chunked(ids, 200)) {
+    const res = await prisma.term.deleteMany({ where: { id: { in: batch } } });
+    removed += res.count;
+  }
+  return removed;
+}
+
+/** Empty the whole dictionary — the "start over" button after a bad import. */
+export async function deleteAllTerms(): Promise<number> {
+  const res = await prisma.term.deleteMany({});
+  return res.count;
+}
+
+/** A "(copy)" / "(copy 2)" suffix stripped, so a copy matches its original. */
+function stripCopySuffix(word: string): string {
+  return word.replace(/\s*\(copy(?: \d+)?\)$/i, "").trim();
+}
+
+/**
+ * Remove duplicate words — "duplicate remove karne ka option hona chahiye".
+ *
+ * Two rows are the same word when they share a normalised spelling (ignoring any
+ * "(copy)" suffix an import added) and a kind. The one kept is the one without a
+ * "(copy)" tag if there is one, else the oldest; the rest go. This is what
+ * clears a dictionary that a "copy" import filled with "peri- (copy)" twins.
+ */
+export async function removeDuplicateTerms(): Promise<number> {
+  const all = await prisma.term.findMany({
+    select: { id: true, word: true, kind: true },
+    orderBy: { createdAt: "asc" },
+  });
+  const groups = new Map<string, { id: string; word: string }[]>();
+  for (const t of all) {
+    const key = `${normaliseWord(stripCopySuffix(t.word))}:${t.kind}`;
+    const g = groups.get(key) ?? [];
+    g.push({ id: t.id, word: t.word });
+    groups.set(key, g);
+  }
+  const toDelete: string[] = [];
+  for (const g of groups.values()) {
+    if (g.length < 2) continue;
+    // Keep the original (no "(copy)") if present, otherwise the oldest (first).
+    const keep = g.find((t) => !/\(copy/i.test(t.word)) ?? g[0];
+    for (const t of g) if (t.id !== keep.id) toDelete.push(t.id);
+  }
+  return bulkDeleteTerms(toDelete);
+}
