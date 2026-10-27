@@ -289,15 +289,48 @@ export function LiveRoom({
     rec.onstop = async () => {
       const blob = new Blob(chunksRef.current, { type: "video/webm" });
       if (blob.size === 0) return;
-      const fd = new FormData();
-      fd.append("file", blob, `recording-${meeting.roomCode}.webm`);
       try {
+        // Ask where to put it. When VPS storage is on, upload the file straight
+        // to the media service (bypassing the app's 4.5 MB request limit), then
+        // tell the app where it landed.
+        const ticketRes = await fetch(
+          `/api/meetings/${meeting.id}/recording/upload-ticket`,
+          { method: "POST" },
+        );
+        const ticket = await ticketRes.json().catch(() => null);
+        const data = ticket?.success ? ticket.data : null;
+
+        if (data?.mode === "vps" && data.putUrl) {
+          const put = await fetch(data.putUrl as string, {
+            method: "PUT",
+            headers: { "Content-Type": "video/webm" },
+            body: blob,
+          });
+          if (!put.ok) {
+            toast.error("Couldn't upload recording.");
+            return;
+          }
+          const confirm = await fetch(`/api/meetings/${meeting.id}/recording`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ vps: true }),
+          });
+          toast[confirm.ok ? "success" : "error"](
+            confirm.ok ? "Recording saved." : "Couldn't save recording.",
+          );
+          return;
+        }
+
+        // Fallback: a small recording straight into the app's own storage.
+        const fd = new FormData();
+        fd.append("file", blob, `recording-${meeting.roomCode}.webm`);
         const res = await fetch(`/api/meetings/${meeting.id}/recording`, {
           method: "POST",
           body: fd,
         });
-        if (res.ok) toast.success("Recording saved.");
-        else toast.error("Couldn't save recording.");
+        toast[res.ok ? "success" : "error"](
+          res.ok ? "Recording saved." : "Couldn't save recording.",
+        );
       } catch {
         toast.error("Couldn't upload recording.");
       }

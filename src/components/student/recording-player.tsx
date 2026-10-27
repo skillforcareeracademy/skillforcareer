@@ -27,6 +27,8 @@ interface ViewSession {
   token: string;
   tokenExpiresAt: string;
   sameWatch: boolean;
+  /** Where to point the <video> — an in-app stream route or a VPS media URL. */
+  streamUrl: string;
 }
 
 /**
@@ -239,7 +241,7 @@ export function RecordingPlayer({
     <div className="space-y-3">
       <div className="relative overflow-hidden rounded-lg bg-black">
         <video
-          src={`/api/recordings/${meetingId}/stream?t=${encodeURIComponent(session.token)}`}
+          src={session.streamUrl}
           controls
           autoPlay
           playsInline

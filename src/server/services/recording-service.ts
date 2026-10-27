@@ -6,6 +6,7 @@ import { AppError } from "@/lib/api/errors";
 import { ROLES } from "@/config/roles";
 import { storageKeyFromUrl } from "@/lib/storage";
 import { issuePlaybackToken, readPlaybackToken } from "@/lib/recording-token";
+import { isVpsRecordingUrl, vpsSignedUrl } from "@/lib/recording-media";
 import type { PublicUser } from "@/server/services/auth-service";
 import { checkRoomAccess } from "@/server/services/live-access";
 import type {
@@ -584,6 +585,12 @@ export interface ViewRegistration {
   tokenExpiresAt: string;
   /** True when this call was a continuation and cost nothing. */
   sameWatch: boolean;
+  /**
+   * Where the player points its `<video>`. For an in-app recording it's the
+   * gated stream route; for one stored on the VPS it's a signed media URL the
+   * browser plays directly (the bytes never pass through the app).
+   */
+  streamUrl: string;
 }
 
 /**
@@ -604,6 +611,14 @@ export async function registerRecordingView(
   const ticket = () =>
     issuePlaybackToken({ meetingId, userId: user.id, deviceId });
 
+  // A VPS-stored recording plays straight from the media service with a signed
+  // URL; an in-app one plays through the gated stream route with the ticket.
+  const vps = isVpsRecordingUrl(loaded.meeting.recordingUrl);
+  const streamUrlFor = (token: string): string =>
+    vps
+      ? vpsSignedUrl(meetingId, "get", 3600)
+      : `/api/recordings/${meetingId}/stream?t=${encodeURIComponent(token)}`;
+
   // Staff preview: no device, no counter, no cap.
   if (loaded.staff) {
     const { token, expiresAt } = ticket();
@@ -618,6 +633,7 @@ export async function registerRecordingView(
       token,
       tokenExpiresAt: expiresAt,
       sameWatch: true,
+      streamUrl: streamUrlFor(token),
     };
   }
 
@@ -648,6 +664,7 @@ export async function registerRecordingView(
       token: input.token!,
       tokenExpiresAt: claims.expiresAt,
       sameWatch: true,
+      streamUrl: streamUrlFor(input.token!),
     };
   }
 
@@ -720,6 +737,7 @@ export async function registerRecordingView(
     token,
     tokenExpiresAt: expiresAt,
     sameWatch,
+    streamUrl: streamUrlFor(token),
   };
 }
 
@@ -729,7 +747,12 @@ function snapshot(
   devicesUsed: number,
 ): Omit<
   ViewRegistration,
-  "watermarkName" | "watermarkEmail" | "token" | "tokenExpiresAt" | "sameWatch"
+  | "watermarkName"
+  | "watermarkEmail"
+  | "token"
+  | "tokenExpiresAt"
+  | "sameWatch"
+  | "streamUrl"
 > {
   return {
     viewsUsed,
