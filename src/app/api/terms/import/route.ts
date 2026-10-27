@@ -4,6 +4,7 @@ import { ok } from "@/lib/api/response";
 import { requireApiPermission } from "@/lib/auth/api-guard";
 import { PERMISSIONS } from "@/config/roles";
 import { importModeSchema } from "@/lib/validations/import-mode";
+import { decodeCsvBody } from "@/lib/csv";
 import { importTerms } from "@/server/services/term-service";
 
 export const runtime = "nodejs";
@@ -14,7 +15,9 @@ export const maxDuration = 300;
 /** Bring a dictionary in from a sheet. Matching is on the word and its kind. */
 export const POST = withRoute(async (req) => {
   const user = await requireApiPermission(PERMISSIONS.MANAGE_MATERIAL);
-  const csv = await req.text();
+  // Decoded in case a stale client posted the file as a JSON string — otherwise
+  // every newline is a literal "\n" and the whole sheet reads as one row.
+  const csv = decodeCsvBody(await req.text());
   if (!csv.trim()) throw AppError.badRequest("That file is empty.");
   const mode = importModeSchema.parse(
     new URL(req.url).searchParams.get("mode") ?? undefined,

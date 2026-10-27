@@ -4,6 +4,7 @@ import { ok } from "@/lib/api/response";
 import { requireApiPermission } from "@/lib/auth/api-guard";
 import { PERMISSIONS } from "@/config/roles";
 import { importModeSchema } from "@/lib/validations/import-mode";
+import { decodeCsvBody } from "@/lib/csv";
 import { importQuizzes } from "@/server/services/quiz-service";
 
 export const runtime = "nodejs";
@@ -12,7 +13,9 @@ export const dynamic = "force-dynamic";
 /** Create or update quizzes from a spreadsheet. Matching is by title. */
 export const POST = withRoute(async (req) => {
   const user = await requireApiPermission(PERMISSIONS.MANAGE_QUIZ);
-  const csv = await req.text();
+  // Decoded in case a stale client posted the file as a JSON string (see
+  // decodeCsvBody) — otherwise the whole sheet collapses to one unreadable row.
+  const csv = decodeCsvBody(await req.text());
   if (!csv.trim()) throw AppError.badRequest("That file is empty.");
 
   const mode = importModeSchema.parse(new URL(req.url).searchParams.get("mode") ?? undefined);

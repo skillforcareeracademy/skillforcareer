@@ -30,6 +30,28 @@ export function csvResponse(filename: string, csv: string): Response {
 }
 
 /**
+ * Decode a raw `text/csv` request body.
+ *
+ * A correct client posts the CSV verbatim. But a stale cached bundle (or any
+ * caller that JSON-encodes every body) sends the whole file as one JSON string
+ * — every newline becomes a literal `\n`, so the parser sees a single line and
+ * imports nothing ("0 added, 0 updated"). If the body is a JSON-encoded string,
+ * unwrap it. A real CSV never parses whole as a JSON string, so this is safe;
+ * the one quoted-first-field case falls through to `catch` and is used as-is.
+ */
+export function decodeCsvBody(raw: string): string {
+  if (raw.trimStart().startsWith('"')) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (typeof parsed === "string") return parsed;
+    } catch {
+      // Not a JSON string — an ordinary CSV opening with a quoted field.
+    }
+  }
+  return raw;
+}
+
+/**
  * Parse a CSV file into rows of `{ header: value }`.
  *
  * Hand-rolled rather than pulled from npm because the shape we accept is
