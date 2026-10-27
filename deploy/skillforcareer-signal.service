@@ -1,19 +1,28 @@
-# The live-class signalling server (WebSocket). Vercel can't hold an open
-# socket; this VPS can, which is what ends the cold-start wait before a class.
+# The live-class signalling server: WebRTC mesh signalling + chat + the shared
+# teaching board. Vercel can't hold an open socket, and a sleeping free-tier
+# host meant a ~52s "Connecting…" before class — so it runs on this always-on
+# VPS instead.
+#
+# As deployed, a minimal self-contained tree at /opt/sfc-signal (NOT a repo):
+#   scripts/signaling-server.ts plus the files it imports — src/lib/db-config.ts,
+#   src/lib/live/room-token.ts, src/generated/prisma (the engine-free Prisma 7
+#   client, pure JS/TS, no native engine) — plus package.json and node_modules.
+#   It runs the TypeScript directly with tsx; nothing is compiled.
+#
+# Secrets live in /etc/sfc-signal.env (see sfc-signal.env.example). nginx on the
+# media.skillforcareer.com vhost routes /socket.io/ and /health to port 4001.
 [Unit]
-Description=Skill For Career live signalling
+Description=Skill For Career live-class signalling (WebRTC + board)
 After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/var/www/skillforcareer/signal
-EnvironmentFile=/etc/skillforcareer/signal.env
-Environment=NODE_ENV=production
-ExecStart=/usr/local/bin/node signalling-server.js
+WorkingDirectory=/opt/sfc-signal
+EnvironmentFile=/etc/sfc-signal.env
+ExecStart=/usr/local/bin/node --import tsx scripts/signaling-server.ts
 Restart=always
 RestartSec=3
-User=www-data
-Group=www-data
+User=root
 NoNewPrivileges=true
 
 [Install]

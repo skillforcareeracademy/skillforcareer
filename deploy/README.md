@@ -18,7 +18,8 @@ GitHub  ──(the code, the history, the only backup)
 | --- | --- |
 | `deploy/provision.sh` | One-time: node, nginx, certbot, firewall, directories, service files, TLS certificate. |
 | `deploy/skillforcareer.service` | systemd unit for the site (`node server.js` on `127.0.0.1:3000`). |
-| `deploy/skillforcareer-signal.service` | systemd unit for the live-class signalling socket, if this box runs it. |
+| `deploy/skillforcareer-signal.service` | systemd unit for the live-class signalling server — WebRTC + chat + teaching board. Runs on this box (always-on), reading `/etc/sfc-signal.env`, served under `media.skillforcareer.com/socket.io/`. |
+| `deploy/sfc-signal.env.example` | Template for `/etc/sfc-signal.env` — the signalling server's secrets (must match Vercel). |
 | `deploy/nginx.conf` | TLS in front, proxy to node, hashed assets cached hard. |
 | `scripts/deploy-vps.sh` | Build, prune, ship a dated release, switch `current`, restart, health-check. |
 
