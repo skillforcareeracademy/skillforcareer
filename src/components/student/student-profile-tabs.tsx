@@ -42,7 +42,7 @@ export function StudentProfileTabs({
           <ProfileClient profile={profile} hideHeader />
         </TabsContent>
         <TabsContent value="mine" className="mt-4">
-          <StudentDetailsClient view={detail} layout="tabs" />
+          <StudentDetailsClient view={detail} />
         </TabsContent>
       </Tabs>
     </div>

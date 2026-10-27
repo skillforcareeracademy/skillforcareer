@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -13,6 +13,7 @@ import {
   Lock,
   MapPin,
   Paperclip,
+  Unlock,
   Upload,
   X,
 } from "lucide-react";
@@ -42,7 +43,6 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 // (The four former dropdowns are now ChoiceChips; Select is no longer used.)
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PhoneInput } from "@/components/shared/phone-input";
 import { cn } from "@/lib/utils";
 
@@ -302,25 +302,50 @@ export function StudentDetailsClient({
   view,
   staff = false,
   userId,
-  layout = "flat",
 }: {
   view: StudentDetailView;
   staff?: boolean;
   userId?: string;
-  /** "tabs" lays the four sections out as tabs; "flat" stacks them. */
-  layout?: "flat" | "tabs";
 }) {
   const router = useRouter();
   const [values, setValues] = useState<Values>(() => initialValues(view));
   const [state, setState] = useState(view);
   const [saving, setSaving] = useState<"draft" | "submit" | null>(null);
+  const [unlocking, setUnlocking] = useState(false);
   // A learner confirms the policy before the formal submit; the office doesn't.
   const [agreed, setAgreed] = useState(false);
 
   const endpoint = staff ? `/api/admin/students/${userId}/details` : "/api/student/details";
-  // A learner can't change what admissions has verified; the office can.
-  const locked = (key: string) =>
-    !staff && state.submitted && (LOCKED_AFTER_SUBMIT as readonly string[]).includes(key);
+
+  // Only fields that actually held a value at submit lock — one left blank by a
+  // premature submit stays editable, so a learner isn't shut out of it.
+  const lockedKeys = useMemo(() => {
+    const d = view.detail as Record<string, unknown> | null;
+    return new Set(
+      (LOCKED_AFTER_SUBMIT as readonly string[]).filter((k) => {
+        const v = d?.[k];
+        return v != null && String(v).trim() !== "";
+      }),
+    );
+  }, [view.detail]);
+  const locked = (key: string) => !staff && state.submitted && lockedKeys.has(key);
+
+  // The office re-opens a submitted profile for the learner to edit again.
+  async function unlock() {
+    setUnlocking(true);
+    try {
+      const res = await api.post<StudentDetailView & { message: string }>(
+        `/api/admin/students/${userId}/details/unlock`,
+      );
+      setState(res);
+      toast.success(res.message);
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Couldn't unlock that.");
+    } finally {
+      setUnlocking(false);
+    }
+  }
 
   const set = (key: string) => (value: string | boolean) =>
     setValues((prev) => ({ ...prev, [key]: value }));
@@ -543,14 +568,7 @@ export function StudentDetailsClient({
     </Card>
   );
 
-  const TABS = [
-    { value: "contact", label: "Contact", icon: MapPin, node: contactSection },
-    { value: "identity", label: "Identity", icon: IdCard, node: identitySection },
-    { value: "education", label: "Education", icon: GraduationCap, node: educationSection },
-    { value: "work", label: "Work", icon: Briefcase, node: workSection },
-  ];
-
-  // A richer header for the standalone page — a progress ring, status, and the
+  // A richer header for the learner — a progress ring, status, and the
   // still-missing items as chips, on the brand gradient.
   const heroHeader = (
     <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-rose-600 via-fuchsia-700 to-violet-800 p-5 text-white sm:p-6">
@@ -577,7 +595,7 @@ export function StudentDetailsClient({
           <p className="mt-1 text-sm text-white/85">
             {state.missing.length === 0
               ? "Everything the academy needs is on file."
-              : `${state.missing.length} detail${state.missing.length === 1 ? "" : "s"} still needed — fill in the tabs below.`}
+              : `${state.missing.length} detail${state.missing.length === 1 ? "" : "s"} still needed — fill in the form below.`}
           </p>
           {state.missing.length > 0 && (
             <div className="mt-2.5 flex flex-wrap gap-1.5">
@@ -598,9 +616,7 @@ export function StudentDetailsClient({
 
   return (
     <div className="space-y-6">
-      {layout === "tabs" ? (
-        heroHeader
-      ) : (
+      {staff ? (
         /* How far through they are — the same figure the office sees. */
         <Card>
         <CardHeader className="pb-3">
@@ -635,6 +651,21 @@ export function StudentDetailsClient({
           <Progress value={state.completion} />
         </CardContent>
         </Card>
+      ) : (
+        heroHeader
+      )}
+
+      {staff && state.submitted && (
+        <div className="bg-muted/50 flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3 text-sm">
+          <p className="text-muted-foreground flex items-center gap-2">
+            <Lock className="size-4 shrink-0" />
+            This profile is submitted. Unlock it to let the learner edit it again.
+          </p>
+          <Button variant="outline" size="sm" onClick={unlock} disabled={unlocking}>
+            {unlocking ? <Loader2 className="size-4 animate-spin" /> : <Unlock className="size-4" />}
+            Unlock for the learner
+          </Button>
+        </div>
       )}
 
       {state.submitted && !staff && (
@@ -647,40 +678,16 @@ export function StudentDetailsClient({
         </div>
       )}
 
-      {layout === "tabs" ? (
-        <Tabs defaultValue="contact">
-          <TabsList>
-            {TABS.map((t) => {
-              const Icon = t.icon;
-              return (
-                <TabsTrigger key={t.value} value={t.value} className="gap-1.5">
-                  <Icon className="size-4" /> {t.label}
-                </TabsTrigger>
-              );
-            })}
-          </TabsList>
-          {TABS.map((t) => (
-            <TabsContent key={t.value} value={t.value} className="mt-4">
-              {t.node}
-            </TabsContent>
-          ))}
-        </Tabs>
-      ) : (
-        <>
-          {contactSection}
-          {identitySection}
-          {educationSection}
-          {workSection}
-        </>
-      )}
+      {contactSection}
+      {identitySection}
+      {educationSection}
+      {workSection}
 
       {/* Consent, then the actions. The learner agrees to the policy before the
           formal submit; "Save for later" keeps a draft and needs no agreement. */}
       <div
         className={
-          layout === "tabs"
-            ? "bg-card space-y-4 rounded-2xl border p-4 sm:p-5"
-            : "space-y-4"
+          staff ? "space-y-4" : "bg-card space-y-4 rounded-2xl border p-4 sm:p-5"
         }
       >
         {!staff && !state.submitted && (

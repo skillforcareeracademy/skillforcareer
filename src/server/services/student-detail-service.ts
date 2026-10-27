@@ -194,7 +194,12 @@ export async function saveStudentDetail(
 
   if (existing?.submittedAt) {
     for (const field of LOCKED_AFTER_SUBMIT) {
-      delete data[field as keyof typeof data];
+      // Only protect a field that was actually filled when they submitted. A
+      // field left blank at a premature submit can still be completed later,
+      // so a learner isn't locked out of details they never entered.
+      const prev = (existing as Record<string, unknown>)[field];
+      const wasFilled = prev != null && String(prev).trim() !== "";
+      if (wasFilled) delete data[field as keyof typeof data];
     }
   }
   if (input.submit && !existing?.submittedAt) {
@@ -208,6 +213,20 @@ export async function saveStudentDetail(
       data: { ...(data as Prisma.StudentDetailUncheckedCreateInput), userId },
     });
   }
+  return getStudentDetail(userId);
+}
+
+/**
+ * Re-open a submitted profile so the learner can edit it again — the office's
+ * "unlock" for a profile that was submitted too early or needs correcting.
+ */
+export async function unlockStudentDetail(
+  userId: string,
+): Promise<StudentDetailView> {
+  await prisma.studentDetail.updateMany({
+    where: { userId },
+    data: { submittedAt: null },
+  });
   return getStudentDetail(userId);
 }
 

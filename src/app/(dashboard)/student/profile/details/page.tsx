@@ -19,7 +19,7 @@ export default async function StudentDetailsPage() {
   // so no PageHeader here. Centred to a comfortable reading width.
   return (
     <div className="mx-auto max-w-3xl">
-      <StudentDetailsClient view={view} layout="tabs" />
+      <StudentDetailsClient view={view} />
     </div>
   );
 }
