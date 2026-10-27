@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, ShieldOff, Sparkles } from "lucide-react";
+import { AlertTriangle, Loader2, ShieldOff, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
 import { DEVICE_ID_HEADER, getDeviceId } from "@/lib/device-id";
@@ -61,6 +61,9 @@ export function RecordingPlayer({
   const [error, setError] = useState<string | null>(null);
   const [waived, setWaived] = useState(false);
   const [paying, setPaying] = useState(false);
+  // The <video> couldn't load the file — an old recording that never saved
+  // properly, say. Better than a silent black player at 0:00.
+  const [videoError, setVideoError] = useState(false);
 
   const deviceRef = useRef<string>("");
   const tokenRef = useRef<string | null>(null);
@@ -254,10 +257,20 @@ export function RecordingPlayer({
           }}
           onPause={() => flush()}
           onEnded={() => flush()}
+          onError={() => setVideoError(true)}
           className="aspect-video w-full"
         >
           <track kind="captions" />
         </video>
+        {videoError && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/85 p-6 text-center text-white">
+            <AlertTriangle className="size-7 text-amber-400" />
+            <p className="text-sm font-medium">This recording isn&rsquo;t available.</p>
+            <p className="text-xs text-white/70">
+              It may not have finished saving. Please contact the office.
+            </p>
+          </div>
+        )}
         {showWatermark && (
           <Watermark
             name={session.watermarkName}
