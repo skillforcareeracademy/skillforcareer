@@ -230,13 +230,23 @@ interface RoomControl {
   shareAllowed: Set<string>;
   /** When false, anyone with the link joins straight in — no waiting room. */
   requireApproval: boolean;
+  /** The shared whiteboard: whether it's open, and the strokes drawn so far
+   *  (so someone joining mid-lesson sees the full board). */
+  boardOpen: boolean;
+  boardStrokes: unknown[];
 }
 const controls = new Map<string, RoomControl>();
 
 function controlFor(roomCode: string): RoomControl {
   let c = controls.get(roomCode);
   if (!c) {
-    c = { chatLocked: false, shareAllowed: new Set(), requireApproval: true };
+    c = {
+      chatLocked: false,
+      shareAllowed: new Set(),
+      requireApproval: true,
+      boardOpen: false,
+      boardStrokes: [],
+    };
     controls.set(roomCode, c);
   }
   return c;
@@ -424,6 +434,11 @@ function enterRoom(socket: Socket, roomCode: string, user: RoomUser) {
     socket.emit("may-share", {
       allowed: user.isHost || control.shareAllowed.has(user.id),
     });
+    // The current whiteboard, so someone joining mid-lesson sees it all.
+    socket.emit("board-state", {
+      open: control.boardOpen,
+      strokes: control.boardStrokes,
+    });
   })();
 
   // Announce the newcomer to existing peers.
@@ -500,6 +515,28 @@ function enterRoom(socket: Socket, roomCode: string, user: RoomUser) {
     const c = controlFor(roomCode);
     c.chatLocked = Boolean(locked);
     io.in(roomCode).emit("controls", controlPayload(c));
+  });
+
+  // ── The shared whiteboard — only the host draws; everyone watches ───────────
+  socket.on("board-stroke", (stroke: unknown) => {
+    if (!user.isHost) return;
+    const c = controlFor(roomCode);
+    // Keep memory bounded over a long lesson.
+    if (c.boardStrokes.length < 20_000) c.boardStrokes.push(stroke);
+    socket.to(roomCode).emit("board-stroke", stroke);
+  });
+
+  socket.on("board-clear", () => {
+    if (!user.isHost) return;
+    controlFor(roomCode).boardStrokes = [];
+    socket.to(roomCode).emit("board-clear");
+  });
+
+  socket.on("board-toggle", ({ open }: { open?: boolean }) => {
+    if (!user.isHost) return;
+    const c = controlFor(roomCode);
+    c.boardOpen = Boolean(open);
+    socket.to(roomCode).emit("board-toggle", { open: c.boardOpen });
   });
 
   // The host allows (or stops) one student sharing their screen or image.

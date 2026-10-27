@@ -9,6 +9,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { io, type Socket } from "socket.io-client";
+import type { Stroke } from "@/lib/validations/board";
 
 /** A store that never changes — for reading a fixed browser capability. */
 const NO_CHANGES = () => () => {};
@@ -237,6 +238,10 @@ export function useLiveRoom({ signalUrl, token, joined, selfName, isHost }: Live
   const [mayShare, setMayShare] = useState(false);
   const [shareAllowedIds, setShareAllowedIds] = useState<string[]>([]);
   const [requireApproval, setRequireApprovalState] = useState(true);
+  // The shared whiteboard. `boardStrokes` is every finished stroke the room has
+  // broadcast; `boardOpen` is whether the host has the board up for everyone.
+  const [boardOpen, setBoardOpen] = useState(false);
+  const [boardStrokes, setBoardStrokes] = useState<Stroke[]>([]);
   // Read inside the share/chat callbacks without re-creating them each change.
   const canShareRef = useRef(isHost);
   const chatLockedRef = useRef(false);
@@ -1076,6 +1081,30 @@ export function useLiveRoom({ signalUrl, token, joined, selfName, isHost }: Live
         canShareRef.current = isHost || Boolean(allowed);
         setMayShare(Boolean(allowed));
       });
+
+      // ── Shared whiteboard ──────────────────────────────────────────────────
+      // The server hands a late joiner the whole board at once, then relays each
+      // new stroke as the host draws it. Only the host draws; everyone receives.
+      socket.on(
+        "board-state",
+        ({ open, strokes }: { open?: boolean; strokes?: Stroke[] }) => {
+          if (!mine()) return;
+          setBoardOpen(Boolean(open));
+          setBoardStrokes(Array.isArray(strokes) ? strokes : []);
+        },
+      );
+      socket.on("board-stroke", (stroke: Stroke) => {
+        if (!mine()) return;
+        setBoardStrokes((s) => [...s, stroke]);
+      });
+      socket.on("board-clear", () => {
+        if (!mine()) return;
+        setBoardStrokes([]);
+      });
+      socket.on("board-toggle", ({ open }: { open?: boolean }) => {
+        if (!mine()) return;
+        setBoardOpen(Boolean(open));
+      });
     })();
 
     return () => {
@@ -1341,6 +1370,37 @@ export function useLiveRoom({ signalUrl, token, joined, selfName, isHost }: Live
     [selfName, isHost],
   );
 
+  /**
+   * The host finishes a stroke on the whiteboard. The server relays it to
+   * everyone else; it never echoes back to us, so we add it locally too — the
+   * same optimistic trick `sendChat` uses.
+   */
+  const sendBoardStroke = useCallback(
+    (stroke: Stroke) => {
+      if (!isHost) return;
+      socketRef.current?.emit("board-stroke", stroke);
+      setBoardStrokes((s) => [...s, stroke]);
+    },
+    [isHost],
+  );
+
+  /** The host wipes the board for everyone. */
+  const clearBoard = useCallback(() => {
+    if (!isHost) return;
+    socketRef.current?.emit("board-clear");
+    setBoardStrokes([]);
+  }, [isHost]);
+
+  /** The host shows or hides the board for the whole room. */
+  const toggleBoard = useCallback(
+    (open: boolean) => {
+      if (!isHost) return;
+      socketRef.current?.emit("board-toggle", { open });
+      setBoardOpen(open);
+    },
+    [isHost],
+  );
+
   /** The host allows (or stops) one student sharing their screen or image. */
   const allowShare = useCallback((userId: string, allowed: boolean) => {
     socketRef.current?.emit("set-share", { userId, allowed });
@@ -1527,6 +1587,12 @@ export function useLiveRoom({ signalUrl, token, joined, selfName, isHost }: Live
       lockChat,
       requireApproval,
       setRequireApproval,
+      // whiteboard
+      boardOpen,
+      boardStrokes,
+      sendBoardStroke,
+      clearBoard,
+      toggleBoard,
       // actions
       toggleMic,
       toggleCam,
@@ -1580,6 +1646,11 @@ export function useLiveRoom({ signalUrl, token, joined, selfName, isHost }: Live
       lockChat,
       requireApproval,
       setRequireApproval,
+      boardOpen,
+      boardStrokes,
+      sendBoardStroke,
+      clearBoard,
+      toggleBoard,
       toggleMic,
       toggleCam,
       toggleShare,

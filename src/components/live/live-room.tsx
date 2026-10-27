@@ -31,12 +31,23 @@ import {
   WifiOff,
   AlertTriangle,
   Volume2,
+  Presentation,
+  Pencil,
+  Highlighter,
+  Eraser,
+  Trash2,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ROLE_HOME } from "@/config/roles";
 import { Logo } from "@/components/shared/logo";
 import { KnockPanel } from "./knock-panel";
+import { LiveBoard } from "./live-board";
+import {
+  BOARD_COLOURS,
+  type BoardTool,
+  type Stroke,
+} from "@/lib/validations/board";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -160,6 +171,9 @@ export function LiveRoom({
   const [recording, setRecording] = useState(false);
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [dismissedNotice, setDismissedNotice] = useState(false);
+  /** The pen the instructor is drawing with on the shared board. */
+  const [boardTool, setBoardTool] = useState<BoardTool>("pen");
+  const [boardColor, setBoardColor] = useState<string>(BOARD_COLOURS[0].value);
 
   const room = useLiveRoom({
     signalUrl,
@@ -793,6 +807,18 @@ export function LiveRoom({
       {/* Body */}
       <div className="relative flex min-h-0 flex-1">
         <div className="flex min-h-0 min-w-0 flex-1 p-2 sm:p-4">
+          {room.boardOpen ? (
+            <BoardStage
+              strokes={room.boardStrokes}
+              canDraw={isHost}
+              tool={boardTool}
+              color={boardColor}
+              onStroke={room.sendBoardStroke}
+              onToolChange={setBoardTool}
+              onColorChange={setBoardColor}
+              onClear={room.clearBoard}
+            />
+          ) : (
           <div
             className={cn(
               "mx-auto grid h-full w-full auto-rows-fr gap-2 sm:gap-3",
@@ -885,6 +911,7 @@ export function LiveRoom({
               </div>
             )}
           </div>
+          )}
         </div>
 
         {/* Side panel — an overlay on a phone, a column from md up */}
@@ -1131,6 +1158,17 @@ export function LiveRoom({
         >
           <Users className="size-5" />
         </RoundButton>
+        {/* The teaching board — the instructor opens it for the whole class and
+            writes on it while everyone watches. */}
+        {isHost && (
+          <RoundButton
+            active={room.boardOpen}
+            onClick={() => room.toggleBoard(!room.boardOpen)}
+            label={room.boardOpen ? "Close the board" : "Open the teaching board"}
+          >
+            <Presentation className="size-5" />
+          </RoundButton>
+        )}
         {isHost && (
           <button
             type="button"
@@ -1179,6 +1217,104 @@ export function LiveRoom({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </div>
+  );
+}
+
+/**
+ * The shared teaching board, filling the stage where the faces usually are.
+ *
+ * The instructor gets the pens, colours and a clear button; everyone else just
+ * watches it fill in. Audio and the side panel carry on underneath, so the
+ * class still hears the instructor and can see who is in the room.
+ */
+function BoardStage({
+  strokes,
+  canDraw,
+  tool,
+  color,
+  onStroke,
+  onToolChange,
+  onColorChange,
+  onClear,
+}: {
+  strokes: Stroke[];
+  canDraw: boolean;
+  tool: BoardTool;
+  color: string;
+  onStroke: (stroke: Stroke) => void;
+  onToolChange: (tool: BoardTool) => void;
+  onColorChange: (color: string) => void;
+  onClear: () => void;
+}) {
+  const tools = [
+    ["pen", Pencil, "Pen"],
+    ["highlighter", Highlighter, "Highlighter"],
+    ["eraser", Eraser, "Eraser"],
+  ] as const;
+
+  return (
+    <div className="mx-auto flex h-full w-full max-w-6xl flex-col gap-2">
+      {canDraw ? (
+        <div className="flex flex-wrap items-center gap-1.5 rounded-xl bg-white/5 p-1.5">
+          {tools.map(([t, Icon, lbl]) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => onToolChange(t)}
+              title={lbl}
+              aria-label={lbl}
+              aria-pressed={tool === t}
+              className={cn(
+                "grid size-9 place-items-center rounded-lg transition-colors",
+                tool === t
+                  ? "bg-white text-neutral-900"
+                  : "text-white hover:bg-white/10",
+              )}
+            >
+              <Icon className="size-4" />
+            </button>
+          ))}
+          <span className="mx-1 h-6 w-px bg-white/10" />
+          {BOARD_COLOURS.map((c) => (
+            <button
+              key={c.value}
+              type="button"
+              onClick={() => onColorChange(c.value)}
+              title={c.label}
+              aria-label={c.label}
+              aria-pressed={color === c.value}
+              className={cn(
+                "size-6 rounded-full ring-2 ring-offset-2 ring-offset-neutral-950 transition-transform",
+                color === c.value ? "ring-white" : "ring-transparent hover:scale-110",
+              )}
+              style={{ backgroundColor: c.value }}
+            />
+          ))}
+          <span className="mx-1 h-6 w-px bg-white/10" />
+          <button
+            type="button"
+            onClick={onClear}
+            title="Clear the board"
+            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-white hover:bg-white/10"
+          >
+            <Trash2 className="size-4" /> Clear
+          </button>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 px-1 text-xs text-white/60">
+          <Presentation className="size-4" /> The instructor&rsquo;s board
+        </div>
+      )}
+      <div className="min-h-0 flex-1 overflow-hidden rounded-2xl ring-1 ring-white/10">
+        <LiveBoard
+          strokes={strokes}
+          canDraw={canDraw}
+          tool={tool}
+          color={color}
+          onStroke={onStroke}
+        />
+      </div>
     </div>
   );
 }
