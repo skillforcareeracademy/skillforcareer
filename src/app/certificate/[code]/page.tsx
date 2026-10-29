@@ -8,6 +8,7 @@ import {
   certificateHeading,
 } from "@/components/certificate/certificate-document";
 import { PrintCertificateButton } from "@/components/certificate/print-button";
+import { CertificatePrintStyles } from "@/components/certificate/print-styles";
 import { ButtonLink } from "@/components/shared/button-link";
 
 export const dynamic = "force-dynamic";
@@ -35,19 +36,7 @@ export default async function CertificatePage({
 
   return (
     <main className="bg-muted/40 min-h-svh px-4 py-10">
-      {/* Print styles: one landscape sheet, edge to edge, and nothing else.
-          The designs bleed to the paper edge, so the page margin is zero and
-          the sheet's own frame provides the border. */}
-      <style>{`@page { size: A4 landscape; margin: 0; }
-      @media print {
-        html, body { background: white !important; }
-        .cert-chrome { display: none !important; }
-        #certificate {
-          box-shadow: none !important;
-          width: 100% !important;
-          max-width: none !important;
-        }
-      }`}</style>
+      <CertificatePrintStyles />
 
       <div className="cert-chrome mx-auto mb-6 flex max-w-[297mm] items-center justify-between gap-3">
         <Link href={`/verify/${cert.verificationCode}`} className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 text-sm">
