@@ -400,6 +400,7 @@ enum TrashKind {
   BATCH_NOTE
   NOTE
   BLOG_POST
+  TERM
 }
 
 enum BroadcastAudience {

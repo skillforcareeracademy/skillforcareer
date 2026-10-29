@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
+  ArrowUpDown,
   BookOpen,
   Bookmark,
   BookmarkCheck,
@@ -12,6 +13,7 @@ import {
   Loader2,
   Pencil,
   Plus,
+  Scissors,
   Search,
   Trash2,
 } from "lucide-react";
@@ -20,7 +22,10 @@ import {
   TERM_KINDS,
   TERM_KIND_LABEL,
   TERM_KIND_HINT,
+  TERM_SORTS,
+  TERM_SORT_LABEL,
   type TermKind,
+  type TermSort,
 } from "@/lib/validations/term";
 import type { ImportMode } from "@/lib/validations/import-mode";
 import { Badge } from "@/components/ui/badge";
@@ -116,6 +121,7 @@ export function TerminologyClient({ canManage }: { canManage: boolean }) {
   const [search, setSearch] = useState("");
   const [kind, setKind] = useState<string>(ALL);
   const [savedOnly, setSavedOnly] = useState(false);
+  const [sort, setSort] = useState<TermSort>("az");
 
   const [form, setForm] = useState<typeof blank | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
@@ -128,13 +134,13 @@ export function TerminologyClient({ canManage }: { canManage: boolean }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   /** A pending bulk action, awaiting confirmation. */
   const [cleanup, setCleanup] = useState<
-    null | "delete-selected" | "delete-all" | "dedupe"
+    null | "delete-selected" | "delete-all" | "dedupe" | "strip-copy"
   >(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const qs = new URLSearchParams({ pageSize: "200" });
+      const qs = new URLSearchParams({ pageSize: "200", sort });
       if (search.trim()) qs.set("search", search.trim());
       if (kind !== ALL) qs.set("kind", kind);
       if (savedOnly) qs.set("savedOnly", "true");
@@ -151,7 +157,7 @@ export function TerminologyClient({ canManage }: { canManage: boolean }) {
     } finally {
       setLoading(false);
     }
-  }, [search, kind, savedOnly]);
+  }, [search, kind, savedOnly, sort]);
 
   // Deferred, and debounced so typing doesn't fire a request per letter.
   useEffect(() => {
@@ -188,7 +194,7 @@ export function TerminologyClient({ canManage }: { canManage: boolean }) {
   async function remove(term: Term) {
     try {
       await api.del(`/api/terms/${term.id}`);
-      toast.success(`“${term.word}” deleted.`);
+      toast.success(`“${term.word}” moved to the recycle bin.`);
       void load();
     } catch (error) {
       toast.error(error instanceof ApiError ? error.message : "Couldn't delete that.");
@@ -245,7 +251,9 @@ export function TerminologyClient({ canManage }: { canManage: boolean }) {
           ? { action: "delete", ids: [...selected] }
           : cleanup === "delete-all"
             ? { action: "delete-all" }
-            : { action: "dedupe" };
+            : cleanup === "strip-copy"
+              ? { action: "strip-copy" }
+              : { action: "dedupe" };
       const res = await api.post<{ removed: number; message: string }>(
         "/api/terms/bulk",
         body,
@@ -346,6 +354,9 @@ export function TerminologyClient({ canManage }: { canManage: boolean }) {
                   }
                 />
                 <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => setCleanup("strip-copy")}>
+                    <Scissors className="size-4" /> Remove the “(copy)” tag
+                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setCleanup("dedupe")}>
                     <CopyX className="size-4" /> Remove duplicates
                   </DropdownMenuItem>
@@ -389,6 +400,21 @@ export function TerminologyClient({ canManage }: { canManage: boolean }) {
             {counts.map((c) => (
               <SelectItem key={c.kind} value={c.kind}>
                 {TERM_KIND_LABEL[c.kind]} ({c.count})
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={sort} onValueChange={(v) => v && setSort(v as TermSort)}>
+          <SelectTrigger className="w-44">
+            <ArrowUpDown className="text-muted-foreground size-4" />
+            <SelectValue>
+              {(v) => TERM_SORT_LABEL[(v as TermSort) ?? "az"]}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {TERM_SORTS.map((s) => (
+              <SelectItem key={s} value={s}>
+                {TERM_SORT_LABEL[s]}
               </SelectItem>
             ))}
           </SelectContent>
@@ -634,7 +660,7 @@ export function TerminologyClient({ canManage }: { canManage: boolean }) {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete &ldquo;{removing?.word}&rdquo;?</AlertDialogTitle>
             <AlertDialogDescription>
-              It goes from the dictionary and from anyone&apos;s saved words.
+              It goes to the recycle bin — you can restore it from there.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -654,14 +680,18 @@ export function TerminologyClient({ canManage }: { canManage: boolean }) {
                 ? "Delete every word?"
                 : cleanup === "dedupe"
                   ? "Remove duplicate words?"
-                  : `Delete ${selected.size} word${selected.size === 1 ? "" : "s"}?`}
+                  : cleanup === "strip-copy"
+                    ? "Remove the “(copy)” tag?"
+                    : `Delete ${selected.size} word${selected.size === 1 ? "" : "s"}?`}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {cleanup === "delete-all"
                 ? "This empties the whole dictionary. It can't be undone."
                 : cleanup === "dedupe"
                   ? "Words that share a spelling and kind are merged to one — the copies an import left behind are removed. This can't be undone."
-                  : "The selected words go from the dictionary and from anyone's saved words. This can't be undone."}
+                  : cleanup === "strip-copy"
+                    ? "Every title ending in “(copy)” is renamed back to its plain spelling. A word that already exists without the tag is left for “Remove duplicates”."
+                    : "The selected words go to the recycle bin — you can restore them from there."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -669,12 +699,16 @@ export function TerminologyClient({ canManage }: { canManage: boolean }) {
             <AlertDialogAction
               onClick={() => void runCleanup()}
               className={
-                cleanup === "dedupe"
+                cleanup === "dedupe" || cleanup === "strip-copy"
                   ? ""
                   : "bg-destructive text-white hover:bg-destructive/90"
               }
             >
-              {cleanup === "dedupe" ? "Remove duplicates" : "Delete"}
+              {cleanup === "dedupe"
+                ? "Remove duplicates"
+                : cleanup === "strip-copy"
+                  ? "Remove “(copy)”"
+                  : "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

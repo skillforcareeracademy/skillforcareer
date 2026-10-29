@@ -183,6 +183,75 @@ export function VerifyQr({
   );
 }
 
+/**
+ * The academy's house certificate — the design the course award already uses,
+ * now the single design behind every award the academy issues ("same design
+ * rakh do course certificate wala and content change kr do iske according").
+ *
+ * The heading, the line of intro and the middle block change per award; the
+ * magenta double frame, the lockup and QR across the top, and the two
+ * signatures with the verification code along the foot stay the same — so every
+ * certificate the academy hands out reads as one set.
+ */
+export function ClassicCertificate({
+  cert,
+  chrome,
+  heading,
+  intro,
+  children,
+}: TemplateProps & {
+  heading: string;
+  intro: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <CertificateSheet className="bg-white text-neutral-900">
+      {/* The double frame: a heavy magenta edge with a fine navy keyline inside. */}
+      <div className="absolute inset-0 border-[1.2cqw] border-[#e6007e]" />
+      <div className="absolute inset-[2.2cqw] border-[0.15cqw] border-[#1f2a6e]" />
+
+      <div className="relative flex h-full flex-col px-[6cqw] py-[4.2cqw]">
+        <div className="flex items-start justify-between">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={chrome.logoUrl}
+            alt={chrome.siteName}
+            className="h-[6cqw] w-auto max-w-[22cqw] object-contain object-left"
+          />
+          <VerifyQr svg={chrome.qrSvg} />
+        </div>
+
+        <div className="mt-[1cqw] flex flex-1 flex-col items-center justify-center text-center">
+          <h1 className="text-[6.2cqw] leading-none font-bold text-[#e6007e]">{heading}</h1>
+          <div className="mt-[1.6cqw] h-[0.35cqw] w-[26cqw] bg-[#e6007e]" />
+
+          <p className="mt-[2.6cqw] text-[1.6cqw] text-neutral-500 italic">{intro}</p>
+          <p className="mt-[1cqw] text-[4.6cqw] leading-tight font-bold">{cert.studentName}</p>
+
+          {children}
+
+          <p className="mt-[1.4cqw] text-[1.4cqw] text-neutral-600">
+            Awarded on {longDate(cert.issuedAt)}
+          </p>
+        </div>
+
+        <div className="relative flex items-end justify-between">
+          <Signature signatory={chrome.left} />
+          {/* Centred on the foot, between the two signatures, exactly as on the
+              academy's existing certificate. */}
+          <p className="absolute inset-x-0 bottom-0 text-center text-[1.3cqw] font-bold">
+            Certificate Code: {cert.verificationCode}
+            {cert.details.batchId ? ` · Batch ID: ${cert.details.batchId}` : ""}
+          </p>
+          <Signature signatory={chrome.right} />
+        </div>
+      </div>
+
+      <RevokedStamp revoked={cert.status === "REVOKED"} />
+    </CertificateSheet>
+  );
+}
+
 /** Struck across the sheet when an award has been withdrawn. */
 export function RevokedStamp({ revoked }: { revoked: boolean }) {
   if (!revoked) return null;

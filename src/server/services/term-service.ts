@@ -3,6 +3,7 @@ import { Prisma } from "@/generated/prisma/client";
 import { AppError } from "@/lib/api/errors";
 import { toCsv, parseCsv } from "@/lib/csv";
 import { copyTitle, type ImportMode } from "@/lib/validations/import-mode";
+import { moveToTrash } from "@/server/services/trash-service";
 import {
   TERM_KINDS,
   normaliseWord,
@@ -116,10 +117,18 @@ export async function listTerms(
   }
 
   const where = and.length > 0 ? { AND: and } : {};
+  const orderBy: Prisma.TermOrderByWithRelationInput[] =
+    q.sort === "za"
+      ? [{ word: "desc" }]
+      : q.sort === "newest"
+        ? [{ createdAt: "desc" }]
+        : q.sort === "oldest"
+          ? [{ createdAt: "asc" }]
+          : [{ word: "asc" }];
   const [rows, total, saved] = await Promise.all([
     prisma.term.findMany({
       where,
-      orderBy: [{ word: "asc" }],
+      orderBy,
       skip: (q.page - 1) * q.pageSize,
       take: q.pageSize,
       include: { createdBy: { select: { name: true } } },
@@ -217,7 +226,10 @@ export async function updateTerm(id: string, input: TermInput): Promise<void> {
   });
 }
 
-export async function deleteTerm(id: string): Promise<void> {
+export async function deleteTerm(id: string, deletedById: string): Promise<void> {
+  // Take a copy into the recycle bin first, so the word (and the saves people
+  // made of it) can be put back.
+  await moveToTrash("TERM", id, deletedById);
   await prisma.termBookmark.deleteMany({ where: { termId: id } });
   const { count } = await prisma.term.deleteMany({ where: { id } });
   if (count === 0) throw AppError.notFound("That word is no longer here.");
@@ -436,9 +448,20 @@ export async function importTerms(
 
 // ── Bulk cleanup ──────────────────────────────────────────────────────────────
 
-/** Delete a chosen set of words. */
-export async function bulkDeleteTerms(ids: string[]): Promise<number> {
+/**
+ * Delete a chosen set of words. When `deletedById` is given the words go to the
+ * recycle bin first (a learner or staff member pressing delete); the internal
+ * cleanups — dedupe, "(copy)" strip — pass nothing and delete for good.
+ */
+export async function bulkDeleteTerms(
+  ids: string[],
+  deletedById?: string,
+): Promise<number> {
   if (ids.length === 0) return 0;
+  if (deletedById) {
+    for (const id of ids) await moveToTrash("TERM", id, deletedById);
+    await prisma.termBookmark.deleteMany({ where: { termId: { in: ids } } });
+  }
   let removed = 0;
   for (const batch of chunked(ids, 200)) {
     const res = await prisma.term.deleteMany({ where: { id: { in: batch } } });
@@ -486,4 +509,51 @@ export async function removeDuplicateTerms(): Promise<number> {
     for (const t of g) if (t.id !== keep.id) toDelete.push(t.id);
   }
   return bulkDeleteTerms(toDelete);
+}
+
+/**
+ * Remove the "(copy)" tag a copy-mode import put on every title — "why this
+ * (copy) word coming in the bracket of every title. I uploaded without copy
+ * word."
+ *
+ * A tagged word is renamed back to its plain spelling, unless a real word of the
+ * same spelling and kind already exists (then stripping it would just make a
+ * duplicate, so it is left for "Remove duplicates" instead). Returns how many
+ * were cleaned.
+ */
+export async function stripCopyTags(): Promise<number> {
+  const all = await prisma.term.findMany({
+    select: { id: true, word: true, kind: true, synonyms: true },
+    orderBy: { createdAt: "asc" },
+  });
+  // Spellings already taken by a word with no "(copy)" tag — a strip must not
+  // collide with one of these.
+  const taken = new Set(
+    all
+      .filter((t) => !/\(copy/i.test(t.word))
+      .map((t) => `${normaliseWord(t.word)}:${t.kind}`),
+  );
+
+  const updates: { id: string; data: Prisma.TermUncheckedUpdateInput }[] = [];
+  for (const t of all) {
+    if (!/\(copy/i.test(t.word)) continue;
+    const stripped = stripCopySuffix(t.word);
+    if (!stripped) continue;
+    const key = `${normaliseWord(stripped)}:${t.kind}`;
+    if (taken.has(key)) continue; // a plain twin exists — leave it for dedupe
+    updates.push({
+      id: t.id,
+      data: { word: stripped, ...keysFor(stripped, strings(t.synonyms)) },
+    });
+    taken.add(key);
+  }
+
+  // `updateMany` by id, not `update`: with relationMode = "prisma" a plain
+  // update re-checks every relation — a handful of extra queries per row.
+  for (const batch of chunked(updates, 20)) {
+    await Promise.all(
+      batch.map((u) => prisma.term.updateMany({ where: { id: u.id }, data: u.data })),
+    );
+  }
+  return updates.length;
 }

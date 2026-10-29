@@ -17,7 +17,7 @@ export const PATCH = withRoute(async (req, { params }) => {
 });
 
 export const DELETE = withRoute(async (_req, { params }) => {
-  await requireApiPermission(PERMISSIONS.MANAGE_MATERIAL);
-  await deleteTerm(String((await params).id));
-  return ok({ message: "Deleted." });
+  const user = await requireApiPermission(PERMISSIONS.MANAGE_MATERIAL);
+  await deleteTerm(String((await params).id), user.id);
+  return ok({ message: "Moved to the recycle bin." });
 });

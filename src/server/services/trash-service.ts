@@ -28,7 +28,8 @@ export type TrashKind =
   | "STUDY_MATERIAL"
   | "BATCH_NOTE"
   | "NOTE"
-  | "BLOG_POST";
+  | "BLOG_POST"
+  | "TERM";
 
 export const TRASH_KIND_LABEL: Record<TrashKind, string> = {
   QUIZ: "Quiz",
@@ -37,6 +38,7 @@ export const TRASH_KIND_LABEL: Record<TrashKind, string> = {
   BATCH_NOTE: "Batch note",
   NOTE: "Note",
   BLOG_POST: "Blog post",
+  TERM: "Terminology word",
 };
 
 /** Items a learner can throw away and get back themselves. */
@@ -137,6 +139,19 @@ const capture: Record<TrashKind, (id: string) => Promise<Captured | null>> = {
     const p = await prisma.blogPost.findUnique({ where: { id } });
     if (!p) return null;
     return { title: p.title, subtitle: p.excerpt?.slice(0, 120) ?? null, snapshot: { post: p } };
+  },
+
+  async TERM(id) {
+    const t = await prisma.term.findUnique({ where: { id } });
+    if (!t) return null;
+    // The saves people made are kept too, so a restored word comes back on the
+    // lists of everyone who had bookmarked it.
+    const bookmarks = await prisma.termBookmark.findMany({ where: { termId: id } });
+    return {
+      title: t.word,
+      subtitle: t.meaning?.slice(0, 120) ?? null,
+      snapshot: { term: t, bookmarks },
+    };
   },
 };
 
@@ -267,6 +282,17 @@ const restoreOne: Record<TrashKind, (snap: Snapshot) => Promise<void>> = {
       data: prepare(snap.post as Record<string, unknown>) as never,
     });
   },
+
+  async TERM(snap) {
+    await prisma.term.create({
+      data: prepare(snap.term as Record<string, unknown>) as never,
+    });
+    await restoreRows(
+      (rows) => prisma.termBookmark.createMany({ data: rows }),
+      { bookmarks: snap.bookmarks },
+      "bookmarks",
+    );
+  },
 };
 
 /**
@@ -396,6 +422,8 @@ async function existingIds(kind: TrashKind, ids: string[]): Promise<string[]> {
       return (await prisma.note.findMany({ where, select: pick })).map((r) => r.id);
     case "BLOG_POST":
       return (await prisma.blogPost.findMany({ where, select: pick })).map((r) => r.id);
+    case "TERM":
+      return (await prisma.term.findMany({ where, select: pick })).map((r) => r.id);
   }
 }
 

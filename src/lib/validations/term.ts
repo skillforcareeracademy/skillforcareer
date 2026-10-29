@@ -62,11 +62,23 @@ export const termSchema = z.object({
 
 export type TermInput = z.infer<typeof termSchema>;
 
+/** How the list is ordered — "datewise, A to Z, Z to A, Newest first, oldest first". */
+export const TERM_SORTS = ["az", "za", "newest", "oldest"] as const;
+export type TermSort = (typeof TERM_SORTS)[number];
+
+export const TERM_SORT_LABEL: Record<TermSort, string> = {
+  az: "A → Z",
+  za: "Z → A",
+  newest: "Newest first",
+  oldest: "Oldest first",
+};
+
 export const termListSchema = z.object({
   search: z.string().trim().max(120).optional(),
   kind: z.enum(TERM_KINDS).optional(),
   /** Only the ones this learner saved. */
   savedOnly: z.coerce.boolean().optional(),
+  sort: z.enum(TERM_SORTS).default("az"),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(200).default(50),
 });
@@ -84,6 +96,8 @@ export const bulkTermActionSchema = z.discriminatedUnion("action", [
   }),
   z.object({ action: z.literal("delete-all") }),
   z.object({ action: z.literal("dedupe") }),
+  // Strip the "(copy)" tag a copy-mode import left on titles.
+  z.object({ action: z.literal("strip-copy") }),
 ]);
 
 export type BulkTermAction = z.infer<typeof bulkTermActionSchema>;
