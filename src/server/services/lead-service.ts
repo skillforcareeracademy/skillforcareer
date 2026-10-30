@@ -218,10 +218,10 @@ export async function createLead(
         select: { id: true },
       });
 
-      if (source === "WEBSITE") {
+      if (source === "WEBSITE" || source === "META_ADS" || source === "GOOGLE_ADS") {
         await notifyStaff({
           type: "SYSTEM",
-          title: "New enquiry",
+          title: source === "WEBSITE" ? "New enquiry" : "New ad lead",
           message: `${input.name}${input.courseInterest ? ` — interested in ${input.courseInterest}` : ""} (${input.phone})`,
           actionUrl: "/admin/leads",
         });

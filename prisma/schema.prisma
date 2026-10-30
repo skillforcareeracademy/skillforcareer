@@ -3078,6 +3078,8 @@ enum LeadSource {
   PHONE
   WALK_IN
   SOCIAL
+  META_ADS
+  GOOGLE_ADS
 }
 
 /**
@@ -3111,6 +3113,11 @@ model Lead {
   whyThisCourse  String? @db.Text
 
   source    LeadSource     @default(WEBSITE)
+  /// The ad campaign/form this lead came from (Meta/Google ads), for attribution.
+  campaign  String?
+  /// The platform's own lead id (Meta leadgen id, Google lead id) — so a
+  /// retried webhook can't create the same lead twice.
+  externalId String?
   /// Counsellor's read on the lead, and a 0-100 score for ranking the queue.
   quality   LeadQuality?
   leadScore Int?
@@ -3184,6 +3191,7 @@ model Lead {
   @@index([visitDate])
   @@index([followUpDate])
   @@index([convertedUserId])
+  @@index([externalId])
   @@index([createdAt])
 }
 

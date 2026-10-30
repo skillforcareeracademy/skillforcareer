@@ -106,6 +106,18 @@ const serverSchema = z.object({
   // Empty strings are accepted so a copied .env.example still boots.
   CODING_PRACTICE_SSO_SECRET: z.string().min(16).optional().or(z.literal("")),
   CODING_PRACTICE_URL: z.string().url().optional().or(z.literal("")),
+
+  // ── Ads: lead capture into the CRM ─────────────────────────────────────────
+  // Facebook/Instagram (Meta) Lead Ads. All optional — unset means the webhook
+  // rejects everything and the integration is simply off. See
+  // src/app/api/webhooks/meta/leads/route.ts.
+  META_APP_SECRET: z.string().optional(), // verifies the webhook's signature
+  META_VERIFY_TOKEN: z.string().optional(), // the string Meta echoes back on setup
+  META_PAGE_ACCESS_TOKEN: z.string().optional(), // fetches a lead's field answers
+  META_GRAPH_VERSION: z.string().default("v21.0"),
+  // Google Ads Lead Forms. The form's webhook posts a `google_key` that must
+  // equal this; unset = the webhook is off.
+  GOOGLE_LEADS_KEY: z.string().optional(),
 });
 
 const clientSchema = z.object({

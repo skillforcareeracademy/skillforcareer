@@ -29,6 +29,8 @@ export const LEAD_SOURCES = [
   "PHONE",
   "WALK_IN",
   "SOCIAL",
+  "META_ADS",
+  "GOOGLE_ADS",
 ] as const;
 
 export const LEAD_CLASS_MODES = [
@@ -149,6 +151,8 @@ export const LEAD_SOURCE_LABELS: Record<LeadSource, string> = {
   PHONE: "Phone",
   WALK_IN: "Walk-in",
   SOCIAL: "Social",
+  META_ADS: "Facebook / Instagram Ads",
+  GOOGLE_ADS: "Google Ads",
 };
 
 export const LEAD_QUALITY_LABELS: Record<LeadQuality, string> = {
