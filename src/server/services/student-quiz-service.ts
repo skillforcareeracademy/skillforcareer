@@ -27,6 +27,8 @@ export interface StudentQuiz {
   passingScore: number;
   maxAttempts: number;
   attemptsUsed: number;
+  /** A paper left part-way, saved and waiting to be resumed. */
+  paused: boolean;
   bestPercent: number | null;
   passed: boolean;
   /** Saved for later from the list or the quiz itself. */
@@ -93,7 +95,7 @@ export async function listStudentQuizzes(
       questions: { select: { points: true } },
       attempts: {
         where: { studentId: userId },
-        select: { score: true, maxScore: true },
+        select: { score: true, maxScore: true, status: true },
       },
     },
   });
@@ -147,7 +149,11 @@ export async function listStudentQuizzes(
   return quizzes.map((z) => {
     const folder = folderFor(z.id);
     const totalPoints = z.questions.reduce((s, q) => s + q.points, 0);
-    const percents = z.attempts
+    // A paused paper is an IN_PROGRESS attempt — it is still this sitting, not an
+    // attempt spent, so it is left out of the count and marked on its own.
+    const paused = z.attempts.some((a) => a.status === "IN_PROGRESS");
+    const finished = z.attempts.filter((a) => a.status !== "IN_PROGRESS");
+    const percents = finished
       .filter((a) => a.score != null && a.maxScore > 0)
       .map((a) => Math.round(((a.score as number) / a.maxScore) * 100));
     const best = percents.length ? Math.max(...percents) : null;
@@ -161,7 +167,8 @@ export async function listStudentQuizzes(
       totalPoints,
       passingScore: z.passingScore,
       maxAttempts: z.maxAttempts || settings.quizAttemptLimit,
-      attemptsUsed: z.attempts.length,
+      attemptsUsed: finished.length,
+      paused,
       bestPercent: best,
       passed: best != null && best >= z.passingScore,
       bookmarked: saved.has(z.id),

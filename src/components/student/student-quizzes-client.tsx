@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   RefreshCw,
   PlayCircle,
+  PauseCircle,
   Search,
   History,
 } from "lucide-react";
@@ -169,14 +170,18 @@ export function StudentQuizzesClient({ quizzes }: { quizzes: StudentQuiz[] }) {
               // 0 is unlimited — a practice set must not read as "used up".
               const exhausted =
                 q.maxAttempts > 0 && q.attemptsUsed >= q.maxAttempts;
-              const cta =
-                q.attemptsUsed === 0
+              // A paused paper is picked up where it was left — "Resume" over
+              // anything else, and it is never "used up" while it is still open.
+              const cta = q.paused
+                ? "Resume"
+                : q.attemptsUsed === 0
                   ? "Start quiz"
                   : exhausted
                     ? "View result"
                     : "Retake";
-              const Icon =
-                q.attemptsUsed === 0
+              const Icon = q.paused
+                ? PlayCircle
+                : q.attemptsUsed === 0
                   ? PlayCircle
                   : exhausted
                     ? Award
@@ -207,6 +212,16 @@ export function StudentQuizzesClient({ quizzes }: { quizzes: StudentQuiz[] }) {
                       </p>
                     </div>
                     <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
+                      {/* Left part-way and saved — so a learner spots it to
+                          pick up, rather than starting over by mistake. */}
+                      {q.paused && (
+                        <Badge
+                          variant="secondary"
+                          className="gap-1 bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300"
+                        >
+                          <PauseCircle className="size-3" /> Paused
+                        </Badge>
+                      )}
                       {/* The level, where a learner can see it before starting
                           — "card ke upar students ko dikhna chahiye ki quiz
                           type: easy, intermediate or Difficult". */}
@@ -266,7 +281,7 @@ export function StudentQuizzesClient({ quizzes }: { quizzes: StudentQuiz[] }) {
                     <ButtonLink
                       href={`/student/quizzes/${q.id}`}
                       size="sm"
-                      variant={q.attemptsUsed === 0 ? "default" : "outline"}
+                      variant={q.paused || q.attemptsUsed === 0 ? "default" : "outline"}
                     >
                       <Icon className="size-4" /> {cta}
                     </ButtonLink>

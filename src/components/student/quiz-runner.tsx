@@ -19,6 +19,7 @@ import {
   Lock,
   History,
   PauseCircle,
+  PlayCircle,
   RefreshCw,
   Trophy,
   Clock,
@@ -363,6 +364,14 @@ const QuestionCard = memo(function QuestionCard({
 export function QuizRunner({ quiz }: { quiz: QuizData }) {
   const router = useRouter();
   const [restarting, setRestarting] = useState(false);
+  /**
+   * A paused paper opens on a choice — resume or start over — rather than
+   * dropping the learner straight back into the questions. Without the choice it
+   * auto-resumed behind a small "Start fresh" button, and a learner who meant to
+   * carry on could wipe their saved answers with one tap. No paused work: nothing
+   * to choose, so this is already true.
+   */
+  const [resumed, setResumed] = useState(!quiz.paused);
 
   /**
    * Throw the paused answers away and begin again.
@@ -943,6 +952,66 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
           onOpenChange={setHistoryOpen}
           quizId={quiz.id}
         />
+      </div>
+    );
+  }
+
+  // ── Resume or start fresh ────────────────────────────────────────────────────
+  // "Agar resume kare student to wahi se start ho jahan chhoda tha, and agar
+  // restart kare to fresh quiz start ho." The paused answers are already loaded
+  // into state; resuming just reveals the paper, starting fresh throws them away.
+  if (quiz.paused && !resumed && !quiz.preview) {
+    const savedCount = quiz.paused.answers.filter(
+      (a) => a.optionIds.length > 0 || a.text.trim().length > 0,
+    ).length;
+    return (
+      <div className="mx-auto max-w-xl space-y-5 py-10 text-center">
+        <div className="bg-primary/10 mx-auto grid size-14 place-items-center rounded-2xl">
+          <PauseCircle className="text-primary size-7" />
+        </div>
+        <div className="space-y-1">
+          <h1 className="text-xl font-bold">{quiz.title}</h1>
+          <p className="text-muted-foreground text-sm">
+            You paused this quiz on{" "}
+            {new Date(quiz.paused.pausedAt).toLocaleString("en-IN", {
+              day: "numeric",
+              month: "short",
+              hour: "numeric",
+              minute: "2-digit",
+            })}
+            . Your {savedCount} answered question{savedCount === 1 ? "" : "s"}{" "}
+            {savedCount === 1 ? "is" : "are"} saved.
+          </p>
+        </div>
+        <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:justify-center">
+          <Button size="lg" onClick={() => setResumed(true)}>
+            <PlayCircle className="size-4" /> Resume where I left off
+          </Button>
+          <Button
+            size="lg"
+            variant="outline"
+            disabled={restarting}
+            onClick={() => void startFresh()}
+          >
+            {restarting ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <RefreshCw className="size-4" />
+            )}
+            Start fresh
+          </Button>
+        </div>
+        <p className="text-muted-foreground text-xs">
+          Resuming continues the same attempt — it doesn&apos;t use another one.
+          Starting fresh clears your saved answers and begins again.
+        </p>
+        <Button
+          variant="ghost"
+          nativeButton={false}
+          render={<Link href="/student/quizzes" />}
+        >
+          <ArrowLeft className="size-4" /> Back to quizzes
+        </Button>
       </div>
     );
   }
