@@ -13,6 +13,75 @@ import { createLead } from "./lead-service";
  * can't create the same person twice.
  */
 
+/** Ad-lead performance for the Ads dashboard — all from the CRM, no ad-platform
+ *  API needed (that comes with spend/cost-per-lead later). */
+export interface AdLeadStats {
+  total: number;
+  thisMonth: number;
+  byPlatform: { meta: number; google: number };
+  converted: number;
+  conversionPct: number;
+  topCampaigns: { campaign: string; leads: number; converted: number }[];
+  /** Eight most recent weeks, oldest first. */
+  weeks: { label: string; meta: number; google: number }[];
+}
+
+export async function adLeadStats(): Promise<AdLeadStats> {
+  const leads = await prisma.lead.findMany({
+    where: { source: { in: ["META_ADS", "GOOGLE_ADS"] } },
+    select: { source: true, campaign: true, createdAt: true, stage: true },
+  });
+
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const isConverted = (s: string | null) => s === "CONVERTED";
+
+  const total = leads.length;
+  const thisMonth = leads.filter((l) => l.createdAt >= monthStart).length;
+  const meta = leads.filter((l) => l.source === "META_ADS").length;
+  const google = leads.filter((l) => l.source === "GOOGLE_ADS").length;
+  const converted = leads.filter((l) => isConverted(l.stage)).length;
+
+  const byCamp = new Map<string, { leads: number; converted: number }>();
+  for (const l of leads) {
+    const key = l.campaign?.trim() || "No campaign";
+    const e = byCamp.get(key) ?? { leads: 0, converted: 0 };
+    e.leads += 1;
+    if (isConverted(l.stage)) e.converted += 1;
+    byCamp.set(key, e);
+  }
+  const topCampaigns = [...byCamp.entries()]
+    .map(([campaign, v]) => ({ campaign, ...v }))
+    .sort((a, b) => b.leads - a.leads)
+    .slice(0, 8);
+
+  // Eight weekly buckets, Monday-aligned, oldest first.
+  const msWeek = 7 * 24 * 60 * 60 * 1000;
+  const thisWeek = new Date(now);
+  thisWeek.setHours(0, 0, 0, 0);
+  thisWeek.setDate(thisWeek.getDate() - ((thisWeek.getDay() + 6) % 7));
+  const weeks = Array.from({ length: 8 }, (_, i) => {
+    const start = new Date(thisWeek.getTime() - (7 - i) * msWeek);
+    const end = new Date(start.getTime() + msWeek);
+    const inWeek = leads.filter((l) => l.createdAt >= start && l.createdAt < end);
+    return {
+      label: start.toLocaleDateString("en-IN", { day: "numeric", month: "short" }),
+      meta: inWeek.filter((l) => l.source === "META_ADS").length,
+      google: inWeek.filter((l) => l.source === "GOOGLE_ADS").length,
+    };
+  });
+
+  return {
+    total,
+    thisMonth,
+    byPlatform: { meta, google },
+    converted,
+    conversionPct: total > 0 ? Math.round((converted / total) * 100) : 0,
+    topCampaigns,
+    weeks,
+  };
+}
+
 interface MappedLead {
   name: string;
   phone: string;
