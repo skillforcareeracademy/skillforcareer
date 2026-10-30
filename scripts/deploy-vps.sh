@@ -13,7 +13,7 @@
 #
 set -euo pipefail
 
-VPS_HOST="${VPS_HOST:-187.127.181.146}"
+VPS_HOST="${VPS_HOST:-177.7.63.74}"
 VPS_USER="${VPS_USER:-root}"
 VPS_KEY="${VPS_KEY:-$HOME/.ssh/sfc_vps}"
 REMOTE_ROOT="${REMOTE_ROOT:-/var/www/skillforcareer}"
