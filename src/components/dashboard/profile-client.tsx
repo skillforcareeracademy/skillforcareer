@@ -210,13 +210,29 @@ export function ProfileClient({
                   {/* Birthday — the academy sends wishes and a referral
                       voucher on the day. */}
                   <Field label="Date of birth" htmlFor="dateOfBirth">
-                    <Input
-                      id="dateOfBirth"
-                      type="date"
-                      value={dateOfBirth}
-                      max={new Date().toISOString().slice(0, 10)}
-                      onChange={(e) => setDateOfBirth(e.target.value)}
-                    />
+                    {/* Our own Clear beside the picker: the date input's native
+                        "Reset" (the iPad popup button) doesn't reliably clear a
+                        controlled value, so this is the dependable way to wipe
+                        the birthday on any device. */}
+                    <div className="flex items-center gap-2">
+                      <Input
+                        id="dateOfBirth"
+                        type="date"
+                        value={dateOfBirth}
+                        max={new Date().toISOString().slice(0, 10)}
+                        onChange={(e) => setDateOfBirth(e.target.value)}
+                      />
+                      {dateOfBirth && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setDateOfBirth("")}
+                        >
+                          Clear
+                        </Button>
+                      )}
+                    </div>
                   </Field>
                 </div>
 
