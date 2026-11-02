@@ -4,10 +4,6 @@ import {
   Rocket,
   Megaphone,
   Search,
-  CheckCircle2,
-  CircleDashed,
-  Webhook,
-  ArrowRight,
   Info,
   Users,
   TrendingUp,
@@ -16,11 +12,11 @@ import {
 import { requirePermission } from "@/lib/auth/require";
 import { PERMISSIONS } from "@/config/roles";
 import { env } from "@/lib/env";
-import { metaConfigured, googleConfigured } from "@/lib/ad-leads";
+import { adConfigStatus } from "@/server/services/ad-config-service";
 import { adLeadStats } from "@/server/services/ad-lead-service";
+import { AdConnectForm } from "@/components/admin/ads/ad-connect-form";
 import { PageHeader } from "@/components/shared/page-header";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 
 export const metadata: Metadata = { title: "Ads" };
 export const dynamic = "force-dynamic";
@@ -33,10 +29,10 @@ export const dynamic = "force-dynamic";
  * platform. Spend / cost-per-lead and campaign management come next.
  */
 export default async function AdIntegrationsPage() {
-  await requirePermission(PERMISSIONS.MANAGE_LEADS);
+  await requirePermission(PERMISSIONS.MANAGE_ADS);
 
   const base = env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "");
-  const stats = await adLeadStats();
+  const [stats, status] = await Promise.all([adLeadStats(), adConfigStatus()]);
   const peakWeek = Math.max(1, ...stats.weeks.map((w) => w.meta + w.google));
 
   const cards = [
@@ -49,40 +45,6 @@ export default async function AdIntegrationsPage() {
       value: stats.converted,
       sub: stats.total > 0 ? `${stats.conversionPct}% of leads` : null,
       icon: UserCheck,
-    },
-  ];
-
-  const integrations = [
-    {
-      key: "meta",
-      name: "Facebook / Instagram Ads",
-      icon: Megaphone,
-      connected: metaConfigured(),
-      leads: stats.byPlatform.meta,
-      source: "META_ADS",
-      webhook: `${base}/api/webhooks/meta/leads`,
-      tint: "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300",
-      steps: [
-        "Create a Meta App (developers.facebook.com, type “Business”) and add the Webhooks + Lead Ads products.",
-        "Request leads_retrieval, pages_manage_ads, pages_read_engagement, pages_show_list and submit for App Review.",
-        "Subscribe the Page to the leadgen webhook with the URL below and your Verify Token.",
-        "Send your App ID, App Secret, Page ID and a long-lived Page Access Token — these go in the server config and the connection turns green.",
-      ],
-    },
-    {
-      key: "google",
-      name: "Google Ads",
-      icon: Search,
-      connected: googleConfigured(),
-      leads: stats.byPlatform.google,
-      source: "GOOGLE_ADS",
-      webhook: `${base}/api/webhooks/google/leads`,
-      tint: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300",
-      steps: [
-        "Open your Lead Form asset in Google Ads and go to its Webhook integration.",
-        "Paste the Webhook URL below and set a Key (any secret string).",
-        "Send me that Key — it goes in the server config and the connection turns green.",
-      ],
     },
   ];
 
@@ -178,61 +140,14 @@ export default async function AdIntegrationsPage() {
         </div>
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        {integrations.map((it) => (
-          <Card key={it.key} className="flex flex-col gap-4 p-5">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <span className={`grid size-10 place-items-center rounded-xl ${it.tint}`}>
-                  <it.icon className="size-5" />
-                </span>
-                <div>
-                  <h2 className="font-semibold">{it.name}</h2>
-                  <p className="text-muted-foreground text-xs">
-                    {it.leads} lead{it.leads === 1 ? "" : "s"} captured
-                  </p>
-                </div>
-              </div>
-              {it.connected ? (
-                <Badge className="gap-1 bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
-                  <CheckCircle2 className="size-3.5" /> Connected
-                </Badge>
-              ) : (
-                <Badge variant="secondary" className="gap-1">
-                  <CircleDashed className="size-3.5" /> Not connected
-                </Badge>
-              )}
-            </div>
-
-            <div className="space-y-1.5">
-              <p className="text-muted-foreground flex items-center gap-1.5 text-xs font-medium">
-                <Webhook className="size-3.5" /> Webhook URL
-              </p>
-              <code className="bg-muted block overflow-x-auto rounded-md px-3 py-2 text-xs select-all">
-                {it.webhook}
-              </code>
-            </div>
-
-            <div className="space-y-1.5">
-              <p className="text-muted-foreground text-xs font-medium">Setup</p>
-              <ol className="text-muted-foreground list-decimal space-y-1 pl-5 text-xs">
-                {it.steps.map((s) => (
-                  <li key={s}>{s}</li>
-                ))}
-              </ol>
-            </div>
-
-            {it.leads > 0 && (
-              <Link
-                href={`/admin/leads?source=${it.source}`}
-                className="text-primary inline-flex items-center gap-1 text-sm font-medium hover:underline"
-              >
-                View these leads <ArrowRight className="size-4" />
-              </Link>
-            )}
-          </Card>
-        ))}
-      </div>
+      <AdConnectForm
+        status={status}
+        webhooks={{
+          meta: `${base}/api/webhooks/meta/leads`,
+          google: `${base}/api/webhooks/google/leads`,
+        }}
+        leads={{ meta: stats.byPlatform.meta, google: stats.byPlatform.google }}
+      />
 
       <p className="text-muted-foreground flex items-center gap-1.5 text-xs">
         <Rocket className="size-3.5" />

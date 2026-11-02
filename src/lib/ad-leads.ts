@@ -1,34 +1,30 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { env } from "@/lib/env";
+import type { MetaConfig } from "@/server/services/ad-config-service";
 
 /**
  * Ad-platform lead capture — the plumbing that turns a Facebook/Instagram or
  * Google ad lead into a row in the academy's own CRM, so the sales team never
  * has to leave the panel.
  *
- * Everything here is inert until the matching env vars are set, so an
- * unconfigured deployment simply rejects the webhooks rather than failing.
+ * These are the pure crypto/fetch helpers; the credentials themselves come from
+ * {@link import("@/server/services/ad-config-service")} (the panel's connect
+ * form, with env as a fallback), so everything here takes the resolved value as
+ * an argument rather than reading it directly.
  */
-
-/** Whether Meta (Facebook/Instagram) Lead Ads capture is switched on. */
-export function metaConfigured(): boolean {
-  return Boolean(env.META_APP_SECRET && env.META_PAGE_ACCESS_TOKEN);
-}
-
-/** Whether Google Ads Lead Form capture is switched on. */
-export function googleConfigured(): boolean {
-  return Boolean(env.GOOGLE_LEADS_KEY);
-}
 
 /**
  * Verify Meta's `X-Hub-Signature-256` over the RAW request body. Trust comes
  * entirely from this HMAC — the endpoint is public — so a bad or missing
- * signature is rejected before anything is parsed.
+ * signature (or an unset secret) is rejected before anything is parsed.
  */
-export function verifyMetaSignature(rawBody: string, header: string | null): boolean {
-  if (!env.META_APP_SECRET || !header) return false;
+export function verifyMetaSignature(
+  rawBody: string,
+  header: string | null,
+  appSecret: string,
+): boolean {
+  if (!appSecret || !header) return false;
   const expected =
-    "sha256=" + createHmac("sha256", env.META_APP_SECRET).update(rawBody).digest("hex");
+    "sha256=" + createHmac("sha256", appSecret).update(rawBody).digest("hex");
   const a = Buffer.from(header);
   const b = Buffer.from(expected);
   return a.length === b.length && timingSafeEqual(a, b);
@@ -45,15 +41,17 @@ export interface MetaLeadData {
 /**
  * Fetch one lead's answers from the Graph API. Meta's webhook only carries the
  * lead's id; the answers are read back with the page token, which is why the
- * token is required for the integration to be "configured".
+ * token is required for the integration to be "ready".
  */
-export async function fetchMetaLead(leadgenId: string): Promise<MetaLeadData | null> {
-  if (!metaConfigured()) return null;
-  const v = env.META_GRAPH_VERSION;
+export async function fetchMetaLead(
+  leadgenId: string,
+  cfg: MetaConfig,
+): Promise<MetaLeadData | null> {
+  if (!cfg.pageToken) return null;
   const url =
-    `https://graph.facebook.com/${v}/${encodeURIComponent(leadgenId)}` +
+    `https://graph.facebook.com/${cfg.graphVersion}/${encodeURIComponent(leadgenId)}` +
     `?fields=field_data,campaign_name,ad_name,form_id` +
-    `&access_token=${encodeURIComponent(env.META_PAGE_ACCESS_TOKEN ?? "")}`;
+    `&access_token=${encodeURIComponent(cfg.pageToken)}`;
   try {
     const res = await fetch(url, { cache: "no-store" });
     if (!res.ok) return null;
@@ -80,9 +78,9 @@ export async function fetchMetaLead(leadgenId: string): Promise<MetaLeadData | n
 }
 
 /** Constant-time equality for the Google lead-form shared key. */
-export function googleKeyMatches(key: unknown): boolean {
-  if (!env.GOOGLE_LEADS_KEY || typeof key !== "string") return false;
+export function googleKeyMatches(key: unknown, configured: string): boolean {
+  if (!configured || typeof key !== "string") return false;
   const a = Buffer.from(key);
-  const b = Buffer.from(env.GOOGLE_LEADS_KEY);
+  const b = Buffer.from(configured);
   return a.length === b.length && timingSafeEqual(a, b);
 }

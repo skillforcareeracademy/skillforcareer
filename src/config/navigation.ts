@@ -230,7 +230,7 @@ export const NAV_SECTIONS: NavSection[] = [
       },
       { title: "Users", href: "/users", icon: Users, roles: STAFF },
       { title: "Leads", href: "/leads", icon: Target, roles: SALES },
-      { title: "Ads", href: "/ad-integrations", icon: Rocket, roles: SALES },
+      { title: "Ads", href: "/ad-integrations", icon: Rocket, roles: ACADEMY },
       { title: "Careers", href: "/careers", icon: Briefcase, roles: ACADEMY },
       { title: "Holidays", href: "/holidays", icon: PartyPopper, roles: ACADEMY },
       { title: "Schedule", href: "/schedule", icon: CalendarClock, roles: TEACHING },

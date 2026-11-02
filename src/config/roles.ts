@@ -52,6 +52,13 @@ export const PERMISSIONS = {
   VIEW_REPORTS: "reports:view",
   MANAGE_LEADS: "leads:manage",
   /**
+   * Connecting the Facebook/Google ad accounts and reading the Ads dashboard.
+   * Kept apart from MANAGE_LEADS on purpose: a sales agent works the leads an ad
+   * brings in, but only an admin sets up (and sees the secrets behind) the
+   * connection itself.
+   */
+  MANAGE_ADS: "ads:manage",
+  /**
    * Writing the academy's curriculums. Admins hold it by default; an admin can
    * grant it to instructors from Roles — the academy's "admin and instructor
    * (if admin allows)".
@@ -109,6 +116,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     P.MANAGE_HOMEPAGE,
     P.VIEW_REPORTS,
     P.MANAGE_LEADS,
+    P.MANAGE_ADS,
     P.MANAGE_PLACEMENTS,
     P.SEND_BROADCAST,
     P.MANAGE_CURRICULUM,

@@ -1,5 +1,6 @@
 import { logger } from "@/lib/logger";
-import { googleConfigured, googleKeyMatches } from "@/lib/ad-leads";
+import { googleKeyMatches } from "@/lib/ad-leads";
+import { getGoogleConfig, googleReady } from "@/server/services/ad-config-service";
 import { ingestGoogleLead } from "@/server/services/ad-lead-service";
 
 export const runtime = "nodejs";
@@ -13,7 +14,8 @@ export const dynamic = "force-dynamic";
  * test ping (`is_test`) is acknowledged without creating a lead.
  */
 export async function POST(req: Request): Promise<Response> {
-  if (!googleConfigured()) return new Response("Not configured", { status: 503 });
+  const cfg = await getGoogleConfig();
+  if (!googleReady(cfg)) return new Response("Not configured", { status: 503 });
 
   let body: Record<string, unknown>;
   try {
@@ -22,7 +24,7 @@ export async function POST(req: Request): Promise<Response> {
     return new Response("Bad JSON", { status: 400 });
   }
 
-  if (!googleKeyMatches(body.google_key)) {
+  if (!googleKeyMatches(body.google_key, cfg.leadsKey)) {
     logger.warn("ad_lead.google_bad_key");
     return new Response("Forbidden", { status: 403 });
   }

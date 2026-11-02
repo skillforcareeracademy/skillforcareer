@@ -1073,6 +1073,26 @@ model UserPermission {
   @@index([permissionId])
 }
 
+/// The academy's ad-platform connections, entered from the Ads page by an admin.
+///
+/// One row, id "default" — a singleton. "Ad me kaise connect krein, edit ka
+/// option nhi aa rha": the client wanted to connect Facebook/Google from inside
+/// the panel rather than hand the keys over to us. A value set here overrides
+/// the matching env var; a field left blank falls back to env, so a deployment
+/// already wired through the server keeps working. The secrets never leave the
+/// server — the screen only ever learns whether each one is set.
+model AdConfig {
+  id              String   @id @default("default")
+  metaAppId       String?
+  metaAppSecret   String?  @db.Text
+  metaPageId      String?
+  metaPageToken   String?  @db.Text
+  metaVerifyToken String?
+  googleLeadsKey  String?
+  updatedAt       DateTime @updatedAt
+  updatedBy       String?
+}
+
 model RolePermission {
   roleId       String
   permissionId String

@@ -1,6 +1,6 @@
-import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
-import { verifyMetaSignature, metaConfigured } from "@/lib/ad-leads";
+import { verifyMetaSignature } from "@/lib/ad-leads";
+import { getMetaConfig, metaReady } from "@/server/services/ad-config-service";
 import { ingestMetaLead } from "@/server/services/ad-lead-service";
 
 export const runtime = "nodejs";
@@ -21,7 +21,8 @@ export async function GET(req: Request): Promise<Response> {
   const mode = sp.get("hub.mode");
   const token = sp.get("hub.verify_token");
   const challenge = sp.get("hub.challenge") ?? "";
-  if (mode === "subscribe" && env.META_VERIFY_TOKEN && token === env.META_VERIFY_TOKEN) {
+  const { verifyToken } = await getMetaConfig();
+  if (mode === "subscribe" && verifyToken && token === verifyToken) {
     return new Response(challenge, {
       status: 200,
       headers: { "Content-Type": "text/plain" },
@@ -32,8 +33,9 @@ export async function GET(req: Request): Promise<Response> {
 
 export async function POST(req: Request): Promise<Response> {
   const raw = await req.text();
-  if (!metaConfigured()) return new Response("Not configured", { status: 503 });
-  if (!verifyMetaSignature(raw, req.headers.get("x-hub-signature-256"))) {
+  const cfg = await getMetaConfig();
+  if (!metaReady(cfg)) return new Response("Not configured", { status: 503 });
+  if (!verifyMetaSignature(raw, req.headers.get("x-hub-signature-256"), cfg.appSecret)) {
     logger.warn("ad_lead.meta_bad_signature");
     return new Response("Bad signature", { status: 401 });
   }

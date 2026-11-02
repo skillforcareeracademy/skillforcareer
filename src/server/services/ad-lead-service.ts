@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { fetchMetaLead } from "@/lib/ad-leads";
+import { getMetaConfig } from "./ad-config-service";
 import { createLead } from "./lead-service";
 
 /**
@@ -131,7 +132,7 @@ async function saveAdLead(
 
 /** Pull one Meta lead's answers and file it in the CRM. */
 export async function ingestMetaLead(leadgenId: string): Promise<void> {
-  const data = await fetchMetaLead(leadgenId);
+  const data = await fetchMetaLead(leadgenId, await getMetaConfig());
   if (!data) {
     logger.warn("ad_lead.meta_fetch_failed", { leadgenId });
     return;
