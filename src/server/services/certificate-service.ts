@@ -190,11 +190,25 @@ export async function getCertificateByCode(code: string) {
 }
 
 export async function listUsersForSelect() {
-  return prisma.user.findMany({
-    select: { id: true, name: true, email: true },
+  // Courses each learner is enrolled on, so the issue dialog can filter the
+  // list course-wise ("coursewise search ho sake"). One extra query under
+  // relationMode = "prisma", not a per-user round trip.
+  const users = await prisma.user.findMany({
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      enrollments: { select: { courseId: true } },
+    },
     orderBy: { name: "asc" },
     take: 500,
   });
+  return users.map((u) => ({
+    id: u.id,
+    name: u.name,
+    email: u.email,
+    courseIds: u.enrollments.map((e) => e.courseId),
+  }));
 }
 
 export async function listCoursesForSelect() {

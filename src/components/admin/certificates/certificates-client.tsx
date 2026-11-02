@@ -15,6 +15,8 @@ import {
   Eye,
   RotateCcw,
   X,
+  Search,
+  Check,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
@@ -92,6 +94,8 @@ interface UserOpt {
   id: string;
   name: string;
   email: string;
+  /** Courses this learner is enrolled on — powers the course-wise filter. */
+  courseIds?: string[];
 }
 interface CourseOpt {
   id: string;
@@ -142,6 +146,8 @@ export function CertificatesClient({
   const [search, setSearch] = useState(query.search ?? "");
   const [issueOpen, setIssueOpen] = useState(false);
   const [newUser, setNewUser] = useState("");
+  const [learnerSearch, setLearnerSearch] = useState("");
+  const [learnerCourse, setLearnerCourse] = useState(ALL);
   const [newCourse, setNewCourse] = useState("");
   const [newType, setNewType] = useState<CertificateType>("COURSE_COMPLETION");
   const [newDetails, setNewDetails] = useState<Record<string, string>>({});
@@ -209,6 +215,8 @@ export function CertificatesClient({
       toast.success("Certificate issued.");
       setIssueOpen(false);
       setNewUser("");
+      setLearnerSearch("");
+      setLearnerCourse(ALL);
       setNewCourse("");
       setNewDetails({});
       router.refresh();
@@ -461,6 +469,23 @@ export function CertificatesClient({
     newUser && (!CERTIFICATE_TYPE_META[newType].needsCourse || newCourse),
   );
 
+  // The learner picker: a text search over name/email, plus a course-wise
+  // filter so the academy can pull up only the people on a given course
+  // ("coursewise search ho sake"). Capped at 100 rows so a 500-learner academy
+  // doesn't render a giant list — the search narrows it well before that.
+  const learnerQuery = learnerSearch.trim().toLowerCase();
+  const matchedLearners = users.filter((u) => {
+    if (learnerCourse !== ALL && !(u.courseIds ?? []).includes(learnerCourse))
+      return false;
+    if (!learnerQuery) return true;
+    return (
+      u.name.toLowerCase().includes(learnerQuery) ||
+      u.email.toLowerCase().includes(learnerQuery)
+    );
+  });
+  const shownLearners = matchedLearners.slice(0, 100);
+  const selectedLearner = users.find((u) => u.id === newUser);
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -681,26 +706,97 @@ export function CertificatesClient({
 
               <div className="space-y-1.5">
                 <Label>Learner</Label>
-                <Select
-                  value={newUser}
-                  onValueChange={(v) => setNewUser(v ?? "")}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Choose a learner">
-                      {(v) =>
-                        users.find((u) => u.id === v)?.name ??
-                        "Choose a learner"
-                      }
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {users.map((u) => (
-                      <SelectItem key={u.id} value={u.id}>
-                        {u.name} · {u.email}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {/* Filter by course, then search by name/email, then pick from
+                    the list — so a certificate can be issued course-wise. */}
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Select
+                    value={learnerCourse}
+                    onValueChange={(v) => setLearnerCourse(v || ALL)}
+                  >
+                    <SelectTrigger className="sm:w-48">
+                      <SelectValue>
+                        {(v) =>
+                          !v || v === ALL
+                            ? "All courses"
+                            : (courses.find((c) => c.id === v)?.title ??
+                              "Course")
+                        }
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ALL}>All courses</SelectItem>
+                      {courses.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.title}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="relative flex-1">
+                    <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
+                    <Input
+                      value={learnerSearch}
+                      placeholder="Search by name or email…"
+                      className="pl-8"
+                      onChange={(e) => setLearnerSearch(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="max-h-52 overflow-y-auto rounded-lg border">
+                  {shownLearners.length === 0 ? (
+                    <p className="text-muted-foreground p-4 text-center text-sm">
+                      No learners match.
+                      {learnerCourse !== ALL && " Try another course."}
+                    </p>
+                  ) : (
+                    <ul className="divide-y">
+                      {shownLearners.map((u) => {
+                        const active = u.id === newUser;
+                        return (
+                          <li key={u.id}>
+                            <button
+                              type="button"
+                              onClick={() => setNewUser(u.id)}
+                              aria-pressed={active}
+                              className={cn(
+                                "flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors",
+                                active ? "bg-primary/5" : "hover:bg-muted/50",
+                              )}
+                            >
+                              <Check
+                                className={cn(
+                                  "size-4 shrink-0",
+                                  active
+                                    ? "text-primary"
+                                    : "text-transparent",
+                                )}
+                              />
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate font-medium">
+                                  {u.name}
+                                </span>
+                                <span className="text-muted-foreground block truncate text-xs">
+                                  {u.email}
+                                </span>
+                              </span>
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+                {matchedLearners.length > shownLearners.length && (
+                  <p className="text-muted-foreground text-xs">
+                    Showing first {shownLearners.length} of{" "}
+                    {matchedLearners.length}. Keep typing to narrow it down.
+                  </p>
+                )}
+                {selectedLearner && (
+                  <p className="text-muted-foreground text-xs">
+                    Selected: <span className="text-foreground font-medium">{selectedLearner.name}</span>
+                  </p>
+                )}
               </div>
               {CERTIFICATE_TYPE_META[newType].needsCourse && (
                 <div className="space-y-1.5">
