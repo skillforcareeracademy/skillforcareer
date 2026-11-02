@@ -108,6 +108,25 @@ export function GroupField({
     }
   }
 
+  /**
+   * Rename a folder in place — "group name edit krne ka option nhi hai". The
+   * backend already allows it; this just surfaces it on the picker and refreshes
+   * the list so the new name shows at once.
+   */
+  async function renameGroup(id: string, name: string) {
+    try {
+      await api.patch(`/api/groups/${id}`, { name });
+      const refreshed = await api.get<{ groups: GroupOption[] }>(
+        `/api/groups?kind=${kind}&flat=1`,
+      );
+      setOptions(refreshed.groups);
+      toast.success("Group renamed.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Couldn't rename the group.");
+      throw err; // keep the row in edit mode so it can be retried
+    }
+  }
+
   if (!itemId) {
     return (
       <p className="text-muted-foreground text-xs">
@@ -124,6 +143,7 @@ export function GroupField({
         options={options}
         value={value}
         onChange={(next) => void change(next)}
+        onRename={renameGroup}
         emptyHint={ready ? "No groups yet — make one below." : "Loading…"}
       />
       <div className="flex gap-2">
