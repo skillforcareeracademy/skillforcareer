@@ -198,7 +198,16 @@ async function authorize(req: NextRequest, userId: string, role: Role, section: 
         section === "/admin"
           ? permissionForAdminPath(req.nextUrl.pathname.slice("/admin".length))
           : null;
-      if (!needed || !(await holdsPermission(userId, needed))) {
+      // Any one of the page's permissions is enough — Leads opens on the
+      // all-access manage OR a sales agent's own-scoped view/edit.
+      let permitted = false;
+      for (const key of needed ?? []) {
+        if (await holdsPermission(userId, key)) {
+          permitted = true;
+          break;
+        }
+      }
+      if (!permitted) {
         const url = req.nextUrl.clone();
         url.pathname = ROLE_HOME[role] ?? "/login";
         url.search = "";

@@ -23,7 +23,9 @@ import { PERMISSIONS } from "./roles";
  * deliberately absent: it is not expressible as one permission, so it stays
  * exactly as restricted as it was.
  */
-export const ADMIN_PATH_PERMISSION: Readonly<Record<string, string>> = {
+export const ADMIN_PATH_PERMISSION: Readonly<
+  Record<string, string | readonly string[]>
+> = {
   "/blog": PERMISSIONS.MANAGE_HOMEPAGE,
   "/board": PERMISSIONS.HOST_LIVE_CLASS,
   "/broadcasts": PERMISSIONS.SEND_BROADCAST,
@@ -33,7 +35,13 @@ export const ADMIN_PATH_PERMISSION: Readonly<Record<string, string>> = {
   "/curriculum": PERMISSIONS.MANAGE_CURRICULUM,
   "/holidays": PERMISSIONS.MANAGE_BATCHES,
   "/homepage": PERMISSIONS.MANAGE_HOMEPAGE,
-  "/leads": PERMISSIONS.MANAGE_LEADS,
+  // Any one of these opens Leads: the all-access manage, or a sales agent's
+  // own-scoped view/edit. The page and its APIs then scope to what each allows.
+  "/leads": [
+    PERMISSIONS.MANAGE_LEADS,
+    PERMISSIONS.VIEW_OWN_LEADS,
+    PERMISSIONS.EDIT_OWN_LEADS,
+  ],
   "/media": PERMISSIONS.MANAGE_HOMEPAGE,
   "/offline": PERMISSIONS.HOST_LIVE_CLASS,
   "/pages": PERMISSIONS.MANAGE_HOMEPAGE,
@@ -45,15 +53,17 @@ export const ADMIN_PATH_PERMISSION: Readonly<Record<string, string>> = {
 };
 
 /**
- * The permission that opens an /admin path, or null when the path is not one of
- * these (and so stays role-only).
+ * The permissions that open an /admin path (any one is enough), or null when
+ * the path is not one of these (and so stays role-only).
  *
  * `rest` is the part after /admin — "/leads", "/leads/42", "" for the home.
  * Matched by segment, so /leads/42 is covered by /leads while a future
  * /leads-export is not mistaken for it.
  */
-export function permissionForAdminPath(rest: string): string | null {
+export function permissionForAdminPath(rest: string): string[] | null {
   const path = rest.startsWith("/") ? rest : `/${rest}`;
   const top = `/${path.split("/").filter(Boolean)[0] ?? ""}`;
-  return ADMIN_PATH_PERMISSION[top] ?? null;
+  const v = ADMIN_PATH_PERMISSION[top];
+  if (!v) return null;
+  return typeof v === "string" ? [v] : [...v];
 }

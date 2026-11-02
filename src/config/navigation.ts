@@ -300,7 +300,7 @@ export function navFor(
         // gets /admin/leads, because /instructor/leads does not exist.
         if (item.external) return null;
         const needed = permissionForAdminPath(item.href);
-        if (!needed || !held.has(needed)) return null;
+        if (!needed || !needed.some((p) => held.has(p))) return null;
         return { ...item, href: `${ROLE_BASE[ROLES.ADMIN]}${item.href}` };
       })
       .filter((item): item is NavItem => item !== null)

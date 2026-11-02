@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
-import { requirePermission } from "@/lib/auth/require";
-import { PERMISSIONS } from "@/config/roles";
+import { redirect } from "next/navigation";
+import { requireUser } from "@/lib/auth/require";
+import { ROLE_HOME } from "@/config/roles";
+import { leadScopeOf } from "@/lib/auth/scopes";
 import { leadViewFrom } from "@/lib/validations/lead";
 import {
   listLeadsAdmin,
@@ -23,7 +25,11 @@ export default async function LeadsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const user = await requirePermission(PERMISSIONS.MANAGE_LEADS);
+  const user = await requireUser();
+  const scope = leadScopeOf(user.permissions);
+  if (!scope.canView) redirect(ROLE_HOME[user.role] ?? "/login");
+  // A sales agent sees only the leads assigned to them; an admin sees all.
+  const ownOnly = !scope.all;
   const sp = await searchParams;
   const query = {
     page: Math.max(1, Number(sp.page) || 1),
@@ -33,8 +39,8 @@ export default async function LeadsPage({
 
   const [{ leads, total }, stats, assignees, courses, cards] =
     await Promise.all([
-      listLeadsAdmin({ ...query, viewerId: user.id }),
-      leadStats(user.id),
+      listLeadsAdmin({ ...query, viewerId: user.id, ownOnly }),
+      leadStats(user.id, ownOnly),
       listAssignees(),
       listLeadCourses(),
       getLeadCards(user.id),
@@ -48,6 +54,8 @@ export default async function LeadsPage({
       stats={stats}
       cards={cards}
       viewer={{ id: user.id, name: user.name, role: user.role }}
+      canManage={scope.all}
+      canEdit={scope.canEdit}
       assignees={assignees}
       courses={courses}
     />

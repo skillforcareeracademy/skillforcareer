@@ -169,6 +169,8 @@ export function LeadsClient({
   stats,
   cards,
   viewer,
+  canManage = true,
+  canEdit = true,
   assignees,
   courses,
 }: {
@@ -178,6 +180,11 @@ export function LeadsClient({
   stats: Record<LeadStatCard, number>;
   cards: LeadStatCard[];
   viewer: { id: string; name: string; role: Role };
+  /** leads:manage — the whole sheet, plus import and the stage editor. A sales
+   *  agent (own-scoped) has this false. */
+  canManage?: boolean;
+  /** May add/change leads (manage, or edit-own). A view-only agent has it false. */
+  canEdit?: boolean;
   assignees: AssigneeOption[];
   courses: CourseOption[];
 }) {
@@ -677,17 +684,21 @@ export function LeadsClient({
                 <CopyCheck className="size-4" /> Duplicates
               </Button>
             )}
-            {/* The academy's own stages and statuses. */}
-            <Button
-              variant="outline"
-              nativeButton={false}
-              render={<Link href="/admin/leads/pipeline" />}
-            >
-              <Workflow className="size-4" /> Stages
-            </Button>
-            <Button variant="outline" onClick={() => setImportOpen(true)}>
-              <Upload className="size-4" /> Import
-            </Button>
+            {/* The academy's own stages and statuses — admin config. */}
+            {canManage && (
+              <Button
+                variant="outline"
+                nativeButton={false}
+                render={<Link href="/admin/leads/pipeline" />}
+              >
+                <Workflow className="size-4" /> Stages
+              </Button>
+            )}
+            {canManage && (
+              <Button variant="outline" onClick={() => setImportOpen(true)}>
+                <Upload className="size-4" /> Import
+              </Button>
+            )}
             <Button
               variant="outline"
               nativeButton={false}
@@ -712,9 +723,11 @@ export function LeadsClient({
             >
               <Download className="size-4" /> Export
             </Button>
-            <Button onClick={() => setCreateOpen(true)}>
-              <Plus className="size-4" /> Add lead
-            </Button>
+            {canEdit && (
+              <Button onClick={() => setCreateOpen(true)}>
+                <Plus className="size-4" /> Add lead
+              </Button>
+            )}
           </div>
         }
       />

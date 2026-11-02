@@ -3,6 +3,7 @@ import { type PublicUser } from "@/server/services/auth-service";
 import { AppError } from "@/lib/api/errors";
 import { prisma } from "@/lib/prisma";
 import { ROLES, PERMISSIONS, type Permission } from "@/config/roles";
+import { leadScopeOf, paymentScopeOf } from "./scopes";
 
 /**
  * Authentication/authorization guards for API route handlers.
@@ -212,4 +213,77 @@ export async function requireApiLeadAdmin(): Promise<PublicUser> {
   const admin = [user.role, ...user.roles].some((r) => r === ROLES.SUPER_ADMIN || r === ROLES.ADMIN);
   if (!admin) throw AppError.forbidden("Only an admin can delete leads.");
   return user;
+}
+
+/** The viewer plus what they may do with leads — see {@link leadScopeOf}. */
+export interface LeadGuard {
+  user: PublicUser;
+  /** leads:manage — everyone's leads. When false, reads/writes are own-only. */
+  all: boolean;
+  canEdit: boolean;
+  viewerId: string;
+}
+
+/**
+ * Read access to the leads list. `leads:manage`, or the own-scoped view/edit.
+ * The caller scopes the query to `viewerId` whenever `all` is false.
+ */
+export async function requireApiLeadList(): Promise<LeadGuard> {
+  const user = await requireApiUser();
+  const s = leadScopeOf(user.permissions);
+  if (!s.canView) throw AppError.forbidden("You don't have permission to view leads.");
+  return { user, all: s.all, canEdit: s.canEdit, viewerId: user.id };
+}
+
+/**
+ * Access to ONE lead. `leads:manage` reaches any; the own-scoped perms reach
+ * only a lead assigned to the viewer — so a sales agent can't open or change a
+ * colleague's lead by guessing its id. `write` needs edit, not just view.
+ */
+export async function requireApiLeadAccess(
+  leadId: string,
+  opts: { write: boolean },
+): Promise<LeadGuard> {
+  const user = await requireApiUser();
+  const s = leadScopeOf(user.permissions);
+  if (opts.write ? !s.canEdit : !s.canView)
+    throw AppError.forbidden("You don't have permission for this lead.");
+  if (!s.all) {
+    const lead = await prisma.lead.findUnique({
+      where: { id: leadId },
+      select: { assignedToId: true },
+    });
+    if (!lead) throw AppError.notFound("Lead not found.");
+    if (lead.assignedToId !== user.id)
+      throw AppError.forbidden("This lead isn't assigned to you.");
+  }
+  return { user, all: s.all, canEdit: s.canEdit, viewerId: user.id };
+}
+
+/**
+ * Creating a lead. `leads:manage` or edit-own; a lead an own-scoped agent
+ * creates is assigned to them (the caller reads `all` to decide).
+ */
+export async function requireApiLeadCreate(): Promise<LeadGuard> {
+  const user = await requireApiUser();
+  const s = leadScopeOf(user.permissions);
+  if (!s.canEdit) throw AppError.forbidden("You don't have permission to add leads.");
+  return { user, all: s.all, canEdit: s.canEdit, viewerId: user.id };
+}
+
+/**
+ * Seeing/recording a payment ON a lead. The lead must be reachable (own-checked
+ * for a sales agent), and the viewer must hold the matching payment perm —
+ * `payments:manage`, or the own-scoped view/edit. Refunds, penalties, coupons
+ * and the global Payments page stay on `payments:manage` (admins only).
+ */
+export async function requireApiLeadPayment(
+  leadId: string,
+  opts: { write: boolean },
+): Promise<LeadGuard> {
+  const guard = await requireApiLeadAccess(leadId, { write: opts.write });
+  const pay = paymentScopeOf(guard.user.permissions);
+  if (opts.write ? !pay.canEdit : !pay.canView)
+    throw AppError.forbidden("You don't have permission for this lead's payments.");
+  return guard;
 }

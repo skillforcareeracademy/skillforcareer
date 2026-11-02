@@ -59,6 +59,17 @@ export const PERMISSIONS = {
    */
   MANAGE_ADS: "ads:manage",
   /**
+   * Scoped lead & payment access for a sales agent — their OWN records only,
+   * kept apart from the all-access "manage" perms. "Permissions leads and
+   * payment se related zyada honi chahiye. For sales agent … view leads, edit
+   * leads, edit payments, view payments, only her own." A lead is "own" when it
+   * is assigned to the person; a payment is "own" when it sits on such a lead.
+   */
+  VIEW_OWN_LEADS: "leads:view:own",
+  EDIT_OWN_LEADS: "leads:edit:own",
+  VIEW_OWN_PAYMENTS: "payments:view:own",
+  EDIT_OWN_PAYMENTS: "payments:edit:own",
+  /**
    * Writing the academy's curriculums. Admins hold it by default; an admin can
    * grant it to instructors from Roles — the academy's "admin and instructor
    * (if admin allows)".
@@ -155,7 +166,15 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     P.TAKE_QUIZ,
     P.VIEW_OWN_CERTIFICATE,
   ],
-  SALES_AGENT: [P.MANAGE_LEADS, P.VIEW_COURSE],
+  // A sales agent works their OWN leads and the payments on them — not the
+  // whole academy's. (Admins keep the all-access leads:manage / payments:manage.)
+  SALES_AGENT: [
+    P.VIEW_OWN_LEADS,
+    P.EDIT_OWN_LEADS,
+    P.VIEW_OWN_PAYMENTS,
+    P.EDIT_OWN_PAYMENTS,
+    P.VIEW_COURSE,
+  ],
   /**
    * An Admin's grants minus the academy's own: no settings, no homepage, no
    * roles. Everything it does hold is narrowed to its own company by

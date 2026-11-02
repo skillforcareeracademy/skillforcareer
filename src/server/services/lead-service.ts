@@ -450,7 +450,11 @@ export async function deleteLeadDocument(
  * The list's filters and sort as they arrive in a URL, plus who is looking —
  * `assignedToId=me` resolves against `viewerId`.
  */
-export type LeadFilters = LeadViewParams & { viewerId?: string };
+export type LeadFilters = LeadViewParams & {
+  viewerId?: string;
+  /** Force the list down to the viewer's own leads (a sales agent). */
+  ownOnly?: boolean;
+};
 
 export interface LeadListQuery extends LeadFilters {
   page: number;
@@ -584,6 +588,9 @@ function buildWhere(q: LeadFilters): Prisma.LeadWhereInput {
   if (uploadedFrom) and.push({ createdAt: { gte: uploadedFrom } });
   const uploadedTo = dayBound(q.uploadedTo, true);
   if (uploadedTo) and.push({ createdAt: { lte: uploadedTo } });
+  // A sales agent (own-scoped) only ever sees the leads assigned to them — a
+  // hard floor under every other filter, so no card, search or URL can widen it.
+  if (q.ownOnly) and.push({ assignedToId: q.viewerId ?? "" });
   return and.length ? { AND: and } : {};
 }
 
@@ -717,7 +724,10 @@ export type LeadStats = Record<LeadStatCard, number>;
  * Every stat card in one pass over the table — a single round-trip however
  * many cards a counsellor has switched on, so the choice costs nothing.
  */
-export async function leadStats(viewerId: string): Promise<LeadStats> {
+export async function leadStats(
+  viewerId: string,
+  ownOnly = false,
+): Promise<LeadStats> {
   const today = istDayStart()!;
   const tomorrow = new Date(today.getTime() + DAY_MS);
   const weekAgo = new Date(today.getTime() - 6 * DAY_MS);
@@ -726,6 +736,8 @@ export async function leadStats(viewerId: string): Promise<LeadStats> {
     OPEN_LEAD_STAGES.filter((s) => s !== "FRESH_LEAD"),
   );
   const interested = Prisma.join([...INTERESTED_LEAD_STAGES]);
+  // A sales agent's cards count only their own leads.
+  const scope = ownOnly ? Prisma.sql`WHERE assignedToId = ${viewerId}` : Prisma.empty;
 
   // `Lead` is a reserved word in MySQL 8 / TiDB — keep it backticked.
   const [row] = await prisma.$queryRaw<Record<LeadStatCard, unknown>[]>`
@@ -744,6 +756,7 @@ export async function leadStats(viewerId: string): Promise<LeadStats> {
       SUM(assignedToId = ${viewerId}) AS mine,
       SUM(leadDate >= ${weekAgo}) AS receivedThisWeek
     FROM \`Lead\`
+    ${scope}
   `;
   // SUM() comes back as a DECIMAL (NULL on an empty table), COUNT() as a
   // BIGINT — both read cleanly through their string form.
