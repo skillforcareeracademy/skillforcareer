@@ -238,6 +238,41 @@ export function CurriculumClient({
     });
   }
 
+  /**
+   * Move a section (or subsection) one step up or down among its siblings.
+   *
+   * Drag-and-drop works with a mouse but not under a finger — the academy edits
+   * on an iPad — so these arrows are the reliable way to reorder. A top-level
+   * section travels with the subsections filed under it; a subsection only moves
+   * within its own parent.
+   */
+  function nudge(index: number, dir: -1 | 1) {
+    setForm((f) => {
+      const tabs = f.tabs;
+      const t = tabs[index];
+      if (!t) return f;
+      if (t.parent == null) {
+        const tops = tabs.map((x, j) => (x.parent == null ? j : -1)).filter((j) => j >= 0);
+        const pos = tops.indexOf(index);
+        const tp = pos + dir;
+        if (tp < 0 || tp >= tops.length) return f;
+        const order = [...tops];
+        [order[pos], order[tp]] = [order[tp], order[pos]];
+        const blockOf = (sec: number) =>
+          [sec, ...tabs.map((x, j) => (x.parent === sec ? j : -1)).filter((j) => j >= 0)];
+        const next = order.flatMap((sec) => blockOf(sec).map((j) => tabs[j]));
+        return { ...f, tabs: reparent(next, tabs) };
+      }
+      const sibs = tabs.map((x, j) => (x.parent === t.parent ? j : -1)).filter((j) => j >= 0);
+      const pos = sibs.indexOf(index);
+      const tp = pos + dir;
+      if (tp < 0 || tp >= sibs.length) return f;
+      const next = [...tabs];
+      [next[sibs[pos]], next[sibs[tp]]] = [next[sibs[tp]], next[sibs[pos]]];
+      return { ...f, tabs: reparent(next, tabs) };
+    });
+  }
+
   function startNew() {
     setEditingId("new");
     setForm(blank());
@@ -340,6 +375,33 @@ export function CurriculumClient({
       toast.error(err instanceof ApiError ? err.message : "Delete failed.");
     }
   }
+
+  // Sequence numbers for the editor's sections: 1, 2, 3 for the top level and
+  // 1.1, 1.2 for the subsections under each — recomputed every render so they
+  // follow a reorder immediately.
+  const tabNumbers: string[] = [];
+  {
+    let top = 0;
+    const subCount = new Map<number, number>();
+    form.tabs.forEach((t, i) => {
+      if (t.parent == null) {
+        top += 1;
+        tabNumbers[i] = String(top);
+      } else {
+        const n = (subCount.get(t.parent) ?? 0) + 1;
+        subCount.set(t.parent, n);
+        tabNumbers[i] = `${tabNumbers[t.parent] ?? "?"}.${n}`;
+      }
+    });
+  }
+  // Whether each section sits first/last among its siblings — the up/down
+  // arrows are disabled at those ends.
+  const tabEdges = form.tabs.map((t, i) => {
+    const sibs = form.tabs
+      .map((x, j) => ((x.parent ?? null) === (t.parent ?? null) ? j : -1))
+      .filter((j) => j >= 0);
+    return { first: sibs[0] === i, last: sibs[sibs.length - 1] === i };
+  });
 
   return (
     <div className="space-y-6">
@@ -445,6 +507,9 @@ export function CurriculumClient({
                     >
                       <GripVertical className="size-4" />
                     </span>
+                    <span className="text-muted-foreground w-9 shrink-0 text-center text-xs font-medium tabular-nums">
+                      {tabNumbers[i]}
+                    </span>
                     <Input
                       value={tab.heading}
                       onChange={(e) =>
@@ -455,16 +520,37 @@ export function CurriculumClient({
                           ),
                         }))
                       }
-                      placeholder={`Heading ${i + 1}`}
+                      placeholder={`Heading ${tabNumbers[i]}`}
                     />
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={`Remove section ${i + 1}`}
-                      onClick={() => removeTab(i)}
-                    >
-                      <X className="size-4" />
-                    </Button>
+                    {/* Up/down work under a finger where drag-and-drop can't. */}
+                    <div className="flex shrink-0 items-center">
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`Move ${tabNumbers[i]} up`}
+                        disabled={tabEdges[i].first}
+                        onClick={() => nudge(i, -1)}
+                      >
+                        <ArrowUp className="size-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`Move ${tabNumbers[i]} down`}
+                        disabled={tabEdges[i].last}
+                        onClick={() => nudge(i, 1)}
+                      >
+                        <ArrowDown className="size-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`Remove section ${tabNumbers[i]}`}
+                        onClick={() => removeTab(i)}
+                      >
+                        <X className="size-4" />
+                      </Button>
+                    </div>
                   </div>
                   <Textarea
                     rows={3}
