@@ -182,14 +182,17 @@ export async function setUserPermissions(
     : [];
   const idFor = new Map(perms.map((p) => [p.key, p.id]));
 
+  const rows = meaningful
+    .filter((o) => idFor.has(o.key))
+    .map((o) => ({ userId, permissionId: idFor.get(o.key)!, allow: o.allow }));
+
+  // One bulk insert, not a `create` per row: with relationMode = "prisma" each
+  // `create` re-checks its relations, and a dozen of those across TiDB's
+  // latency overran the 5 s transaction window ("rollback ... expired
+  // transaction" — the save failed with "Something went wrong"). deleteMany +
+  // createMany is two round trips, comfortably inside it.
   await prisma.$transaction([
     prisma.userPermission.deleteMany({ where: { userId } }),
-    ...meaningful
-      .filter((o) => idFor.has(o.key))
-      .map((o) =>
-        prisma.userPermission.create({
-          data: { userId, permissionId: idFor.get(o.key)!, allow: o.allow },
-        }),
-      ),
+    ...(rows.length ? [prisma.userPermission.createMany({ data: rows })] : []),
   ]);
 }
