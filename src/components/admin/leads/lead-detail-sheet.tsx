@@ -132,6 +132,7 @@ interface Detail {
   courseInterest: string | null;
   whyThisCourse: string | null;
   source: string;
+  sourceName: string | null;
   stage: string;
   subStatus: string | null;
   quality: string | null;
@@ -192,6 +193,7 @@ function toForm(d: Detail): LeadFormState {
     ...blankLeadForm(),
     leadDate: format(inIST(d.leadDate), "yyyy-MM-dd"),
     source: d.source as LeadSource,
+    sourceName: d.sourceName ?? "",
     quality: d.quality ?? "",
     leadScore: d.leadScore != null ? String(d.leadScore) : "",
     name: d.name,
@@ -252,12 +254,14 @@ export function LeadDetailSheet({
   leadId,
   assignees,
   courses,
+  sourceNames = [],
   nav,
   onOpenChange,
 }: {
   leadId: string | null;
   assignees: AssigneeOption[];
   courses: CourseOption[];
+  sourceNames?: string[];
   nav?: LeadNav;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -337,6 +341,7 @@ export function LeadDetailSheet({
             leadId={leadId}
             assignees={assignees}
             courses={courses}
+            sourceNames={sourceNames}
             tab={tab}
             onTabChange={setTab}
           />
@@ -350,12 +355,14 @@ function Body({
   leadId,
   assignees,
   courses,
+  sourceNames,
   tab,
   onTabChange,
 }: {
   leadId: string;
   assignees: AssigneeOption[];
   courses: CourseOption[];
+  sourceNames: string[];
   tab: string;
   onTabChange: (tab: string) => void;
 }) {
@@ -672,6 +679,7 @@ function Body({
               value={data.leadScore != null ? `${data.leadScore} / 100` : null}
             />
             <Fact label="Lead source" value={SOURCE_LABEL(data.source)} />
+            <Fact label="Source name" value={data.sourceName} />
             <Fact
               icon={GraduationCap}
               label="Qualification"
@@ -797,6 +805,7 @@ function Body({
               onChange={(patch) => setForm((f) => (f ? { ...f, ...patch } : f))}
               courses={courses}
               assignees={assignees}
+              sourceNames={sourceNames}
               currentAssignee={data.assignedTo}
               uploadedAt={data.createdAt}
               disabled={saving}

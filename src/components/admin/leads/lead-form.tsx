@@ -38,6 +38,7 @@ import {
 export interface LeadFormState {
   leadDate: string;
   source: LeadSource;
+  sourceName: string;
   quality: string;
   leadScore: string;
   name: string;
@@ -78,6 +79,7 @@ export function blankLeadForm(): LeadFormState {
   return {
     leadDate: today(),
     source: "MANUAL",
+    sourceName: "",
     quality: "",
     leadScore: "",
     name: "",
@@ -118,6 +120,7 @@ export function leadFormPayload(form: LeadFormState): Record<string, unknown> {
     // Never blank: the lead-received date can move but not be emptied.
     leadDate: text(form.leadDate) || undefined,
     source: form.source,
+    sourceName: text(form.sourceName),
     quality: form.quality,
     leadScore: text(form.leadScore),
     name: form.name.trim(),
@@ -224,6 +227,7 @@ export function LeadFormFields({
   onChange,
   courses,
   assignees,
+  sourceNames = [],
   currentAssignee,
   uploadedAt,
   disabled,
@@ -232,6 +236,8 @@ export function LeadFormFields({
   onChange: (patch: Partial<LeadFormState>) => void;
   courses: CourseOption[];
   assignees: AssigneeOption[];
+  /** Source labels already used, offered as suggestions ("Justdial Noida", …). */
+  sourceNames?: string[];
   /** Who holds the lead now, when editing. */
   currentAssignee?: { id: string; name: string } | null;
   /** When the lead entered the system (read-only), when editing. */
@@ -289,6 +295,24 @@ export function LeadFormFields({
             ))}
           </SelectContent>
         </Select>
+      </Field>
+
+      {/* The finer source the team tracks by — pick one already used or type a
+          new one ("Justdial Noida", "Justdial Faridabad", a reference, …). */}
+      <Field label="Source name">
+        <Input
+          id="l-source-name"
+          list="lead-source-names"
+          value={form.sourceName}
+          disabled={disabled}
+          placeholder="e.g. Justdial Noida"
+          onChange={(e) => onChange({ sourceName: e.target.value })}
+        />
+        <datalist id="lead-source-names">
+          {sourceNames.map((s) => (
+            <option key={s} value={s} />
+          ))}
+        </datalist>
       </Field>
 
       {/* The client asked for quality and score to sit directly under source. */}

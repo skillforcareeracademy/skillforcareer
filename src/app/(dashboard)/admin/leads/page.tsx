@@ -9,6 +9,7 @@ import {
   leadStats,
   listAssignees,
   listLeadCourses,
+  listLeadSourceNames,
 } from "@/server/services/lead-service";
 import { getLeadCards } from "@/server/services/lead-preferences-service";
 import { LeadsClient } from "@/components/admin/leads/leads-client";
@@ -37,13 +38,14 @@ export default async function LeadsPage({
     ...leadViewFrom((key) => str(sp[key])),
   };
 
-  const [{ leads, total }, stats, assignees, courses, cards] =
+  const [{ leads, total }, stats, assignees, courses, cards, sourceNames] =
     await Promise.all([
       listLeadsAdmin({ ...query, viewerId: user.id, ownOnly }),
       leadStats(user.id, ownOnly),
       listAssignees(),
       listLeadCourses(),
       getLeadCards(user.id),
+      listLeadSourceNames(),
     ]);
 
   return (
@@ -58,6 +60,7 @@ export default async function LeadsPage({
       canEdit={scope.canEdit}
       assignees={assignees}
       courses={courses}
+      sourceNames={sourceNames}
     />
   );
 }

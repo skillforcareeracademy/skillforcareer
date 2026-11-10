@@ -173,6 +173,7 @@ export function LeadsClient({
   canEdit = true,
   assignees,
   courses,
+  sourceNames = [],
 }: {
   leads: LeadRow[];
   total: number;
@@ -187,6 +188,8 @@ export function LeadsClient({
   canEdit?: boolean;
   assignees: AssigneeOption[];
   courses: CourseOption[];
+  /** Source labels already used, for the Add/Edit form's suggestions. */
+  sourceNames?: string[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -1128,6 +1131,7 @@ export function LeadsClient({
               onChange={(patch) => setForm((f) => ({ ...f, ...patch }))}
               courses={courses}
               assignees={assignees}
+              sourceNames={sourceNames}
             />
             <DialogFooter>
               <Button
@@ -1157,6 +1161,7 @@ export function LeadsClient({
         leadId={detail?.id ?? null}
         assignees={assignees}
         courses={courses}
+        sourceNames={sourceNames}
         nav={
           detail
             ? {

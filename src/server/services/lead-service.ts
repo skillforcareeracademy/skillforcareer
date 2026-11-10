@@ -180,6 +180,7 @@ function leadData(input: UpdateLeadInput) {
   if (input.followUpTime !== undefined)
     set("followUpTime", blank(input.followUpTime));
   if (input.message !== undefined) set("message", blank(input.message));
+  if (input.sourceName !== undefined) set("sourceName", blank(input.sourceName));
   if (input.feesOffered !== undefined)
     set("feesOffered", input.feesOffered ?? null);
   if (input.finalFees !== undefined) set("finalFees", input.finalFees ?? null);
@@ -676,6 +677,7 @@ export async function listLeadsAdmin(q: LeadListQuery) {
         : null,
       course: l.course?.title ?? l.courseInterest,
       source: l.source,
+      sourceName: l.sourceName,
       stage: l.stage,
       subStatus: l.subStatus,
       quality: l.quality,
@@ -811,6 +813,7 @@ export async function getLeadDetail(id: string) {
     courseInterest: l.courseInterest,
     whyThisCourse: l.whyThisCourse,
     source: l.source,
+    sourceName: l.sourceName,
     stage: l.stage,
     subStatus: l.subStatus,
     quality: l.quality,
@@ -930,6 +933,22 @@ export async function listLeadCourses() {
     select: { id: true, title: true },
     orderBy: { title: "asc" },
   });
+}
+
+/**
+ * The source labels already in use ("Justdial Noida", …) — the suggestions the
+ * Add/Edit form offers so the team reuses the same ones instead of retyping a
+ * slightly different spelling each time. New ones are added just by typing them.
+ */
+export async function listLeadSourceNames(): Promise<string[]> {
+  const rows = await prisma.lead.findMany({
+    where: { sourceName: { not: null } },
+    distinct: ["sourceName"],
+    select: { sourceName: true },
+    orderBy: { sourceName: "asc" },
+    take: 200,
+  });
+  return rows.map((r) => r.sourceName).filter((s): s is string => Boolean(s));
 }
 
 // ── CSV export / import ──────────────────────────────────────────────────────
