@@ -560,9 +560,14 @@ export async function recordPayment(
   // when the office has said when the balance is due, which is how "if EMI or
   // partial paid then… automatic calculate next installments" is honoured.
   if (type === "EMI" || type === "BOOKING") {
+    // The schedule covers what is left AFTER the booking — the seat money is
+    // already in, so instalments that re-charged it would bill the learner
+    // twice ("token amount lene ke baad due hai").
+    const booking = Math.min(payable, input.bookingAmount || 0);
+    const scheduleBase = Math.max(0, Math.round((payable - booking) * 100) / 100);
     const rows = scheduleFromInput({
       mode: input.installmentMode,
-      total: payable,
+      total: scheduleBase,
       count: input.installments,
       from: input.scheduleFrom,
       to: input.scheduleTo,
@@ -620,6 +625,7 @@ export async function updatePayment(
       emiPlan: true,
       interestPercent: true,
       paidAt: true,
+      bookingAmount: true,
       bookingAt: true,
       status: true,
     },
@@ -707,9 +713,23 @@ export async function updatePayment(
     (input.scheduleTo ?? "") !== "";
 
   if (wantsSchedule && (type === "EMI" || type === "BOOKING")) {
+    // Spread only what is left after the booking (see recordPayment). The
+    // effective booking is whatever this edit leaves in place.
+    const effBooking =
+      input.bookingAmount !== undefined
+        ? input.bookingAmount > 0
+          ? input.bookingAmount
+          : 0
+        : existing.bookingAmount
+          ? num(existing.bookingAmount)
+          : 0;
+    const scheduleBase = Math.max(
+      0,
+      Math.round((payable - Math.min(payable, effBooking)) * 100) / 100,
+    );
     const rows = scheduleFromInput({
       mode: input.installmentMode ?? "AUTO",
-      total: payable,
+      total: scheduleBase,
       count: input.installments,
       from: input.scheduleFrom,
       to: input.scheduleTo,

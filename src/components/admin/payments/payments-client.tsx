@@ -249,6 +249,7 @@ export function PaymentsClient({
           amount: i.amount,
           dueDate: i.dueDate,
         })),
+        outstanding: d.summary?.outstanding ?? null,
         graceDays: d.graceDays,
         penaltyPercent: d.penaltyPercent,
         penaltyFlat: d.penaltyFlat,

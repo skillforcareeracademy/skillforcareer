@@ -287,7 +287,11 @@ export async function summarise(
     };
   }
 
-  let payable = 0;
+  // The total owed is the plan's net amount (interest included), not the sum of
+  // the instalment rows — the schedule now covers only what is left after the
+  // booking, so summing the rows would drop the seat money. Reading it from
+  // netAmount keeps the figure right for plans written either way.
+  const payable = num(payment.netAmount);
   let paid = booking;
   let penalty = 0;
   let daysLate = 0;
@@ -299,7 +303,6 @@ export async function summarise(
     const amount = num(i.amount);
     const got =
       i.status === "PAID" ? amount : Math.min(amount, num(i.paidAmount));
-    payable += amount;
     paid += got;
 
     const owing = money(amount - got);

@@ -102,6 +102,8 @@ export interface PaymentFormInitial {
   plan: PaymentPlan;
   interestPercent: number | null;
   installments: { amount: number; dueDate: string }[];
+  /** What is still owed right now, across the whole trail (read-only display). */
+  outstanding?: number | null;
   graceDays: number | null;
   penaltyPercent: number | null;
   penaltyFlat: number | null;
@@ -287,6 +289,11 @@ function PaymentFormBody({
     return Math.round(net * (1 + rate / 100) * 100) / 100;
   }, [net, form.plan, form.interestPercent]);
 
+  // The seat money is already in, so the instalments only cover what is left
+  // after it — "token amount lene ke baad due hai".
+  const booking = Math.min(payable, Number(form.bookingAmount) || 0);
+  const scheduleAmount = Math.max(0, Math.round((payable - booking) * 100) / 100);
+
   /** Fill the hand-written rows from the automatic settings, to tweak by hand. */
   function spreadIntoRows() {
     const count = Math.max(2, Number(form.installments) || 2);
@@ -300,7 +307,7 @@ function PaymentFormBody({
       to && !Number.isNaN(to.getTime()) && count > 1
         ? (to.getTime() - from.getTime()) / (count - 1)
         : null;
-    const per = Math.floor((payable / count) * 100) / 100;
+    const per = Math.floor((scheduleAmount / count) * 100) / 100;
 
     const rows: ManualRow[] = Array.from({ length: count }, (_, i) => {
       let due: Date;
@@ -312,7 +319,7 @@ function PaymentFormBody({
       }
       const amount =
         i === count - 1
-          ? Math.round((payable - per * (count - 1)) * 100) / 100
+          ? Math.round((scheduleAmount - per * (count - 1)) * 100) / 100
           : per;
       return {
         amount: String(amount),
@@ -566,6 +573,17 @@ function PaymentFormBody({
               </span>
             </div>
 
+            {/* What is still owed after the booking and every instalment paid so
+                far — the running due across the whole trail. */}
+            {editing && initial?.outstanding != null && (
+              <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2 text-sm dark:border-amber-900/40 dark:bg-amber-950/20">
+                <span className="text-muted-foreground">Due amount (still owed)</span>
+                <span className="font-semibold tabular-nums text-amber-700 dark:text-amber-400">
+                  {inr(initial.outstanding)}
+                </span>
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-4">
               <Field label="Status">
                 <Select
@@ -789,9 +807,9 @@ function PaymentFormBody({
                       </Field>
                     </div>
                     <p className="text-muted-foreground text-xs">
-                      {inr(payable)} across {form.installments || 0}{" "}
-                      instalments. Leaving the last date blank spaces them a
-                      month apart.
+                      {inr(scheduleAmount)} across {form.installments || 0}{" "}
+                      instalments{booking > 0 ? ` (after ${inr(booking)} booking)` : ""}.
+                      Leaving the last date blank spaces them a month apart.
                     </p>
                     <Button
                       type="button"
@@ -883,12 +901,12 @@ function PaymentFormBody({
                       </Button>
                       <span
                         className={
-                          Math.abs(manualTotal - payable) > 1
+                          Math.abs(manualTotal - scheduleAmount) > 1
                             ? "text-sm font-medium text-amber-600 dark:text-amber-400"
                             : "text-muted-foreground text-sm"
                         }
                       >
-                        {inr(manualTotal)} of {inr(payable)}
+                        {inr(manualTotal)} of {inr(scheduleAmount)}
                       </span>
                     </div>
                   </div>
@@ -904,24 +922,50 @@ function PaymentFormBody({
                 htmlFor="pay-first"
                 hint="Blank follows the payment trail."
               >
-                <Input
-                  id="pay-first"
-                  type="datetime-local"
-                  value={form.firstPaymentAt}
-                  onChange={(e) => set("firstPaymentAt", e.target.value)}
-                />
+                {/* Our own Clear — the date picker's native Reset doesn't wipe a
+                    controlled value, so this is the dependable way to empty it. */}
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="pay-first"
+                    type="datetime-local"
+                    value={form.firstPaymentAt}
+                    onChange={(e) => set("firstPaymentAt", e.target.value)}
+                  />
+                  {form.firstPaymentAt && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => set("firstPaymentAt", "")}
+                    >
+                      Clear
+                    </Button>
+                  )}
+                </div>
               </Field>
               <Field
                 label="Last payment date"
                 htmlFor="pay-last"
                 hint="Blank follows the payment trail."
               >
-                <Input
-                  id="pay-last"
-                  type="datetime-local"
-                  value={form.lastPaymentAt}
-                  onChange={(e) => set("lastPaymentAt", e.target.value)}
-                />
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="pay-last"
+                    type="datetime-local"
+                    value={form.lastPaymentAt}
+                    onChange={(e) => set("lastPaymentAt", e.target.value)}
+                  />
+                  {form.lastPaymentAt && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => set("lastPaymentAt", "")}
+                    >
+                      Clear
+                    </Button>
+                  )}
+                </div>
               </Field>
             </div>
           </TabsContent>
