@@ -190,6 +190,31 @@ export async function lookUpWord(word: string, viewerId: string): Promise<TermRo
   return found.map((t) => toRow(t, savedIds.has(t.id)));
 }
 
+/**
+ * Every published term's lookup keys — the normalised words a reader should see
+ * underlined and clickable in the reading. Deliberately tiny (just the keys, no
+ * meanings) so a page can fetch it once and match it against its own text on the
+ * client; the meaning is fetched only when a word is actually clicked.
+ * Keys shorter than three letters are dropped so common words aren't underlined.
+ */
+export async function listTermWords(): Promise<string[]> {
+  const rows = await prisma.term.findMany({
+    where: { isPublished: true },
+    select: { wordKey: true, synonymKey: true },
+    take: 10_000,
+  });
+  const set = new Set<string>();
+  for (const r of rows) {
+    if (r.wordKey && r.wordKey.length >= 3) set.add(r.wordKey);
+    if (r.synonymKey) {
+      for (const s of r.synonymKey.split("|")) {
+        if (s.length >= 3) set.add(s);
+      }
+    }
+  }
+  return [...set];
+}
+
 export async function createTerm(input: TermInput, createdById: string): Promise<string> {
   const t = await prisma.term.create({
     data: {

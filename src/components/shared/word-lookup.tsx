@@ -3,7 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BookOpen, Bookmark, BookmarkCheck, Loader2, X } from "lucide-react";
 import { api } from "@/lib/api-client";
-import { TERM_KIND_LABEL, type TermKind } from "@/lib/validations/term";
+import {
+  TERM_KIND_LABEL,
+  normaliseWord,
+  type TermKind,
+} from "@/lib/validations/term";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -29,6 +33,70 @@ interface Term {
   synonyms: string[];
   examples: string[];
   saved: boolean;
+}
+
+/**
+ * Underline every word the dictionary has a meaning for, in place, and make it
+ * clickable — "all words in the chart … become clickable". Works on the rendered
+ * text (never the source HTML), skips links/code and words already marked, so it
+ * can be re-run safely and never fights the editor's own markup. All of it is
+ * wrapped in a guard by the caller, so a decoration slip never breaks the reading.
+ */
+function markTerms(root: HTMLElement, keys: Set<string>): void {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      const p = node.parentElement;
+      if (!p) return NodeFilter.FILTER_REJECT;
+      const tag = p.tagName;
+      if (
+        tag === "A" ||
+        tag === "CODE" ||
+        tag === "PRE" ||
+        tag === "SCRIPT" ||
+        tag === "STYLE" ||
+        tag === "BUTTON" ||
+        p.classList.contains("sfc-term")
+      ) {
+        return NodeFilter.FILTER_REJECT;
+      }
+      return /[a-zA-Z]/.test(node.nodeValue ?? "")
+        ? NodeFilter.FILTER_ACCEPT
+        : NodeFilter.FILTER_REJECT;
+    },
+  });
+  const texts: Text[] = [];
+  let node: Node | null;
+  while ((node = walker.nextNode())) texts.push(node as Text);
+
+  for (const textNode of texts) {
+    const text = textNode.nodeValue ?? "";
+    const re = /[A-Za-z][A-Za-z0-9-]*/g;
+    const hits: { start: number; end: number }[] = [];
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text))) {
+      if (keys.has(normaliseWord(m[0]))) {
+        hits.push({ start: m.index, end: m.index + m[0].length });
+      }
+    }
+    if (hits.length === 0) continue;
+
+    const frag = document.createDocumentFragment();
+    let pos = 0;
+    for (const { start, end } of hits) {
+      if (start > pos) frag.appendChild(document.createTextNode(text.slice(pos, start)));
+      const span = document.createElement("span");
+      span.className = "sfc-term";
+      span.textContent = text.slice(start, end);
+      span.style.textDecoration = "underline dotted";
+      span.style.textUnderlineOffset = "2px";
+      span.style.textDecorationColor = "var(--primary)";
+      span.style.cursor = "pointer";
+      frag.appendChild(span);
+      pos = end;
+    }
+    if (pos < text.length) frag.appendChild(document.createTextNode(text.slice(pos)));
+    textNode.parentNode?.replaceChild(frag, textNode);
+  }
 }
 
 export function WordLookup({ children }: { children: React.ReactNode }) {
@@ -70,6 +138,67 @@ export function WordLookup({ children }: { children: React.ReactNode }) {
     host.addEventListener("dblclick", onPick);
     return () => host.removeEventListener("dblclick", onPick);
   }, [look]);
+
+  // A single click on an underlined word opens its meaning too (not only a
+  // double-click), which is how most readers expect a highlighted word to work.
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    function onClick(e: MouseEvent) {
+      const el = (e.target as HTMLElement | null)?.closest?.(".sfc-term");
+      if (!el) return;
+      e.preventDefault();
+      void look(el.textContent ?? "", e.clientX, e.clientY);
+    }
+    host.addEventListener("click", onClick);
+    return () => host.removeEventListener("click", onClick);
+  }, [look]);
+
+  // The dictionary's words, fetched once, so the reading can underline the ones
+  // it has a meaning for.
+  const [termKeys, setTermKeys] = useState<Set<string> | null>(null);
+  useEffect(() => {
+    let alive = true;
+    api
+      .get<{ words: string[] }>("/api/terms/words")
+      .then((d) => alive && setTermKeys(new Set(d.words)))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // Decorate the reading, and re-decorate if the content is (re)written — the
+  // material body is set with innerHTML after this mounts. Our own edits are made
+  // with the observer paused and skip words already marked, so there's no loop.
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host || !termKeys || termKeys.size === 0) return;
+
+    let running = false;
+    const observer = new MutationObserver(() => {
+      if (!running) requestAnimationFrame(apply);
+    });
+    function apply() {
+      if (running) return;
+      running = true;
+      observer.disconnect();
+      try {
+        markTerms(host!, termKeys!);
+      } catch {
+        // Decoration must never break the reading itself.
+      } finally {
+        observer.observe(host!, {
+          childList: true,
+          subtree: true,
+          characterData: true,
+        });
+        running = false;
+      }
+    }
+    apply();
+    return () => observer.disconnect();
+  }, [termKeys]);
 
   async function toggleSave(term: Term) {
     const res = await api.post<{ saved: boolean }>(`/api/terms/${term.id}/bookmark`);
