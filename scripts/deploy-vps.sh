@@ -73,8 +73,21 @@ echo "  staged $(du -sh "$STAGE" | cut -f1)"
 RELEASE="$(date +%Y%m%d%H%M%S)"
 echo "▸ shipping release $RELEASE to $VPS_USER@$VPS_HOST"
 "${SSH[@]}" "mkdir -p $REMOTE_ROOT/releases/$RELEASE"
-rsync -az --delete -e "ssh -i $VPS_KEY -o StrictHostKeyChecking=accept-new" \
-  "$STAGE/" "$VPS_USER@$VPS_HOST:$REMOTE_ROOT/releases/$RELEASE/"
+# A long-haul / mobile link drops mid-transfer; --partial keeps what already
+# arrived and the retry loop resumes into the same release folder until the
+# whole bundle is across, instead of restarting from zero each time.
+rsync_tries=0
+until rsync -az --delete --partial --timeout=120 \
+  -e "ssh -i $VPS_KEY -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=15 -o ServerAliveCountMax=4" \
+  "$STAGE/" "$VPS_USER@$VPS_HOST:$REMOTE_ROOT/releases/$RELEASE/"; do
+  rsync_tries=$((rsync_tries + 1))
+  if [ "$rsync_tries" -ge 30 ]; then
+    echo "Refusing to deploy: rsync could not finish after $rsync_tries tries." >&2
+    exit 1
+  fi
+  echo "  link dropped — resuming (try $rsync_tries)…"
+  sleep 4
+done
 
 echo "▸ switching over"
 "${SSH[@]}" bash -s <<REMOTE
