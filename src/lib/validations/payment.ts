@@ -276,6 +276,8 @@ export const installmentUpdateSchema = z.object({
   paidAmount: z.coerce.number().min(0).max(10_000_000).optional(),
   paidAt: when,
   method: z.enum(PAYMENT_METHODS).optional(),
+  /** The account this instalment is routed to / was paid into. "" clears it. */
+  accountId: z.string().trim().max(40).optional().or(z.literal("")),
   /** "An option to waive off penalty if required manually." */
   penaltyWaived: z.boolean().optional(),
   note: z.string().trim().max(300).optional().or(z.literal("")),

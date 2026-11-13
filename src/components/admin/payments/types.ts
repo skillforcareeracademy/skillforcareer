@@ -25,6 +25,8 @@ export interface PaymentInstallment {
   /** Part payments: less than `amount` leaves the rest owing. */
   paidAmount: number;
   method: string | null;
+  /** The account this EMI is routed to / was paid into (falls back to the plan's). */
+  accountId: string | null;
   /** What being late has cost, after any waiver. */
   penaltyAmount: number;
   penaltyWaived: boolean;

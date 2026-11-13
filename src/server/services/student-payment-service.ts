@@ -29,6 +29,18 @@ export interface StudentInstallment {
   paidAmount: number;
   /** What being late has cost, after any waiver the office has given. */
   penaltyAmount: number;
+  /**
+   * Where to pay this EMI, when it is owed and the assigned account is one the
+   * office settles by hand (not the auto-reconciling Razorpay one). The learner
+   * scans/notes this and tells the office — "uska QR dikhna chahiye student ko".
+   */
+  payInto: {
+    name: string;
+    /** UPI id, or a bank hint for a non-UPI account. */
+    detail: string | null;
+    /** True when `detail` is a UPI id a QR can be built from. */
+    upi: boolean;
+  } | null;
 }
 
 export interface StudentPaymentRow {
@@ -98,7 +110,7 @@ export interface StudentFees {
 }
 
 export async function getStudentFees(userId: string): Promise<StudentFees> {
-  const [payments, { settings }] = await Promise.all([
+  const [payments, { settings }, accounts] = await Promise.all([
     prisma.payment.findMany({
       where: { userId },
       orderBy: { createdAt: "desc" },
@@ -108,9 +120,30 @@ export async function getStudentFees(userId: string): Promise<StudentFees> {
       },
     }),
     getSettings(),
+    prisma.paymentAccount.findMany({
+      select: { id: true, name: true, identifier: true, autoReconcile: true, kind: true },
+    }),
   ]);
 
   const now = Date.now();
+  const accById = new Map(accounts.map((a) => [a.id, a]));
+  // Where a learner should pay a still-owed EMI: its own account, else the
+  // plan's. A Razorpay (auto-reconciling) account needs nothing shown — paying
+  // online updates it; any other account is settled by hand, so surface it.
+  const payIntoFor = (
+    accountId: string | null,
+    paymentAccountId: string | null,
+    settled: boolean,
+  ): StudentInstallment["payInto"] => {
+    if (settled) return null;
+    const acc = accById.get(accountId ?? "") ?? accById.get(paymentAccountId ?? "");
+    if (!acc || acc.autoReconcile) return null;
+    return {
+      name: acc.name,
+      detail: acc.identifier ?? null,
+      upi: acc.kind === "UPI_QR" && Boolean(acc.identifier),
+    };
+  };
 
   // Each plan's live position, by the same rule the office sees.
   const summaries = await Promise.all(payments.map((p) => summarise(p)));
@@ -141,6 +174,11 @@ export async function getStudentFees(userId: string): Promise<StudentFees> {
       isOverdue: i.status !== "PAID" && i.dueDate.getTime() < now,
       paidAmount: num(i.paidAmount),
       penaltyAmount: i.penaltyWaived || p.penaltyWaived ? 0 : num(i.penaltyAmount),
+      payInto: payIntoFor(
+        i.accountId,
+        p.accountId,
+        i.status === "PAID" || i.status === "CANCELLED",
+      ),
     })),
     // A pending link the learner can still settle themselves. Expired links and
     // ones already paid are not offered.

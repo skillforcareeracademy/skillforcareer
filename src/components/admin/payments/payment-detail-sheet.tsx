@@ -17,6 +17,7 @@ import { api, ApiError } from "@/lib/api-client";
 import {
   INSTALLMENT_STATUS_LABEL,
   PAYMENT_METHOD_LABEL,
+  PAYMENT_METHODS,
   PAYMENT_PROVIDER_LABEL,
   PAYMENT_STATUS_CHOICES,
   PAYMENT_STATUS_LABEL,
@@ -41,7 +42,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import type { PaymentDetail } from "@/components/admin/payments/types";
+import type {
+  PaymentDetail,
+  PaymentInstallment,
+} from "@/components/admin/payments/types";
 
 export const STATUS_BADGE: Record<string, string> = {
   PENDING:
@@ -62,11 +66,18 @@ export const STATUS_BADGE: Record<string, string> = {
 
 const inr = (n: number) => `₹${n.toLocaleString("en-IN")}`;
 
+export interface AccountChoice {
+  id: string;
+  name: string;
+}
+
 export function PaymentDetailSheet({
   paymentId,
+  accounts = [],
   onOpenChange,
 }: {
   paymentId: string | null;
+  accounts?: AccountChoice[];
   onOpenChange: (open: boolean) => void;
 }) {
   return (
@@ -76,6 +87,7 @@ export function PaymentDetailSheet({
           <DetailBody
             key={paymentId}
             paymentId={paymentId}
+            accounts={accounts}
             onClosed={() => onOpenChange(false)}
           />
         )}
@@ -86,9 +98,11 @@ export function PaymentDetailSheet({
 
 function DetailBody({
   paymentId,
+  accounts,
   onClosed,
 }: {
   paymentId: string;
+  accounts: AccountChoice[];
   onClosed: () => void;
 }) {
   const router = useRouter();
@@ -98,6 +112,48 @@ function DetailBody({
   const [refundOpen, setRefundOpen] = useState(false);
   const [refundAmount, setRefundAmount] = useState("");
   const [refundReason, setRefundReason] = useState("");
+  /** The instalment whose "record payment" form is open, with its fields. */
+  const [payingId, setPayingId] = useState<string | null>(null);
+  const [payForm, setPayForm] = useState({
+    amount: "",
+    method: "",
+    accountId: "",
+    paidAt: "",
+  });
+
+  function openPay(i: PaymentInstallment) {
+    setPayingId(i.id);
+    setPayForm({
+      amount: String(i.amount),
+      method: i.method ?? "",
+      accountId: i.accountId ?? "",
+      paidAt: new Date().toISOString().slice(0, 10),
+    });
+  }
+
+  // Record money against one EMI with its mode, account and received-date — "har
+  // EMI ka payment mode, payment account and payment received date daalne ka option".
+  async function savePay(e: FormEvent) {
+    e.preventDefault();
+    if (!payingId) return;
+    setBusy(true);
+    try {
+      await api.patch(`/api/installments/${payingId}`, {
+        paidAmount: Number(payForm.amount) || 0,
+        method: payForm.method || undefined,
+        accountId: payForm.accountId,
+        paidAt: payForm.paidAt || undefined,
+      });
+      toast.success("Payment recorded.");
+      setPayingId(null);
+      await load();
+      router.refresh();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Couldn't save that.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   function load() {
     return api
@@ -458,6 +514,10 @@ function DetailBody({
                           {i.paidAt
                             ? ` · paid ${format(new Date(i.paidAt), "d MMM yyyy")}`
                             : ""}
+                          {i.method ? ` · ${PAYMENT_METHOD_LABEL[i.method] ?? i.method}` : ""}
+                          {i.accountId
+                            ? ` · ${accounts.find((a) => a.id === i.accountId)?.name ?? "account"}`
+                            : ""}
                         </p>
                       </div>
                       <Badge
@@ -474,21 +534,15 @@ function DetailBody({
                         {INSTALLMENT_STATUS_LABEL[i.status] ?? i.status}
                       </Badge>
                     </div>
-                    {!settled && (
+                    {!settled && payingId !== i.id && (
                       <div className="flex flex-wrap gap-2">
                         <Button
                           variant="outline"
                           size="sm"
                           disabled={busy}
-                          onClick={() =>
-                            patchInstallment(
-                              i.id,
-                              { status: "PAID" },
-                              `Instalment #${i.installmentNo} marked paid.`,
-                            )
-                          }
+                          onClick={() => openPay(i)}
                         >
-                          <CircleCheckBig className="size-4" /> Mark paid
+                          <CircleCheckBig className="size-4" /> Record payment
                         </Button>
                         {i.penaltyAmount > 0 && !i.penaltyWaived && (
                           <Button
@@ -507,6 +561,100 @@ function DetailBody({
                           </Button>
                         )}
                       </div>
+                    )}
+                    {/* Record this EMI's payment — amount, mode, account, date. */}
+                    {payingId === i.id && (
+                      <form
+                        onSubmit={savePay}
+                        className="bg-muted/40 space-y-2 rounded-lg p-2.5"
+                      >
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <Label className="text-xs">Amount received (₹)</Label>
+                            <Input
+                              type="number"
+                              min={0}
+                              value={payForm.amount}
+                              onChange={(e) =>
+                                setPayForm((f) => ({ ...f, amount: e.target.value }))
+                              }
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs">Received on</Label>
+                            <Input
+                              type="date"
+                              value={payForm.paidAt}
+                              onChange={(e) =>
+                                setPayForm((f) => ({ ...f, paidAt: e.target.value }))
+                              }
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs">Payment mode</Label>
+                            <Select
+                              value={payForm.method}
+                              onValueChange={(v) =>
+                                setPayForm((f) => ({ ...f, method: v ?? "" }))
+                              }
+                            >
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Mode">
+                                  {(v) =>
+                                    v ? (PAYMENT_METHOD_LABEL[v] ?? v) : "Mode"
+                                  }
+                                </SelectValue>
+                              </SelectTrigger>
+                              <SelectContent>
+                                {PAYMENT_METHODS.map((m) => (
+                                  <SelectItem key={m} value={m}>
+                                    {PAYMENT_METHOD_LABEL[m] ?? m}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs">Account</Label>
+                            <Select
+                              value={payForm.accountId}
+                              onValueChange={(v) =>
+                                setPayForm((f) => ({ ...f, accountId: v ?? "" }))
+                              }
+                            >
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Account">
+                                  {(v) =>
+                                    accounts.find((a) => a.id === v)?.name ??
+                                    "Account"
+                                  }
+                                </SelectValue>
+                              </SelectTrigger>
+                              <SelectContent>
+                                {accounts.map((a) => (
+                                  <SelectItem key={a.id} value={a.id}>
+                                    {a.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setPayingId(null)}
+                          >
+                            Cancel
+                          </Button>
+                          <Button type="submit" size="sm" disabled={busy}>
+                            {busy && <Loader2 className="size-4 animate-spin" />}
+                            Save
+                          </Button>
+                        </div>
+                      </form>
                     )}
                   </li>
                 );

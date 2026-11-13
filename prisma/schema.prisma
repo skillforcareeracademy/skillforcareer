@@ -2191,6 +2191,11 @@ model Installment {
   paidAmount    Decimal        @default(0) @db.Decimal(10, 2)
   /// How it was paid, when the office recorded it by hand.
   method        PaymentMethod?
+  /// Which account this instalment is to be paid into / was paid into. Lets a
+  /// single plan route different EMIs to different accounts — the default
+  /// Razorpay one auto-reconciles, another shows the learner its QR to pay and
+  /// the office marks it by hand. Falls back to the payment's own account.
+  accountId     String?
   /// Late charge worked out from the plan's terms once the grace period has
   /// run out, and whether somebody has forgiven it.
   penaltyAmount Decimal        @default(0) @db.Decimal(10, 2)
@@ -2207,6 +2212,7 @@ model Installment {
 
   @@index([paymentId])
   @@index([status])
+  @@index([accountId])
 }
 
 model Refund {

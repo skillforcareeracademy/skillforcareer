@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button";
 import { PayFeesDialog } from "./pay-fees-dialog";
 import { PAYMENT_STATUS_LABEL, PAYMENT_METHOD_LABEL } from "@/lib/validations/payment";
 import type { StudentFees, StudentPaymentRow } from "@/server/services/student-payment-service";
+import { UpiQr } from "@/components/student/upi-qr";
 import { cn } from "@/lib/utils";
 
 const inr = (n: number) => `₹${n.toLocaleString("en-IN")}`;
@@ -369,10 +370,8 @@ function PaymentCard({
             <Separator />
             <div className="space-y-1.5">
               {p.installments.map((i) => (
-                <div
-                  key={i.id}
-                  className="flex items-center gap-3 text-sm"
-                >
+                <div key={i.id} className="space-y-1.5">
+                  <div className="flex items-center gap-3 text-sm">
                   {i.status === "PAID" ? (
                     <CheckCircle2 className="size-4 shrink-0 text-emerald-500" />
                   ) : i.isOverdue ? (
@@ -410,6 +409,33 @@ function PaymentCard({
                       ? `Paid ${format(new Date(i.paidAt), "d MMM")}`
                       : `Due ${format(new Date(i.dueDate), "d MMM yyyy")}`}
                   </span>
+                  </div>
+                  {i.status !== "PAID" && i.payInto && (
+                    <div className="ml-7 rounded-lg border bg-muted/30 p-2.5 text-xs">
+                      <p className="font-medium">
+                        Pay EMI {i.installmentNo} ({inr(i.amount)}) into{" "}
+                        {i.payInto.name}
+                      </p>
+                      {i.payInto.detail && (
+                        <p className="text-muted-foreground mt-0.5 font-mono break-all">
+                          {i.payInto.detail}
+                        </p>
+                      )}
+                      {i.payInto.upi && i.payInto.detail && (
+                        <div className="mt-2">
+                          <UpiQr
+                            upi={i.payInto.detail}
+                            name={i.payInto.name}
+                            amount={i.amount}
+                          />
+                        </div>
+                      )}
+                      <p className="text-muted-foreground mt-1.5">
+                        After paying, tell the office on WhatsApp — they&rsquo;ll
+                        mark it received.
+                      </p>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

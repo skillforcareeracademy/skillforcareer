@@ -32,6 +32,7 @@ export default async function PaymentsPage({
     status: str(sp.status),
     provider: str(sp.provider),
     method: str(sp.method),
+    overdue: str(sp.overdue) === "1",
   };
 
   const [{ payments, total }, stats, users, courses, accounts, batches] =

@@ -156,6 +156,8 @@ export interface PaymentListQuery {
   status?: string;
   provider?: string;
   method?: string;
+  /** Only plans with an instalment past its due date + the grace period. */
+  overdue?: boolean;
 }
 
 export async function listPaymentsAdmin(q: PaymentListQuery) {
@@ -175,6 +177,19 @@ export async function listPaymentsAdmin(q: PaymentListQuery) {
     and.push({ provider: q.provider as Prisma.PaymentWhereInput["provider"] });
   if (q.method)
     and.push({ method: q.method as Prisma.PaymentWhereInput["method"] });
+  if (q.overdue) {
+    // Pending + defaulted: an instalment whose due date AND the 7-day grace have
+    // both passed and which isn't settled — the "late fees" list the office chases.
+    const graceCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    and.push({
+      installments: {
+        some: {
+          status: { notIn: ["PAID", "CANCELLED"] },
+          dueDate: { lt: graceCutoff },
+        },
+      },
+    });
+  }
   const where: Prisma.PaymentWhereInput = and.length ? { AND: and } : {};
 
   const [total, rows] = await Promise.all([
@@ -340,6 +355,7 @@ export async function getPaymentDetail(id: string) {
       paidAt: i.paidAt ? i.paidAt.toISOString() : null,
       paidAmount: num(i.paidAmount),
       method: i.method,
+      accountId: i.accountId,
       penaltyAmount:
         i.penaltyWaived || p.penaltyWaived ? 0 : num(i.penaltyAmount),
       penaltyWaived: i.penaltyWaived,
@@ -774,6 +790,7 @@ export async function updateInstallment(
     if (due) data.dueDate = due;
   }
   if (input.method !== undefined) data.method = input.method;
+  if (input.accountId !== undefined) data.accountId = input.accountId || null;
   if (input.note !== undefined) data.note = input.note || null;
   if (input.penaltyWaived !== undefined) {
     data.penaltyWaived = input.penaltyWaived;

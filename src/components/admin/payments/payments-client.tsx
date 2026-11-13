@@ -18,6 +18,7 @@ import {
   Landmark,
   Scale,
   BellRing,
+  TriangleAlert,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
@@ -115,6 +116,7 @@ interface Query {
   status?: string;
   provider?: string;
   method?: string;
+  overdue?: boolean;
 }
 interface UserOpt {
   id: string;
@@ -181,7 +183,8 @@ export function PaymentsClient({
     query.courseId ||
     query.status ||
     query.provider ||
-    query.method,
+    query.method ||
+    query.overdue,
   );
 
   const setParams = useCallback(
@@ -192,6 +195,7 @@ export function PaymentsClient({
         status: query.status,
         provider: query.provider,
         method: query.method,
+        overdue: query.overdue ? "1" : undefined,
         page: query.page,
         ...next,
       };
@@ -201,6 +205,7 @@ export function PaymentsClient({
       if (merged.status) p.set("status", String(merged.status));
       if (merged.provider) p.set("provider", String(merged.provider));
       if (merged.method) p.set("method", String(merged.method));
+      if (merged.overdue) p.set("overdue", "1");
       if (merged.page && Number(merged.page) > 1)
         p.set("page", String(merged.page));
       const qs = p.toString();
@@ -217,6 +222,7 @@ export function PaymentsClient({
       status: undefined,
       provider: undefined,
       method: undefined,
+      overdue: undefined,
       page: 1,
     });
   }
@@ -680,6 +686,17 @@ export function PaymentsClient({
                   ))}
                 </SelectContent>
               </Select>
+              {/* Pending + defaulted only — past the due date and the 7-day grace. */}
+              <Button
+                variant={query.overdue ? "default" : "outline"}
+                size="sm"
+                onClick={() =>
+                  setParams({ overdue: query.overdue ? undefined : "1", page: 1 })
+                }
+                title="Only plans with a payment past its due date + 7-day grace"
+              >
+                <TriangleAlert className="size-4" /> Late fees
+              </Button>
               {hasFilters && (
                 <Button
                   variant="ghost"
@@ -736,6 +753,7 @@ export function PaymentsClient({
 
       <PaymentDetailSheet
         paymentId={detailId}
+        accounts={accounts}
         onOpenChange={(o) => !o && setDetailId(null)}
       />
 
