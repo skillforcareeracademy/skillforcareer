@@ -40,10 +40,21 @@ export interface PaymentSummary {
   /** Of `paid`, what came in as a booking amount. */
   booking: number;
   penalty: number;
+  /** What late fees would have been, but were written off on this plan. */
+  penaltyWaivedAmount: number;
   outstanding: number;
   nextDueDate: string | null;
   nextDueAmount: number;
   daysLate: number;
+}
+
+/** One entry in a payment's change trail. */
+export interface PaymentActivityEntry {
+  id: string;
+  action: string;
+  description: string | null;
+  actorName: string | null;
+  createdAt: string;
 }
 
 export interface PaymentDetail {

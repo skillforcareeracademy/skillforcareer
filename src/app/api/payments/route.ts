@@ -9,8 +9,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export const POST = withRoute(async (req) => {
-  await requireApiPermission(PERMISSIONS.MANAGE_PAYMENTS);
+  const user = await requireApiPermission(PERMISSIONS.MANAGE_PAYMENTS);
   const input = recordPaymentSchema.parse(await req.json().catch(() => ({})));
-  const id = await recordPayment(input);
+  const id = await recordPayment(input, { id: user.id, name: user.name });
   return created({ id, message: "Payment recorded." });
 });

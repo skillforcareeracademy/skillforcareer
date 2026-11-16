@@ -1,5 +1,9 @@
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
+import { notify } from "./notification-service";
+import { sendMail } from "@/lib/mail/mailer";
+import { env } from "@/lib/env";
+import { logger } from "@/lib/logger";
 import {
   COMPLETION_FIELDS,
   LOCKED_AFTER_SUBMIT,
@@ -181,6 +185,66 @@ function dataFrom(input: StudentDetailInput): Prisma.StudentDetailUncheckedUpdat
 }
 
 /**
+ * Let the learner know their onboarding details reached the office — "jab
+ * students apni my details fill kr dete hain ya admin se koi fill kr deta hai
+ * to student ko mail notification jaana chahiye ki your details have been
+ * submitted", with the dynamic policy links alongside. Best-effort: a mail or
+ * notification failure must never fail the save it is confirming.
+ */
+async function notifyDetailsSubmitted(userId: string): Promise<void> {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { name: true, email: true },
+    });
+    if (!user?.email) return;
+
+    const APP_URL = env.NEXT_PUBLIC_APP_URL;
+    const firstName = user.name?.split(" ")[0] || "there";
+
+    await notify({
+      userIds: [userId],
+      type: "SYSTEM",
+      title: "Details submitted",
+      message:
+        "Your details have been submitted. Our team will take it from here.",
+      actionUrl: "/student/profile/details",
+    });
+
+    const html = `
+    <div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;color:#111">
+      <h2 style="color:#e11d48">Details submitted</h2>
+      <p>Hi ${firstName},</p>
+      <p><strong>Your details have been submitted</strong> to Skill For Career. Our team will take it from here and will be in touch if anything further is needed.</p>
+      <p style="margin:20px 0">
+        <a href="${APP_URL}/student/profile/details"
+           style="background:#e11d48;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none">
+          View your details
+        </a>
+      </p>
+      <p style="color:#666;font-size:13px">For any information about how we handle your information, please read our
+        <a href="${APP_URL}/privacy">Privacy Policy</a>,
+        <a href="${APP_URL}/terms">Terms &amp; Conditions</a> and
+        <a href="${APP_URL}/cookies">Cookie Policy</a>.</p>
+      <p style="color:#666;font-size:13px">— SkillForCareer</p>
+    </div>`;
+
+    const text = `Hi ${firstName}, your details have been submitted to Skill For Career. View them at ${APP_URL}/student/profile/details. Our policies — Privacy: ${APP_URL}/privacy · Terms & Conditions: ${APP_URL}/terms · Cookies: ${APP_URL}/cookies.`;
+
+    await sendMail({
+      to: user.email,
+      subject: "Your details have been submitted",
+      html,
+      text,
+    });
+  } catch (error) {
+    logger.warn("Couldn't send the details-submitted email", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+/**
  * The learner's own save. Anything already locked is ignored rather than
  * rejected — the form doesn't send those fields, and a stale tab that does
  * shouldn't fail in their face.
@@ -202,7 +266,8 @@ export async function saveStudentDetail(
       if (wasFilled) delete data[field as keyof typeof data];
     }
   }
-  if (input.submit && !existing?.submittedAt) {
+  const justSubmitted = Boolean(input.submit && !existing?.submittedAt);
+  if (justSubmitted) {
     data.submittedAt = new Date();
   }
 
@@ -213,6 +278,8 @@ export async function saveStudentDetail(
       data: { ...(data as Prisma.StudentDetailUncheckedCreateInput), userId },
     });
   }
+  // Confirm it reached us the moment they actually submit.
+  if (justSubmitted) void notifyDetailsSubmitted(userId);
   return getStudentDetail(userId);
 }
 
@@ -242,6 +309,8 @@ export async function saveStudentDetailByStaff(
     update: data,
     create: { ...(data as Prisma.StudentDetailUncheckedCreateInput), userId },
   });
+  // The office filled it on the learner's behalf — let the learner know.
+  void notifyDetailsSubmitted(userId);
   return getStudentDetail(userId);
 }
 

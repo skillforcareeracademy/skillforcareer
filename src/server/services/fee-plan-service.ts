@@ -223,6 +223,8 @@ export interface FeeSummary {
   /** Of `paid`, what came in as a booking amount to hold the seat. */
   booking: number;
   penalty: number;
+  /** What late fees would have been, but were written off on this plan. */
+  penaltyWaivedAmount: number;
   outstanding: number;
   /** The next thing owed, if anything is. */
   nextDueDate: Date | null;
@@ -279,6 +281,7 @@ export async function summarise(
       paid: money(paid),
       booking: money(booking),
       penalty: 0,
+      penaltyWaivedAmount: 0,
       outstanding,
       nextDueDate: outstanding > 0 ? payment.paidAt : null,
       nextDueAmount: outstanding,
@@ -294,6 +297,7 @@ export async function summarise(
   const payable = num(payment.netAmount);
   let paid = booking;
   let penalty = 0;
+  let penaltyWaivedAmount = 0;
   let daysLate = 0;
   let nextDueDate: Date | null = null;
   let nextDueAmount = 0;
@@ -319,11 +323,17 @@ export async function summarise(
         daysLate,
         Math.floor((now - chargeableFrom.getTime()) / DAY_MS),
       );
+      // What being late would cost on this row, charged or not.
+      const wouldBe = num(i.penaltyAmount) || penaltyFor(owing, terms);
       if (!payment.penaltyWaived && !i.penaltyWaived) {
         // The stored figure is what has been charged; falling back to a fresh
         // calculation means a plan shows its late fee the moment it is late,
         // without waiting for the nightly sweep to write it down.
-        penalty += num(i.penaltyAmount) || penaltyFor(owing, terms);
+        penalty += wouldBe;
+      } else {
+        // Waived: record what was forgiven so the office and the learner can
+        // both see the figure — "penalty waive kitni hui dikhna chahiye".
+        penaltyWaivedAmount += wouldBe;
       }
     }
   }
@@ -337,6 +347,7 @@ export async function summarise(
     paid: money(Math.min(paid, payable)),
     booking: money(booking),
     penalty: money(penalty),
+    penaltyWaivedAmount: money(penaltyWaivedAmount),
     outstanding,
     nextDueDate,
     nextDueAmount,

@@ -33,6 +33,8 @@ import type { PublicUser } from "@/server/services/auth-service";
 import {
   joinPlan,
   splitPlan,
+  PAYMENT_PLAN_LABEL,
+  PAYMENT_STATUS_LABEL,
   type InstallmentUpdateInput,
   type RecordPaymentInput,
   type RefundInput,
@@ -340,6 +342,7 @@ export async function getPaymentDetail(id: string) {
       paid: summary.paid,
       booking: summary.booking,
       penalty: summary.penalty,
+      penaltyWaivedAmount: summary.penaltyWaivedAmount,
       outstanding: summary.outstanding,
       nextDueDate: summary.nextDueDate?.toISOString() ?? null,
       nextDueAmount: summary.nextDueAmount,
@@ -532,8 +535,121 @@ function assertScheduleWithinBudget(
   }
 }
 
+// ── The payment trail ──────────────────────────────────────────────────────
+// Every change the office makes to a fee is written to the ActivityLog against
+// the payment, so the detail sheet can show "jo jo humne change kiya hai save
+// kiya hai" — who changed what, and when. Logging is best-effort and never
+// blocks the action it describes.
+
+/** Who made a change, threaded from the route's authenticated user. */
+export type PaymentActor = { id: string; name?: string | null } | null | undefined;
+
+const rupees = (n: number) => `₹${n.toLocaleString("en-IN")}`;
+
+function logPaymentEvent(
+  actor: PaymentActor,
+  paymentId: string,
+  action: string,
+  description: string,
+): void {
+  void logActivity({
+    userId: actor?.id ?? null,
+    action,
+    entityType: "Payment",
+    entityId: paymentId,
+    description,
+  });
+}
+
+/** A human-readable summary of what an edit changed, for the trail. */
+function describePaymentEdits(
+  existing: {
+    amount: Prisma.Decimal;
+    discountAmount: Prisma.Decimal;
+    type: string;
+    emiPlan: string | null;
+    interestPercent: Prisma.Decimal | null;
+    bookingAmount: Prisma.Decimal | null;
+    status: string;
+  },
+  input: UpdatePaymentInput,
+): string {
+  const parts: string[] = [];
+  if (input.amount !== undefined && input.amount !== num(existing.amount)) {
+    parts.push(`Total ${rupees(num(existing.amount))} → ${rupees(input.amount)}`);
+  }
+  if (
+    input.discountAmount !== undefined &&
+    input.discountAmount !== num(existing.discountAmount)
+  ) {
+    parts.push(
+      `Discount ${rupees(num(existing.discountAmount))} → ${rupees(input.discountAmount)}`,
+    );
+  }
+  const oldPlan = joinPlan(existing.type, existing.emiPlan);
+  if (input.plan !== undefined && input.plan !== oldPlan) {
+    parts.push(
+      `Plan ${PAYMENT_PLAN_LABEL[oldPlan] ?? oldPlan} → ${PAYMENT_PLAN_LABEL[input.plan] ?? input.plan}`,
+    );
+  }
+  const oldInterest = existing.interestPercent ? num(existing.interestPercent) : undefined;
+  if (input.interestPercent !== undefined && input.interestPercent !== oldInterest) {
+    parts.push(`Interest → ${input.interestPercent ?? 0}%`);
+  }
+  const oldBooking = existing.bookingAmount ? num(existing.bookingAmount) : 0;
+  if (input.bookingAmount !== undefined && input.bookingAmount !== oldBooking) {
+    parts.push(`Booking ${rupees(oldBooking)} → ${rupees(input.bookingAmount)}`);
+  }
+  if (input.status !== undefined && input.status !== existing.status) {
+    parts.push(
+      `Status ${PAYMENT_STATUS_LABEL[existing.status] ?? existing.status} → ${PAYMENT_STATUS_LABEL[input.status] ?? input.status}`,
+    );
+  }
+  const scheduleTouched =
+    input.schedule !== undefined ||
+    input.installmentMode !== undefined ||
+    input.installments !== undefined ||
+    (input.scheduleFrom ?? "") !== "" ||
+    (input.scheduleTo ?? "") !== "";
+  if (scheduleTouched) parts.push("Instalment plan updated");
+  if (
+    input.graceDays !== undefined ||
+    input.penaltyPercent !== undefined ||
+    input.penaltyFlat !== undefined
+  ) {
+    parts.push("Late-fee terms updated");
+  }
+  return parts.length ? parts.join(" · ") : "Payment details updated";
+}
+
+/** The change trail for one payment, newest first. */
+export async function listPaymentActivity(paymentId: string): Promise<
+  { id: string; action: string; description: string | null; actorName: string | null; createdAt: string }[]
+> {
+  const rows = await prisma.activityLog.findMany({
+    where: { entityType: "Payment", entityId: paymentId },
+    orderBy: { createdAt: "desc" },
+    take: 60,
+    select: {
+      id: true,
+      action: true,
+      description: true,
+      createdAt: true,
+      user: { select: { name: true } },
+    },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    action: r.action,
+    description: r.description,
+    actorName: r.user?.name ?? null,
+    createdAt: r.createdAt.toISOString(),
+  }));
+}
+
 export async function recordPayment(
   input: RecordPaymentInput,
+  actor?: PaymentActor,
 ): Promise<string> {
   const user = await prisma.user.findUnique({
     where: { id: input.userId },
@@ -645,6 +761,13 @@ export async function recordPayment(
     void rewardReferralFor(input.userId, payment.id);
   }
 
+  logPaymentEvent(
+    actor,
+    payment.id,
+    "payment.created",
+    `Payment recorded · ${rupees(payable)} · ${PAYMENT_PLAN_LABEL[input.plan] ?? input.plan}`,
+  );
+
   await refreshFeeStatus(payment.id);
   return payment.id;
 }
@@ -660,6 +783,7 @@ export async function recordPayment(
 export async function updatePayment(
   id: string,
   input: UpdatePaymentInput,
+  actor?: PaymentActor,
 ): Promise<void> {
   const existing = await prisma.payment.findUnique({
     where: { id },
@@ -798,6 +922,13 @@ export async function updatePayment(
     await prisma.installment.deleteMany({ where: { paymentId: id } });
   }
 
+  logPaymentEvent(
+    actor,
+    id,
+    "payment.updated",
+    describePaymentEdits(existing, input),
+  );
+
   await refreshFeeStatus(id);
 }
 
@@ -809,12 +940,14 @@ export async function updatePayment(
 export async function updateInstallment(
   installmentId: string,
   input: InstallmentUpdateInput,
+  actor?: PaymentActor,
 ): Promise<void> {
   const existing = await prisma.installment.findUnique({
     where: { id: installmentId },
     select: {
       id: true,
       paymentId: true,
+      installmentNo: true,
       amount: true,
       paidAmount: true,
       paidAt: true,
@@ -861,6 +994,19 @@ export async function updateInstallment(
   if (Object.keys(data).length > 0) {
     await prisma.installment.update({ where: { id: installmentId }, data });
   }
+
+  const emiNo = `EMI #${existing.installmentNo}`;
+  let note: string;
+  if (input.paidAmount !== undefined || input.status === "PAID") {
+    const got = Math.min(amount, Math.max(0, input.paidAmount ?? amount));
+    note = `${rupees(got)} received against ${emiNo}`;
+  } else if (input.penaltyWaived) {
+    note = `${emiNo} late fee waived`;
+  } else {
+    note = `${emiNo} updated`;
+  }
+  logPaymentEvent(actor, existing.paymentId, "payment.installment", note);
+
   await refreshFeeStatus(existing.paymentId);
 }
 
@@ -868,6 +1014,7 @@ export async function updateInstallment(
 export async function waivePenalties(
   paymentId: string,
   waived: boolean,
+  actor?: PaymentActor,
 ): Promise<void> {
   const existing = await prisma.payment.findUnique({
     where: { id: paymentId },
@@ -884,16 +1031,23 @@ export async function waivePenalties(
       data: { penaltyAmount: new Prisma.Decimal(0) },
     });
   }
+  logPaymentEvent(
+    actor,
+    paymentId,
+    "payment.penalty",
+    waived ? "All late fees waived" : "Late fees reinstated",
+  );
   await refreshFeeStatus(paymentId);
 }
 
 export async function setPaymentStatus(
   id: string,
   status: string,
+  actor?: PaymentActor,
 ): Promise<void> {
   const existing = await prisma.payment.findUnique({
     where: { id },
-    select: { id: true, paidAt: true },
+    select: { id: true, status: true, paidAt: true },
   });
   if (!existing) throw AppError.notFound("Payment not found.");
   await prisma.payment.update({
@@ -903,11 +1057,20 @@ export async function setPaymentStatus(
       paidAt: status === "PAID" && !existing.paidAt ? new Date() : undefined,
     },
   });
+  if (status !== existing.status) {
+    logPaymentEvent(
+      actor,
+      id,
+      "payment.status",
+      `Status ${PAYMENT_STATUS_LABEL[existing.status] ?? existing.status} → ${PAYMENT_STATUS_LABEL[status] ?? status}`,
+    );
+  }
 }
 
 export async function issueRefund(
   paymentId: string,
   input: RefundInput,
+  actor?: PaymentActor,
 ): Promise<void> {
   const p = await prisma.payment.findUnique({
     where: { id: paymentId },
@@ -940,6 +1103,12 @@ export async function issueRefund(
     where: { id: paymentId },
     data: { status: total >= net ? "REFUNDED" : "PARTIALLY_REFUNDED" },
   });
+  logPaymentEvent(
+    actor,
+    paymentId,
+    "payment.refund",
+    `Refund issued · ${rupees(input.amount)}${input.reason ? ` · ${input.reason}` : ""}`,
+  );
 }
 
 export async function deletePayment(id: string): Promise<void> {

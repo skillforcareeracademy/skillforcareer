@@ -12,10 +12,10 @@ const schema = z.object({ waived: z.boolean() });
 
 /** Forgive — or reinstate — every late fee on one plan. */
 export const POST = withRoute(async (req, { params }) => {
-  await requireApiPermission(PERMISSIONS.MANAGE_PAYMENTS);
+  const user = await requireApiPermission(PERMISSIONS.MANAGE_PAYMENTS);
   const id = String((await params).id);
   const { waived } = schema.parse(await req.json().catch(() => ({})));
-  await waivePenalties(id, waived);
+  await waivePenalties(id, waived, { id: user.id, name: user.name });
   return ok({
     message: waived ? "Late fees waived." : "Late fees reinstated.",
   });

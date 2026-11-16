@@ -74,6 +74,15 @@ export interface StudentPaymentRow {
   outstanding: number;
   /** What has actually come in against this plan, booking money included. */
   paidAmount: number;
+  /**
+   * Whether the Razorpay "Pay now" button belongs on this plan — only when the
+   * office routed it to the default (auto-reconciling) account, or the learner
+   * registered by paying online. A plan routed to a manual UPI / cash account
+   * is settled by hand against the QR, so the online button would mislead.
+   * "Agar non default… account select kiya hai to razorpay wala pay now ka
+   * button nahi aana chahiye."
+   */
+  canPayOnline: boolean;
 }
 
 export interface StudentFees {
@@ -202,6 +211,15 @@ export async function getStudentFees(userId: string): Promise<StudentFees> {
       ) / 100,
     outstanding: summaries[idx].outstanding,
     paidAmount: summaries[idx].paid,
+    // Online "Pay now" only for the default/Razorpay rail: an explicit account
+    // must be the auto-reconciling one; with no account set, only a Razorpay
+    // (online self-registered) payment qualifies. A manual UPI / cash account
+    // is paid by hand, so the online button is hidden there.
+    canPayOnline: (() => {
+      const acc = accById.get(p.accountId ?? "");
+      if (acc) return acc.autoReconcile;
+      return p.provider === "RAZORPAY" || p.method === "ONLINE";
+    })(),
   }));
 
   // Money. A refunded payment is deliberately counted as neither billed nor
@@ -288,4 +306,81 @@ export async function getStudentFees(userId: string): Promise<StudentFees> {
     },
     payments: rows,
   };
+}
+
+const DAY = 86_400_000;
+
+/**
+ * The one thing a learner most needs reminding about on their dashboard — the
+ * most urgent unpaid plan, or null when nothing is owed. Drives the dashboard
+ * banner and the sign-in popup: "Student dashboard pr bhi pending payment ka
+ * dikhna chahiye… due date nikalne ke baad red… popup bhi aana chahiye login
+ * hote hi… 3 din pehle reminder bhi."
+ */
+export interface StudentPaymentAlert {
+  /** Everything still owed across every plan, late fees included. */
+  totalDue: number;
+  /** The most urgent plan — what the banner and popup name. */
+  paymentId: string;
+  invoiceNumber: string;
+  courseTitle: string | null;
+  nextDueAmount: number;
+  nextDueDate: string | null;
+  isOverdue: boolean;
+  /** Whole days until the next due date; negative when overdue, null when undated. */
+  daysUntilDue: number | null;
+  penaltyAmount: number;
+}
+
+export async function getStudentPaymentAlert(
+  userId: string,
+): Promise<StudentPaymentAlert | null> {
+  const payments = await prisma.payment.findMany({
+    where: {
+      userId,
+      status: {
+        notIn: ["REFUNDED", "PARTIALLY_REFUNDED", "FAILED", "DISCONTINUED"],
+      },
+    },
+    include: {
+      course: { select: { title: true } },
+      installments: { orderBy: { installmentNo: "asc" } },
+    },
+  });
+  if (payments.length === 0) return null;
+
+  const summaries = await Promise.all(payments.map((p) => summarise(p)));
+  const now = Date.now();
+
+  let totalDue = 0;
+  let best: StudentPaymentAlert | null = null;
+  // Overdue plans come first (most days late wins), then the soonest due.
+  const rank = (c: StudentPaymentAlert) =>
+    c.isOverdue
+      ? -1e9 + (c.daysUntilDue ?? 0)
+      : (c.daysUntilDue ?? 1e9);
+
+  payments.forEach((p, i) => {
+    const s = summaries[i];
+    if (s.outstanding <= 0) return;
+    totalDue += s.outstanding;
+    const dueMs = s.nextDueDate ? s.nextDueDate.getTime() : null;
+    const isOverdue = (dueMs != null && dueMs < now) || s.daysLate > 0;
+    const candidate: StudentPaymentAlert = {
+      totalDue: 0,
+      paymentId: p.id,
+      invoiceNumber: p.invoiceNumber,
+      courseTitle: p.course?.title ?? null,
+      nextDueAmount: s.nextDueAmount || s.outstanding,
+      nextDueDate: s.nextDueDate ? s.nextDueDate.toISOString() : null,
+      isOverdue,
+      daysUntilDue: dueMs != null ? Math.ceil((dueMs - now) / DAY) : null,
+      penaltyAmount: s.penalty,
+    };
+    if (!best || rank(candidate) < rank(best)) best = candidate;
+  });
+
+  if (!best) return null;
+  (best as StudentPaymentAlert).totalDue = Math.round(totalDue * 100) / 100;
+  return best;
 }

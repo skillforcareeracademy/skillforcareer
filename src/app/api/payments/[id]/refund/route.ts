@@ -9,9 +9,9 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export const POST = withRoute(async (req, { params }) => {
-  await requireApiPermission(PERMISSIONS.MANAGE_PAYMENTS);
+  const user = await requireApiPermission(PERMISSIONS.MANAGE_PAYMENTS);
   const id = String((await params).id);
   const input = refundSchema.parse(await req.json().catch(() => ({})));
-  await issueRefund(id, input);
+  await issueRefund(id, input, { id: user.id, name: user.name });
   return created({ message: "Refund issued." });
 });

@@ -6,8 +6,10 @@ import { ROLES } from "@/config/roles";
 import { getLearningStats, getMyLearning, hasPaidEnrolment } from "@/server/services/enrollment-service";
 import { studentScorecard } from "@/server/services/performance-service";
 import { getStudentDetail } from "@/server/services/student-detail-service";
+import { getStudentPaymentAlert } from "@/server/services/student-payment-service";
 import { getSettings } from "@/server/services/settings-service";
 import { UnlockNotice } from "@/components/student/unlock-notice";
+import { PaymentDueNotice } from "@/components/student/payment-due-notice";
 import { PerformanceBlock } from "@/components/student/performance-block";
 import { ProfileCompletionNotice } from "@/components/student/profile-completion-notice";
 import { PageHeader } from "@/components/shared/page-header";
@@ -21,14 +23,16 @@ export const dynamic = "force-dynamic";
 
 export default async function StudentHome() {
   const user = await requireRole([ROLES.SUPER_ADMIN, ROLES.ADMIN, ROLES.STUDENT]);
-  const [stats, courses, paid, { settings }, card, detail] = await Promise.all([
-    getLearningStats(user.id),
-    getMyLearning(user.id),
-    hasPaidEnrolment(user.id),
-    getSettings(),
-    studentScorecard(user.id),
-    getStudentDetail(user.id),
-  ]);
+  const [stats, courses, paid, { settings }, card, detail, dueAlert] =
+    await Promise.all([
+      getLearningStats(user.id),
+      getMyLearning(user.id),
+      hasPaidEnrolment(user.id),
+      getSettings(),
+      studentScorecard(user.id),
+      getStudentDetail(user.id),
+      getStudentPaymentAlert(user.id),
+    ]);
   const recent = courses.filter((c) => c.progressPercent < 100).slice(0, 4);
 
   return (
@@ -38,6 +42,10 @@ export default async function StudentHome() {
         description="Continue where you left off and track your progress."
         actions={<ButtonLink href="/courses">Browse courses</ButtonLink>}
       />
+
+      {/* Money owed — a banner on the dashboard, and a sign-in popup when it is
+          overdue or due within three days. */}
+      {dueAlert && <PaymentDueNotice alert={dueAlert} />}
 
       {/* Registered but nothing paid for yet — what to do about it. */}
       {!paid && (

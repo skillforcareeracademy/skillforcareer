@@ -10,11 +10,11 @@ export const dynamic = "force-dynamic";
 
 /** Record money against one instalment, move its date, or waive its late fee. */
 export const PATCH = withRoute(async (req, { params }) => {
-  await requireApiPermission(PERMISSIONS.MANAGE_PAYMENTS);
+  const user = await requireApiPermission(PERMISSIONS.MANAGE_PAYMENTS);
   const id = String((await params).id);
   const input = installmentUpdateSchema.parse(
     await req.json().catch(() => ({})),
   );
-  await updateInstallment(id, input);
+  await updateInstallment(id, input, { id: user.id, name: user.name });
   return ok({ message: "Instalment saved." });
 });

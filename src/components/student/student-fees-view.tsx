@@ -464,11 +464,20 @@ function PaymentCard({
           </div>
         )}
 
-        {p.outstanding > 0 && (
+        {/* The online "Pay now" only shows on the default/Razorpay rail. A plan
+            routed to a manual UPI / cash account is paid against the QR above,
+            so the Razorpay button is hidden there. */}
+        {p.outstanding > 0 && (p.canPayOnline || p.payUrl) && (
           <div className="mt-4 flex flex-wrap gap-2">
-            <Button size="sm" onClick={() => onPay(p)} className="w-full sm:w-auto">
-              <Wallet className="size-4" /> Pay now · {inr(p.outstanding)}
-            </Button>
+            {p.canPayOnline && (
+              <Button
+                size="sm"
+                onClick={() => onPay(p)}
+                className="w-full sm:w-auto"
+              >
+                <Wallet className="size-4" /> Pay now · {inr(p.outstanding)}
+              </Button>
+            )}
             {p.payUrl && (
               <ButtonLink href={p.payUrl} size="sm" variant="outline">
                 Open payment link <ArrowUpRight className="size-4" />

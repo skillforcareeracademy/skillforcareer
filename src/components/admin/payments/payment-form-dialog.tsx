@@ -573,13 +573,20 @@ function PaymentFormBody({
               <span className="text-muted-foreground">
                 {discount > 0 ? `${percent}% off` : "No discount"}
               </span>
+              {/* An interest plan shows both figures — "net amount without
+                  interest and net amount with interest alag dikhna chahiye". */}
               <span className="font-medium tabular-nums">
-                Net payable {inr(payable)}
-                {payable !== net && (
-                  <span className="text-muted-foreground font-normal">
-                    {" "}
-                    (incl. interest)
-                  </span>
+                {payable !== net ? (
+                  <>
+                    Net {inr(net)}
+                    <span className="text-muted-foreground font-normal">
+                      {" "}
+                      · with interest{" "}
+                    </span>
+                    {inr(payable)}
+                  </>
+                ) : (
+                  <>Net payable {inr(payable)}</>
                 )}
               </span>
             </div>

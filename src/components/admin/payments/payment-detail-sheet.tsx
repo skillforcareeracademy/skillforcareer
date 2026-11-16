@@ -8,6 +8,7 @@ import {
   BellRing,
   CircleCheckBig,
   HandCoins,
+  History,
   Loader2,
   ReceiptText,
   Trash2,
@@ -43,6 +44,7 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import type {
+  PaymentActivityEntry,
   PaymentDetail,
   PaymentInstallment,
 } from "@/components/admin/payments/types";
@@ -107,6 +109,7 @@ function DetailBody({
 }) {
   const router = useRouter();
   const [data, setData] = useState<PaymentDetail | null>(null);
+  const [trail, setTrail] = useState<PaymentActivityEntry[]>([]);
   const [error, setError] = useState(false);
   const [busy, setBusy] = useState(false);
   const [refundOpen, setRefundOpen] = useState(false);
@@ -156,10 +159,15 @@ function DetailBody({
   }
 
   function load() {
-    return api
+    const trailP = api
+      .get<PaymentActivityEntry[]>(`/api/payments/${paymentId}/activity`)
+      .then(setTrail)
+      .catch(() => {});
+    const dataP = api
       .get<PaymentDetail>(`/api/payments/${paymentId}`)
       .then(setData)
       .catch(() => setError(true));
+    return Promise.all([dataP, trailP]);
   }
   useEffect(() => {
     let alive = true;
@@ -167,6 +175,10 @@ function DetailBody({
       .get<PaymentDetail>(`/api/payments/${paymentId}`)
       .then((d) => alive && setData(d))
       .catch(() => alive && setError(true));
+    api
+      .get<PaymentActivityEntry[]>(`/api/payments/${paymentId}/activity`)
+      .then((t) => alive && setTrail(t))
+      .catch(() => {});
     return () => {
       alive = false;
     };
@@ -342,7 +354,29 @@ function DetailBody({
             {data.taxAmount > 0 && (
               <Line label="Tax" value={inr(data.taxAmount)} />
             )}
-            <Line label="Net" value={inr(data.netAmount)} strong />
+            {/* An interest plan shows both figures, so the finance charge is
+                never hidden inside one blended total — "net amount without
+                interest and net amount with interest alag dikhna chahiye". */}
+            {data.principalAmount != null &&
+            data.principalAmount < data.netAmount ? (
+              <>
+                <Line
+                  label="Net (without interest)"
+                  value={inr(data.principalAmount)}
+                />
+                <Line
+                  label={`Interest (${data.interestPercent ?? 0}%)`}
+                  value={`+ ${inr(Math.round((data.netAmount - data.principalAmount) * 100) / 100)}`}
+                />
+                <Line
+                  label="Net (with interest)"
+                  value={inr(data.netAmount)}
+                  strong
+                />
+              </>
+            ) : (
+              <Line label="Net" value={inr(data.netAmount)} strong />
+            )}
             {data.refundedTotal > 0 && (
               <Line label="Refunded" value={`− ${inr(data.refundedTotal)}`} />
             )}
@@ -443,6 +477,14 @@ function DetailBody({
               <Line label="Received" value={inr(data.summary.paid)} />
               {data.summary.penalty > 0 && (
                 <Line label="Late fees" value={inr(data.summary.penalty)} />
+              )}
+              {/* What a waiver was worth — "penalty waive kitni hui dikhna
+                  chahiye". */}
+              {data.summary.penaltyWaivedAmount > 0 && (
+                <Line
+                  label="Late fees waived"
+                  value={`− ${inr(data.summary.penaltyWaivedAmount)}`}
+                />
               )}
               {data.summary.nextDueDate && (
                 <Line
@@ -753,6 +795,34 @@ function DetailBody({
             </ul>
           )}
         </section>
+
+        {/* The change trail — "payment trail puri dikhni chahiye jo jo humne
+            change kiya hai save kiya hai". Every edit, instalment payment,
+            waiver and refund, newest first, with who did it. */}
+        {trail.length > 0 && (
+          <section>
+            <p className="mb-3 flex items-center gap-2 text-sm font-medium">
+              <History className="text-muted-foreground size-4" /> Payment trail
+              <span className="text-muted-foreground font-normal">
+                ({trail.length})
+              </span>
+            </p>
+            <ul className="space-y-3">
+              {trail.map((e) => (
+                <li key={e.id} className="flex gap-3 text-sm">
+                  <span className="bg-muted-foreground/40 mt-1.5 size-1.5 shrink-0 rounded-full" />
+                  <div className="min-w-0">
+                    <p className="break-words">{e.description ?? e.action}</p>
+                    <p className="text-muted-foreground text-xs">
+                      {e.actorName ? `${e.actorName} · ` : ""}
+                      {format(new Date(e.createdAt), "d MMM yyyy, h:mm a")}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         {/* Danger */}
         <div className="border-t pt-4">

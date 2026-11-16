@@ -29,17 +29,18 @@ export const GET = withRoute(async (_req, { params }) => {
  * the body with nothing but a status in it is the quick one.
  */
 export const PATCH = withRoute(async (req, { params }) => {
-  await requireApiPermission(PERMISSIONS.MANAGE_PAYMENTS);
+  const user = await requireApiPermission(PERMISSIONS.MANAGE_PAYMENTS);
   const id = String((await params).id);
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+  const actor = { id: user.id, name: user.name };
 
   if (Object.keys(body).length === 1 && "status" in body) {
     const { status } = setPaymentStatusSchema.parse(body);
-    await setPaymentStatus(id, status);
+    await setPaymentStatus(id, status, actor);
     return ok({ message: "Payment updated." });
   }
 
-  await updatePayment(id, updatePaymentSchema.parse(body));
+  await updatePayment(id, updatePaymentSchema.parse(body), actor);
   return ok({ message: "Payment saved." });
 });
 
