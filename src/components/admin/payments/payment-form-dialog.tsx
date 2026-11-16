@@ -334,6 +334,15 @@ function PaymentFormBody({
     0,
   );
 
+  // Instalments may never add up to more than what is left to schedule after
+  // the booking — "total amount se zyada ki EMI" would bill the learner beyond
+  // what they owe. A rupee of slack covers rounding. Blocks the save; a mere
+  // undershoot only warns (the office may still be building the plan).
+  const overScheduled =
+    scheduled &&
+    form.installmentMode === "MANUAL" &&
+    manualTotal - scheduleAmount > 1;
+
   async function applyCoupon() {
     if (!form.couponCode.trim() || total < 1) {
       toast.error("Enter an amount and a coupon code.");
@@ -449,7 +458,9 @@ function PaymentFormBody({
     }
   }
 
-  const canSave = Boolean((editing || form.userId) && total >= 1);
+  const canSave = Boolean(
+    (editing || form.userId) && total >= 1 && !overScheduled,
+  );
 
   return (
     <>
@@ -901,14 +912,24 @@ function PaymentFormBody({
                       </Button>
                       <span
                         className={
-                          Math.abs(manualTotal - scheduleAmount) > 1
-                            ? "text-sm font-medium text-amber-600 dark:text-amber-400"
-                            : "text-muted-foreground text-sm"
+                          overScheduled
+                            ? "text-sm font-medium text-red-600 dark:text-red-400"
+                            : Math.abs(manualTotal - scheduleAmount) > 1
+                              ? "text-sm font-medium text-amber-600 dark:text-amber-400"
+                              : "text-muted-foreground text-sm"
                         }
                       >
                         {inr(manualTotal)} of {inr(scheduleAmount)}
                       </span>
                     </div>
+                    {overScheduled && (
+                      <p className="text-sm text-red-600 dark:text-red-400">
+                        Instalments add up to {inr(manualTotal)}, more than the{" "}
+                        {inr(scheduleAmount)} left to pay
+                        {booking > 0 ? ` after the ${inr(booking)} booking` : ""}.
+                        Lower them so they don&apos;t exceed what&apos;s owed.
+                      </p>
+                    )}
                   </div>
                 )}
               </>

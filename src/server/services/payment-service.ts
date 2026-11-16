@@ -508,6 +508,30 @@ function termsData(input: {
   return data;
 }
 
+/**
+ * A hand-written schedule must never total more than what is left to pay after
+ * the booking — collecting beyond that would bill the learner past what they
+ * owe ("total amount se zyada ki EMI"). An AUTO schedule always divides the
+ * balance exactly, so only the manual path can overshoot; a rupee of slack
+ * matches the rounding the form itself allows.
+ */
+function assertScheduleWithinBudget(
+  mode: string | undefined,
+  manual: { amount: number }[] | undefined,
+  scheduleBase: number,
+): void {
+  if (mode !== "MANUAL" || !manual || manual.length === 0) return;
+  const sum =
+    Math.round(manual.reduce((s, r) => s + (Number(r.amount) || 0), 0) * 100) /
+    100;
+  if (sum - scheduleBase > 1) {
+    const inr = (n: number) => `₹${n.toLocaleString("en-IN")}`;
+    throw AppError.badRequest(
+      `Instalments add up to ${inr(sum)}, more than the ${inr(scheduleBase)} left to pay. Lower them so they don't exceed what's owed.`,
+    );
+  }
+}
+
 export async function recordPayment(
   input: RecordPaymentInput,
 ): Promise<string> {
@@ -532,6 +556,15 @@ export async function recordPayment(
       ? await financeEmi(net, emiPlan, input.interestPercent)
       : null;
   const payable = emi ? emi.financed : net;
+
+  // What the booking leaves to be collected in instalments. Validate a manual
+  // schedule against it before anything is written, so a plan that bills more
+  // than is owed is refused instead of creating an orphaned payment.
+  const booking = Math.min(payable, input.bookingAmount || 0);
+  const scheduleBase = Math.max(0, Math.round((payable - booking) * 100) / 100);
+  if (type === "EMI" || type === "BOOKING") {
+    assertScheduleWithinBudget(input.installmentMode, input.schedule, scheduleBase);
+  }
 
   const invoiceNumber = await uniqueInvoice(new Date().getFullYear());
   const payment = await prisma.payment.create({
@@ -578,9 +611,8 @@ export async function recordPayment(
   if (type === "EMI" || type === "BOOKING") {
     // The schedule covers what is left AFTER the booking — the seat money is
     // already in, so instalments that re-charged it would bill the learner
-    // twice ("token amount lene ke baad due hai").
-    const booking = Math.min(payable, input.bookingAmount || 0);
-    const scheduleBase = Math.max(0, Math.round((payable - booking) * 100) / 100);
+    // twice ("token amount lene ke baad due hai"). `scheduleBase` is computed
+    // and budget-checked above, before the payment row was created.
     const rows = scheduleFromInput({
       mode: input.installmentMode,
       total: scheduleBase,
@@ -681,6 +713,26 @@ export async function updatePayment(
       : null;
   const payable = emi ? emi.financed : net;
 
+  // What this edit leaves to be collected in instalments after the booking —
+  // the effective booking is whatever the edit keeps in place. Validate a
+  // hand-written schedule against it before any row is touched, so a plan that
+  // bills more than is owed is refused rather than half-applied.
+  const effBooking =
+    input.bookingAmount !== undefined
+      ? input.bookingAmount > 0
+        ? input.bookingAmount
+        : 0
+      : existing.bookingAmount
+        ? num(existing.bookingAmount)
+        : 0;
+  const scheduleBase = Math.max(
+    0,
+    Math.round((payable - Math.min(payable, effBooking)) * 100) / 100,
+  );
+  if (input.schedule !== undefined) {
+    assertScheduleWithinBudget(input.installmentMode, input.schedule, scheduleBase);
+  }
+
   if (
     input.amount !== undefined ||
     input.discountAmount !== undefined ||
@@ -729,20 +781,8 @@ export async function updatePayment(
     (input.scheduleTo ?? "") !== "";
 
   if (wantsSchedule && (type === "EMI" || type === "BOOKING")) {
-    // Spread only what is left after the booking (see recordPayment). The
-    // effective booking is whatever this edit leaves in place.
-    const effBooking =
-      input.bookingAmount !== undefined
-        ? input.bookingAmount > 0
-          ? input.bookingAmount
-          : 0
-        : existing.bookingAmount
-          ? num(existing.bookingAmount)
-          : 0;
-    const scheduleBase = Math.max(
-      0,
-      Math.round((payable - Math.min(payable, effBooking)) * 100) / 100,
-    );
+    // Spread only what is left after the booking (see recordPayment).
+    // `scheduleBase` was computed and budget-checked above.
     const rows = scheduleFromInput({
       mode: input.installmentMode ?? "AUTO",
       total: scheduleBase,
