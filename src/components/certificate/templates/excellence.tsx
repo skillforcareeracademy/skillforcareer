@@ -35,7 +35,6 @@ export function ExcellenceCertificate({ cert, chrome }: TemplateProps) {
         <p className="mt-[0.8cqw] text-[1.5cqw] text-neutral-500 italic">
           Batch: {cert.details.batchName}
           {cert.details.batchId ? ` (${cert.details.batchId})` : ""}
-          {cert.details.instructorName ? ` · Trainer: ${cert.details.instructorName}` : ""}
         </p>
       )}
 

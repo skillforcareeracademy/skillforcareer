@@ -326,11 +326,26 @@ export async function issueCertificate(input: IssueCertificateInput): Promise<st
   if (courseId) {
     const enrolment = await prisma.enrollment.findUnique({
       where: { userId_courseId: { userId: input.userId, courseId } },
-      select: { batch: { select: { name: true, batchId: true } } },
+      select: {
+        batch: {
+          select: {
+            name: true,
+            batchId: true,
+            instructor: { select: { name: true } },
+          },
+        },
+      },
     });
     if (enrolment?.batch) {
       details.batchId = enrolment.batch.batchId ?? "";
       if (!details.batchName) details.batchName = enrolment.batch.name;
+      // The trainer who actually took this batch, signed onto the certificate —
+      // "instructor jo us batch ka h wahi certificate me aana chahiye". Only
+      // when the office didn't name one by hand, and only from the batch, so it
+      // can never disagree with the cohort the learner sat in.
+      if (!details.instructorName && enrolment.batch.instructor?.name) {
+        details.instructorName = enrolment.batch.instructor.name;
+      }
     }
   }
 

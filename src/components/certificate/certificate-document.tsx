@@ -103,11 +103,23 @@ export async function CertificateDocument({
       title: settings.certLeftTitle,
       signatureUrl: settings.certLeftSignatureUrl,
     },
-    right: {
-      name: settings.certRightName,
-      title: settings.certRightTitle,
-      signatureUrl: settings.certRightSignatureUrl,
-    },
+    // The right-hand signatory is the trainer. When the certificate carries its
+    // own batch's instructor, that name signs it rather than the academy-wide
+    // default — "instructor jo us batch ka h wahi certificate me aana chahiye",
+    // and it can differ per certificate or course. The default's scanned
+    // signature belongs to one person, so a batch trainer's name is written in a
+    // hand instead of over somebody else's signature.
+    right: render.details.instructorName?.trim()
+      ? {
+          name: render.details.instructorName.trim(),
+          title: settings.certRightTitle,
+          signatureUrl: "",
+        }
+      : {
+          name: settings.certRightName,
+          title: settings.certRightTitle,
+          signatureUrl: settings.certRightSignatureUrl,
+        },
   };
 
   const Template = TEMPLATES[type];
