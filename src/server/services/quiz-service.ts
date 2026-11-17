@@ -566,6 +566,7 @@ export async function duplicateQuiz(
       questions: { orderBy: { order: "asc" }, include: { options: { orderBy: { order: "asc" } } } },
       batches: { select: { batchId: true } },
       students: { select: { userId: true } },
+      sources: true,
     },
   });
   if (!source) throw AppError.notFound("That quiz no longer exists.");
@@ -631,6 +632,7 @@ export async function duplicateQuiz(
     });
   }
 
+  // Who the paper is set for — the same batches and the same named learners.
   if (source.batches.length > 0) {
     await prisma.quizBatch.createMany({
       data: source.batches.map((b) => ({ quizId: copy.id, batchId: b.batchId })),
@@ -639,6 +641,31 @@ export async function duplicateQuiz(
   if (source.students.length > 0) {
     await prisma.quizStudent.createMany({
       data: source.students.map((u) => ({ quizId: copy.id, userId: u.userId })),
+    });
+  }
+
+  // Where it is filed — every folder the original sits in, not just the group
+  // it is numbered under. Setting `categoryId` alone put the copy in the right
+  // group's numbering but left it out of the folder listings, which is what the
+  // office meant by "group assign nhi ho rhe". Copying the membership outright
+  // keeps "sab kuch duplicate" true: the copy appears exactly where the source
+  // does. (`groupsOf` already carries the numbering folder, so no `fileInGroup`
+  // is needed on top.)
+  const groups = await groupsOf("QUIZ", source.id);
+  if (groups.length > 0) await setGroupsFor("QUIZ", copy.id, groups);
+
+  // The study material the paper was prepared from, so the copy keeps its
+  // provenance and can be re-generated from the same sources.
+  if (source.sources.length > 0) {
+    await prisma.quizSource.createMany({
+      data: source.sources.map((s) => ({
+        quizId: copy.id,
+        batchNoteId: s.batchNoteId,
+        lessonId: s.lessonId,
+        studyMaterialId: s.studyMaterialId,
+        title: s.title,
+        text: s.text,
+      })),
     });
   }
 
