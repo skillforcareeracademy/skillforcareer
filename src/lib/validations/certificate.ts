@@ -70,6 +70,7 @@ export const CERTIFICATE_TYPE_META: Record<CertificateType, CertificateTypeMeta>
       "organisation",
       "startDate",
       "endDate",
+      "instructorName",
       "citation",
       "internalNote",
     ],
@@ -86,7 +87,7 @@ export const CERTIFICATE_TYPE_META: Record<CertificateType, CertificateTypeMeta>
     heading: "Certificate of Internship",
     description: "A period award — “for outstanding performance in the month of…”.",
     needsCourse: false,
-    fields: ["period", "organisation", "citation", "internalNote"],
+    fields: ["period", "organisation", "instructorName", "citation", "internalNote"],
   },
 };
 
