@@ -10,6 +10,10 @@ import {
 } from "@/server/services/batch-service";
 import { listAssociateOptions } from "@/server/services/batch-associate-service";
 import { backfillAcademyIds } from "@/server/services/academy-ids-service";
+import {
+  activeMerges,
+  listBatchesForMerge,
+} from "@/server/services/batch-merge-service";
 import { BatchesClient } from "@/components/admin/batches/batches-client";
 
 export const metadata: Metadata = { title: "Batches" };
@@ -42,12 +46,22 @@ export default async function BatchesPage({
   // here, so the ids on screen are always the ids in the database.
   await backfillAcademyIds();
 
-  const [{ batches, total }, stats, courses, instructors, associateOptions] = await Promise.all([
+  const [
+    { batches, total },
+    stats,
+    courses,
+    instructors,
+    associateOptions,
+    mergeableBatches,
+    merges,
+  ] = await Promise.all([
     listBatchesAdmin(query),
     batchStats(),
     listCoursesForBatch(),
     listInstructors(),
     listAssociateOptions(),
+    listBatchesForMerge(),
+    activeMerges(),
   ]);
 
   return (
@@ -59,6 +73,8 @@ export default async function BatchesPage({
       courses={courses}
       instructors={instructors}
       associateOptions={associateOptions}
+      mergeableBatches={mergeableBatches}
+      merges={merges}
     />
   );
 }

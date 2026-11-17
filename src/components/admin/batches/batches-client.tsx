@@ -21,6 +21,7 @@ import {
   Eye,
   Download,
   ArrowUpRight,
+  GitMerge,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api, ApiError } from "@/lib/api-client";
@@ -72,6 +73,11 @@ import {
   BatchStudentsSheet,
   type BatchStudentsTarget,
 } from "@/components/admin/batches/batch-students-sheet";
+import { BatchMergeDialog } from "@/components/admin/batches/batch-merge-dialog";
+import type {
+  BatchMergeInfo,
+  MergeableBatch,
+} from "@/server/services/batch-merge-service";
 import { cn } from "@/lib/utils";
 
 interface Schedule {
@@ -262,6 +268,8 @@ export function BatchesClient({
   instructors,
   associateOptions = [],
   viewerId,
+  mergeableBatches = [],
+  merges = [],
 }: {
   batches: BatchRow[];
   total: number;
@@ -276,11 +284,16 @@ export function BatchesClient({
    * listed too, but only the lead (or staff) may edit them.
    */
   viewerId?: string;
+  /** Every batch, for the merge picker (staff only). */
+  mergeableBatches?: MergeableBatch[];
+  /** Live batch merges, to list and separate. */
+  merges?: BatchMergeInfo[];
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const [search, setSearch] = useState(query.search ?? "");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [mergeOpen, setMergeOpen] = useState(false);
   const [editing, setEditing] = useState<BatchRow | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY);
   const [saving, setSaving] = useState(false);
@@ -817,6 +830,12 @@ export function BatchesClient({
             >
               <Download className="size-4" /> Export
             </Button>
+            {(mergeableBatches.length >= 2 || merges.length > 0) && (
+              <Button variant="outline" onClick={() => setMergeOpen(true)}>
+                <GitMerge className="size-4" /> Merge
+                {merges.length > 0 ? ` (${merges.length})` : ""}
+              </Button>
+            )}
             <Button onClick={openCreate}>
               <Plus className="size-4" /> New batch
             </Button>
@@ -1351,6 +1370,13 @@ export function BatchesClient({
       <BatchStudentsSheet
         batch={managing}
         onOpenChange={(o) => !o && setManaging(null)}
+      />
+
+      <BatchMergeDialog
+        open={mergeOpen}
+        onOpenChange={setMergeOpen}
+        batches={mergeableBatches}
+        merges={merges}
       />
 
       <AlertDialog

@@ -3632,6 +3632,29 @@ model BatchInstructor {
   @@index([userId])
 }
 
+/// Several batches folded into one, kept so the merge can be undone — "batch
+/// merge … and separate krne ka option bhi chahiye". The ledger remembers every
+/// row that moved and where it came from, so separating puts each batch back
+/// exactly as it was. Standalone (no relations) so the merge history survives a
+/// source batch being edited, and queried by `targetBatchId`.
+model BatchMerge {
+  id             String    @id @default(cuid())
+  /// The batch everything was folded into (the one kept).
+  targetBatchId  String
+  /// The batches folded in — a JSON array of their ids.
+  sourceBatchIds Json
+  /// What moved and from where: a JSON array of { e, id, from, dup? }.
+  ledger         Json
+  createdById    String?
+  /// MERGED while folded in; SEPARATED once undone.
+  status         String    @default("MERGED")
+  createdAt      DateTime  @default(now())
+  separatedAt    DateTime?
+
+  @@index([targetBatchId])
+  @@index([status])
+}
+
 /// Notes and study material shared with a whole batch.
 model BatchNote {
   id          String   @id @default(cuid())
