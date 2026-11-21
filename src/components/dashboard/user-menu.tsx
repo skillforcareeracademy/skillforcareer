@@ -102,7 +102,13 @@ export function UserMenu({ user }: { user: SessionUser }) {
           Dashboard
         </DropdownMenuItem>
         {otherPanels.map((panel) => (
-          <DropdownMenuItem key={panel.href} render={<Link href={panel.href} />} className="gap-2.5 py-2">
+          // A full-page navigation on purpose, not a client-side <Link>: the two
+          // panels share one dashboard layout, and Next keeps a shared layout
+          // mounted across a client navigation — so switching panels that way
+          // left the old panel's sidebar and role in place ("switch nhi ho rha
+          // properly"). A hard load re-runs the layout for the panel being
+          // entered, so the learner (or instructor) view it is meant to show.
+          <DropdownMenuItem key={panel.href} render={<a href={panel.href} />} className="gap-2.5 py-2">
             <ArrowLeftRight className="text-muted-foreground size-4" />
             Switch to {panel.label} panel
           </DropdownMenuItem>
