@@ -37,3 +37,22 @@ export function writeMemo<T>(key: string, value: T, ttlMs: number): void {
 export function clearMemo(key: string): void {
   store.delete(key);
 }
+
+/**
+ * Read-through cache: hand back the memoised value, or run `fn`, store it for
+ * `ttlMs`, and return it. For the public pages' reads that happen on every
+ * visit but change only when the office saves — a few minutes of staleness is
+ * a fair trade for not querying a far-off database on every request, which is
+ * what was dragging the landing page's response time down.
+ */
+export async function cached<T>(
+  key: string,
+  ttlMs: number,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const hit = readMemo<T>(key);
+  if (hit !== null) return hit;
+  const value = await fn();
+  writeMemo(key, value, ttlMs);
+  return value;
+}

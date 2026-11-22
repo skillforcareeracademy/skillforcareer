@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { listPublicCategories } from "@/server/services/category-service";
+import { cached } from "@/server/services/memo";
 import {
   CATEGORY_STYLES,
   DEFAULT_CATEGORY_STYLE,
@@ -18,7 +19,9 @@ export async function CategoriesSection({
 }) {
   // Counts come from the catalogue, so the tiles can't advertise 128 courses in
   // a category that holds one.
-  const categories = (await listPublicCategories()).slice(0, data.limit);
+  const categories = (
+    await cached("home:categories", 180_000, () => listPublicCategories())
+  ).slice(0, data.limit);
   if (categories.length === 0) return null;
 
   return (

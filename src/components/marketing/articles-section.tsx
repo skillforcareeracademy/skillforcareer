@@ -4,6 +4,7 @@ import { format } from "date-fns";
 import { ArrowRight, CalendarDays, Clock, Newspaper } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { listPublishedPosts } from "@/server/services/blog-service";
+import { cached } from "@/server/services/memo";
 import type { HomeData } from "@/lib/validations/homepage";
 
 /**
@@ -16,10 +17,11 @@ export async function ArticlesSection({
 }: {
   data: HomeData<"articles">;
 }) {
-  const { posts } = await listPublishedPosts({
-    pageSize: data.limit,
-    tag: data.tag || undefined,
-  });
+  const { posts } = await cached(
+    `home:posts:${data.limit}:${data.tag || ""}`,
+    180_000,
+    () => listPublishedPosts({ pageSize: data.limit, tag: data.tag || undefined }),
+  );
   if (posts.length === 0) return null;
 
   return (

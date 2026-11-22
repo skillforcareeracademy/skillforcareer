@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { CourseCard } from "./course-card";
 import { listTrendingPrograms } from "@/server/services/course-service";
+import { cached } from "@/server/services/memo";
 import type { HomeData } from "@/lib/validations/homepage";
 
 export async function ProgramsSection({
@@ -9,7 +10,9 @@ export async function ProgramsSection({
 }: {
   data: HomeData<"programs">;
 }) {
-  const programs = await listTrendingPrograms(data.limit);
+  const programs = await cached(`home:programs:${data.limit}`, 180_000, () =>
+    listTrendingPrograms(data.limit),
+  );
   if (programs.length === 0) return null;
 
   return (

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { CourseSearch } from "@/components/shared/course-search";
 import { iconFor, toneFor } from "@/config/icons";
 import { listPopularCourses } from "@/server/services/course-service";
+import { cached } from "@/server/services/memo";
 import type { HomeData } from "@/lib/validations/homepage";
 import { cn } from "@/lib/utils";
 import { imageProps } from "@/lib/image-sizes";
@@ -15,7 +16,9 @@ export async function Hero({ data }: { data: HomeData<"hero"> }) {
   // Chips are the catalogue's own most-enrolled courses, not copy an admin has
   // to keep in step with it — so the toggle is all the editor needs to expose.
   const popular = data.showPopular
-    ? await listPopularCourses(data.popularLimit)
+    ? await cached(`home:popular:${data.popularLimit}`, 180_000, () =>
+        listPopularCourses(data.popularLimit),
+      )
     : [];
 
   return (
