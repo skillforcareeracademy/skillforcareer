@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -60,6 +60,38 @@ export function GroupManager({
   copy: GroupManagerCopy;
 }) {
   const router = useRouter();
+
+  // Keep the page where it was across a refresh. Re-fetching the server tree
+  // (slow against a database a region away, and behind the dashboard's loading
+  // boundary) was throwing the scroll back to the top the moment a folder's
+  // level changed — "niche group ka level change krne ki koshish… khud hi upar
+  // bhaag jaati hai screen". The target is parked in sessionStorage so it is
+  // restored whether the list merely re-rendered or the whole page remounted.
+  const SCROLL_KEY = "sfc.group-manager.scroll";
+  function refreshKeepingScroll() {
+    try {
+      sessionStorage.setItem(
+        SCROLL_KEY,
+        JSON.stringify({ y: window.scrollY, t: Date.now() }),
+      );
+    } catch {}
+    router.refresh();
+  }
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(SCROLL_KEY);
+      if (!raw) return;
+      sessionStorage.removeItem(SCROLL_KEY);
+      const { y, t } = JSON.parse(raw) as { y: number; t: number };
+      // Only a scroll we parked a moment ago — never a stale one from before.
+      if (typeof y === "number" && Date.now() - t < 4000) {
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => window.scrollTo(0, y)),
+        );
+      }
+    } catch {}
+  }, [groups]);
+
   const [name, setName] = useState("");
   const [parentId, setParentId] = useState<string>(TOP);
   const [saving, setSaving] = useState(false);
@@ -84,7 +116,7 @@ export function GroupManager({
       });
       toast.success(res.message);
       setName("");
-      router.refresh();
+      refreshKeepingScroll();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Couldn't save that.");
     } finally {
@@ -98,7 +130,7 @@ export function GroupManager({
     try {
       await api.patch(`/api/groups/${renaming.id}`, { name: renaming.name });
       setRenaming(null);
-      router.refresh();
+      refreshKeepingScroll();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Rename failed.");
     } finally {
@@ -136,7 +168,7 @@ export function GroupManager({
       await api.patch(`/api/groups/${node.id}`, {
         parentId: newParent === TOP ? "" : newParent,
       });
-      router.refresh();
+      refreshKeepingScroll();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Couldn't move that.");
     } finally {
@@ -154,7 +186,7 @@ export function GroupManager({
     try {
       const res = await api.del<{ message: string }>(`/api/groups/${node.id}`);
       toast.success(res.message);
-      router.refresh();
+      refreshKeepingScroll();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Delete failed.");
     } finally {
