@@ -296,6 +296,30 @@ export function SettingsClient({
                   onChange={(e) => set("tagline", e.target.value)}
                 />
               </Field>
+              <Field
+                label="SEO keywords"
+                htmlFor="metaKeywords"
+                hint="Comma-separated, for search engines. Blank uses the defaults."
+              >
+                <Input
+                  id="metaKeywords"
+                  value={form.metaKeywords}
+                  onChange={(e) => set("metaKeywords", e.target.value)}
+                  placeholder="LMS, online courses, certificates…"
+                />
+              </Field>
+              <Field
+                label="SEO meta description"
+                htmlFor="metaDescription"
+                hint="The one-line summary search engines show. Blank uses the default."
+              >
+                <Textarea
+                  id="metaDescription"
+                  rows={2}
+                  value={form.metaDescription}
+                  onChange={(e) => set("metaDescription", e.target.value)}
+                />
+              </Field>
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label="Contact phone" htmlFor="contactPhone">
                   <PhoneInput

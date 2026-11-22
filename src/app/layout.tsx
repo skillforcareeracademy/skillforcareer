@@ -3,6 +3,7 @@ import { Inter, Geist_Mono } from "next/font/google";
 import { AppProviders } from "@/components/providers";
 import { getBranding } from "@/server/services/branding-service";
 import { getTracking } from "@/server/services/tracking-service";
+import { getSettings } from "@/server/services/settings-service";
 import {
   SiteTracking,
   SiteTrackingNoScript,
@@ -23,12 +24,30 @@ const geistMono = Geist_Mono({
 });
 
 export async function generateMetadata(): Promise<Metadata> {
-  const [{ faviconUrl }, { googleSiteVerification }] = await Promise.all([
-    getBranding(),
-    getTracking(),
-  ]);
+  const [{ faviconUrl }, { googleSiteVerification }, { settings }] =
+    await Promise.all([getBranding(), getTracking(), getSettings()]);
+
+  // The office's own SEO, set under Settings → "need to change keywords". Blank
+  // fields fall back to the built-in defaults so the site is never bare.
+  const keywords = settings.metaKeywords?.trim()
+    ? settings.metaKeywords.split(",").map((k) => k.trim()).filter(Boolean)
+    : [...siteConfig.keywords];
+  const description = settings.metaDescription?.trim() || siteConfig.description;
+  const title = `${settings.siteName} — ${settings.tagline}`;
+
   return {
     ...baseMetadata,
+    title: { default: title, template: `%s · ${settings.siteName}` },
+    description,
+    keywords,
+    applicationName: settings.siteName,
+    openGraph: {
+      ...baseMetadata.openGraph,
+      siteName: settings.siteName,
+      title,
+      description,
+    },
+    twitter: { ...baseMetadata.twitter, title: settings.siteName, description },
     icons: { icon: faviconUrl, apple: faviconUrl },
     // Search Console proves ownership by reading this tag off the site. Only
     // emitted once a code is saved, so an unconnected site stays clean.

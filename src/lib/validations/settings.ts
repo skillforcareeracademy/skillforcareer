@@ -82,6 +82,11 @@ export const settingsSchema = z.object({
   // ── General ──────────────────────────────────────────────────────────────
   siteName: z.string().trim().min(1, "Site name is required").max(80),
   tagline: z.string().trim().max(160),
+  /** SEO search keywords for the home page — comma-separated, editable by the
+   *  office ("need to change keywords"). Blank keeps the built-in defaults. */
+  metaKeywords: z.string().trim().max(500),
+  /** The SEO meta description. Blank falls back to the built-in default. */
+  metaDescription: z.string().trim().max(300),
   supportEmail: optionalEmail,
   contactPhone: z.string().trim().max(30),
   /** Where the site's WhatsApp buttons go. Blank falls back to the phone above. */
@@ -252,6 +257,9 @@ export type UpdateSettingsInput = z.infer<typeof updateSettingsSchema>;
 export const DEFAULT_SETTINGS: Settings = {
   siteName: "SkillForCareer",
   tagline: "Learn the skills that get you hired.",
+  metaKeywords: "LMS, online courses, live classes, certificates, e-learning, skill development",
+  metaDescription:
+    "An enterprise learning platform for pre-recorded, live, offline and hybrid courses — with assessments, certificates and analytics.",
   supportEmail: "support@skillforcareer.com",
   contactPhone: "",
   whatsappNumber: "",
