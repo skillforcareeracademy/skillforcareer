@@ -537,10 +537,31 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
   });
 
   // Countdown + auto-submit when time runs out (only for timed quizzes).
+  //
+  // The clock freezes while the app is in the background — a locked screen, a
+  // phone call, a glance at another app. Before this it kept counting real
+  // time while away and, on coming back, found the deadline already passed and
+  // submitted the paper on its own: "quiz apne aap back ho gyi bina time
+  // complete hue". Now the deadline is pushed forward by however long the page
+  // was hidden, so the countdown the learner is watching always reaches zero
+  // in front of them before anything is submitted.
   useEffect(() => {
     if (!quiz.timeLimitMinutes || !quiz.canAttempt) return;
-    const deadline = Date.now() + quiz.timeLimitMinutes * 60_000;
+    let deadline = Date.now() + quiz.timeLimitMinutes * 60_000;
+    let hiddenAt: number | null = null;
+
+    const onVisibility = () => {
+      if (document.hidden) {
+        hiddenAt = Date.now();
+      } else if (hiddenAt != null) {
+        deadline += Date.now() - hiddenAt;
+        hiddenAt = null;
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+
     const id = setInterval(() => {
+      if (document.hidden) return; // paused while the app is away
       const left = Math.max(0, Math.round((deadline - Date.now()) / 1000));
       setRemaining(left);
       if (left <= 0) {
@@ -549,17 +570,36 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
         submitRef.current();
       }
     }, 1000);
-    return () => clearInterval(id);
+
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [quiz.timeLimitMinutes, quiz.canAttempt]);
 
   // The question's own clock. Runs down while the question is on screen and
-  // locks it at zero — the answer as it stands is the answer.
+  // locks it at zero — the answer as it stands is the answer. Like the paper
+  // clock, it freezes while the app is in the background, so a locked screen or
+  // a call doesn't run the question out from under the learner.
   useEffect(() => {
     if (!paced || !quiz.canAttempt || result) return;
     const question = quiz.questions[index];
     if (!question || locked[question.id]) return;
-    const deadline = Date.now() + (quiz.perQuestionSeconds as number) * 1000;
+    let deadline = Date.now() + (quiz.perQuestionSeconds as number) * 1000;
+    let hiddenAt: number | null = null;
+
+    const onVisibility = () => {
+      if (document.hidden) {
+        hiddenAt = Date.now();
+      } else if (hiddenAt != null) {
+        deadline += Date.now() - hiddenAt;
+        hiddenAt = null;
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+
     const id = setInterval(() => {
+      if (document.hidden) return; // paused while the app is away
       const left = Math.max(0, Math.round((deadline - Date.now()) / 1000));
       setQuestionLeft(left);
       if (left <= 0) {
@@ -567,7 +607,11 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
         setLocked((p) => ({ ...p, [question.id]: true }));
       }
     }, 250);
-    return () => clearInterval(id);
+
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [
     paced,
     index,
@@ -1018,7 +1062,18 @@ export function QuizRunner({ quiz }: { quiz: QuizData }) {
 
   // ── Taking screen ──────────────────────────────────────────────────────────
   return (
-    <form onSubmit={submit} className="mx-auto max-w-2xl space-y-6 py-2">
+    <form
+      onSubmit={submit}
+      onKeyDown={(e) => {
+        // Enter inside the short-answer box used to fire the form's submit and
+        // end the whole paper — "quiz apne aap submit ho gyi". Only the Submit
+        // button ends it now; Enter in a text field does nothing.
+        if (e.key === "Enter" && e.target instanceof HTMLInputElement) {
+          e.preventDefault();
+        }
+      }}
+      className="mx-auto max-w-2xl space-y-6 py-2"
+    >
       {quiz.preview && (
         <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
           Preview — you&rsquo;re seeing this quiz exactly as a student does.
